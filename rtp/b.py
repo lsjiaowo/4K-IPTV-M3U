@@ -636,7 +636,7 @@ def process_province(
         for idx, channel_lines in enumerate(sources):
             if not channel_lines:
                 continue
-            suffix = "" if idx == 0 else str(idx)
+            suffix = str(idx + 1)
             file_stem = f"{group_title}{suffix}"
             out_txt = os.path.join(txt_output_dir, f"{file_stem}.txt")
             out_m3u = os.path.join(m3u_output_dir, f"{file_stem}.m3u")
@@ -734,7 +734,7 @@ def parse_args():
     ap.add_argument(
         "--max-per-carrier",
         type=int,
-        default=5,
+        default=10,
         help="每个运营商最多选取“新上线/存活”源数量（默认5）。",
     )
     ap.add_argument(
