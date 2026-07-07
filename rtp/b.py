@@ -27,14 +27,11 @@ GITHUB_COMMIT_PREFIX = "Auto update"
 EPG_URL = "http://epg.51zmt.top:8000/e.xml.gz"
 TVG_LOGO_BASE_URL = "https://gcore.jsdelivr.net/gh/taksssss/tv/icon/"
 README_FILE = "README.md"
-RAW_BASE_URL = "https://raw.githubusercontent.com/jia070310/4K-IPTV-M3U/main"
+RAW_BASE_URL = "https://raw.githubusercontent.com/lsjiaowo/4K-IPTV-M3U/main"
 PROXY_PREFIX = "https://gh-proxy.org/"
 
 # 中国省份全称及简称对照表，用于智能嗅探
-PROVINCES = ["北京", "天津", "河北", "山西", "内蒙古", "辽宁", "吉林", "黑龙江", "上海",
-             "江苏", "浙江", "安徽", "福建", "江西", "山东", "河南", "湖北", "湖南",
-             "广东", "广西", "海南", "重庆", "四川", "贵州", "云南", "西藏", "陕西",
-             "甘肃", "青海", "宁夏", "新疆"]
+PROVINCES = ["浙江", "安徽", "福建", "湖南", "广东", "四川"]
 
 
 def get_root_domain(domain):
