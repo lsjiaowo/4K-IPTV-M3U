@@ -45,7 +45,7 @@ jobs:
           fi
 
       - name: Run updater
-        run: python rtp/b.py
+        run: python rtp/b.py --push --max-age-hours 72
 
       - name: Commit and push if changed
         run: |
