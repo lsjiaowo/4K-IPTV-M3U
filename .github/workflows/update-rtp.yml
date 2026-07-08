@@ -1,10 +1,11 @@
 name: Update RTP Sources
 
+
 on:
-  workflow_dispatch:
   schedule:
-    # 每天执行 2 次（UTC 00:00、12:00）
-    - cron: "0 0,12 * * *"
+    # 设定每小时的第 5 分钟触发一次，直接避开 00 分整点
+    - cron: '5 * * * *'
+  workflow_dispatch: # 保留手动触发按钮
 
 concurrency:
   group: update-rtp-${{ github.ref }}
