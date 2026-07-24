@@ -43,8 +43,20 @@ jobs:
       - name: Run original updater
         run: python rtp/b.py --push --max-age-hours 72
 
+
       - name: Run new IPTV updater
-        run: python b_iptv.cqshushu.com.py --push --max-age-hours 72
+        run: |
+          python b_iptv.cqshushu.com.py --push --max-age-hours 72
+          # 如果生成了排错文件，直接把内容打印到 Actions 日志的控制台中
+          if [ -f "debug_iptv_html.txt" ]; then
+            echo "========== 🚨 开始打印网页源码 🚨 =========="
+            cat debug_iptv_html.txt
+            echo "========== 🚨 网页源码打印结束 🚨 =========="
+          fi
+
+
+
+        
 
       - name: Commit and push if changed
         run: |
