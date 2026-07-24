@@ -74,6 +74,18 @@ def is_challenge_page(page: str) -> bool:
 
 
 def make_session(cookie: str) -> requests.Session:
+    cookie = cookie.strip()
+    # GitHub Actions secrets may preserve a trailing newline when a multi-line
+    # value is pasted.  A Cookie request header must be exactly one line.
+    if "\r" in cookie or "\n" in cookie:
+        raise CqshushuError(
+            "CQS_COOKIE 包含换行符。请复制浏览器开发者工具中 Request Headers 的 Cookie "
+            "字段，并作为一整行保存；不要复制多行 Set-Cookie 响应。"
+        )
+    if cookie.lower().startswith("cookie:"):
+        cookie = cookie.split(":", 1)[1].strip()
+    if not cookie:
+        raise CqshushuError("CQS_COOKIE 为空或格式不正确。")
     session = requests.Session()
     session.headers.update({"User-Agent": USER_AGENT, "Accept-Language": "zh-CN,zh;q=0.9"})
     if cookie:
@@ -83,7 +95,10 @@ def make_session(cookie: str) -> requests.Session:
 
 
 def get(session: requests.Session, url: str) -> requests.Response:
-    response = session.get(url, timeout=REQUEST_TIMEOUT, allow_redirects=True)
+    try:
+        response = session.get(url, timeout=REQUEST_TIMEOUT, allow_redirects=True)
+    except requests.RequestException as exc:
+        raise CqshushuError(f"请求目标站点失败：{exc}") from exc
     # The site deliberately uses HTTP 403 for its JavaScript verification
     # document.  Inspect the response before raise_for_status(), otherwise a
     # useful configuration error is hidden by requests.HTTPError.
