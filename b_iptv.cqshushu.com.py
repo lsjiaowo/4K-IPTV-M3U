@@ -1,392 +1,275 @@
+#!/usr/bin/env python3
+"""Fetch public M3U playlists exposed by iptv.cqshushu.com.
+
+This program intentionally has no dependency on rtp/b.py.  It writes only to
+``cqshushu_txt`` and ``cqshushu_m3u`` at the repository root, so the two
+updaters can be scheduled and run independently.
+
+The website currently presents a JavaScript browser verification page to
+non-browser clients.  This script does not bypass that control.  When it is
+enabled, obtain a valid first-party session cookie in your browser and supply
+it with CQS_COOKIE (recommended as a GitHub Actions secret).  The program
+detects the verification page and exits with an actionable error instead of
+silently producing empty playlists.
+"""
+
+from __future__ import annotations
+
+import argparse
+import html
 import os
 import re
+import sys
 import time
-import random
-import subprocess
-import argparse
-from datetime import datetime
-from html import unescape
-from urllib.parse import quote, urljoin
-from curl_cffi import requests
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Iterable
+from urllib.parse import parse_qs, urlencode, urljoin, urlparse
 
-try:
-    from zoneinfo import ZoneInfo
-except Exception:
-    ZoneInfo = None
+import requests
 
-# ================= 配置区域 =================
-BASE_URL = "https://iptv.cqshushu.com/index.php"
-GITHUB_COMMIT_PREFIX = "Auto update IPTV cqshushu"
-EPG_URL = "http://epg.51zmt.top:8000/e.xml.gz"
-TVG_LOGO_BASE_URL = "https://gcore.jsdelivr.net/gh/taksssss/tv/icon/"
-README_FILE = "README_IPTV.md"
-RAW_BASE_URL = "https://raw.githubusercontent.com/jia070310/4K-IPTV-M3U/main"
-PROXY_PREFIX = "https://gh-proxy.org/"
 
-PROVINCES = ["安徽", "四川", "浙江"]
-# ============================================
+SITE_URL = "https://iptv.cqshushu.com/index.php"
+DEFAULT_PROVINCE = "sc"
+DEFAULT_LIMIT = 10
+REQUEST_TIMEOUT = 25
+USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+)
+IP_RE = re.compile(r"(?<![\d.])(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}(?![\d.])")
+M3U_URL_RE = re.compile(
+    r"https?://[^\s'\"<>\\]+?(?:\.m3u8?(?:\?[^\s'\"<>\\]*)?|[?&][^\s'\"<>\\]*(?:m3u|playlist)[^\s'\"<>\\]*)",
+    re.IGNORECASE,
+)
 
-def clear_output_files(txt_output_dir, m3u_output_dir):
-    for out_dir, suffix in ((txt_output_dir, ".txt"), (m3u_output_dir, ".m3u")):
-        if not os.path.exists(out_dir): continue
-        for name in os.listdir(out_dir):
-            if name.endswith(suffix):
-                try: os.remove(os.path.join(out_dir, name))
-                except OSError: pass
 
-def _strip_html(raw):
-    no_tags = re.sub(r"<[^>]+>", "", raw)
-    return unescape(no_tags).replace("\xa0", " ").strip()
+class CqshushuError(RuntimeError):
+    pass
 
-def _parse_site_datetime(value: str) -> datetime | None:
-    s = (value or "").strip()
-    if not s: return None
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
-        try: return datetime.strptime(s, fmt)
-        except ValueError: continue
-    return None
 
-def get_session():
-    # 使用 curl_cffi 完美伪装浏览器
-    session = requests.Session(impersonate="chrome120")
-    session.headers.update({
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-        "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-        "Referer": "https://iptv.cqshushu.com/"
-    })
-    session.cookies.set("ad_ok", "1", domain="iptv.cqshushu.com", path="/")
+@dataclass(frozen=True)
+class Server:
+    host: str
+    detail_url: str
+
+
+def text_only(fragment: str) -> str:
+    return html.unescape(re.sub(r"<[^>]*>", "", fragment)).replace("\xa0", " ").strip()
+
+
+def unique(items: Iterable[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for item in items:
+        if item and item not in seen:
+            seen.add(item)
+            result.append(item)
+    return result
+
+
+def is_challenge_page(page: str) -> bool:
+    lower = page.lower()
+    return "\u5b89\u5168\u9a8c\u8bc1" in page or "paer.js" in lower or "_js_challenge" in lower
+
+
+def make_session(cookie: str) -> requests.Session:
+    session = requests.Session()
+    session.headers.update({"User-Agent": USER_AGENT, "Accept-Language": "zh-CN,zh;q=0.9"})
+    if cookie:
+        # Accept a full Cookie header so it can be copied verbatim to a secret.
+        session.headers["Cookie"] = cookie.strip()
     return session
 
-def fetch_with_challenge_bypass(session, url):
-    """ 智能过盾请求：自动处理 Cloudflare 和 自定义 JS 挑战，防超时 """
-    for attempt in range(3):
-        try:
-            time.sleep(random.uniform(1.0, 2.5)) # 防封禁延迟
-            # 将超时时间放宽到 30 秒，防止误判为 Timeout
-            resp = session.get(url, timeout=30)
-            html = resp.text
-            
-            # 检测防爬拦截墙并提取跳转链接
-            if "安全验证中" in html and "data-redirect" in html:
-                m_redirect = re.search(r'data-redirect="([^"]+)"', html)
-                if m_redirect:
-                    redirect_uri = unescape(m_redirect.group(1))
-                    redirect_uri = urljoin("https://iptv.cqshushu.com/", redirect_uri)
-                    print(f"[*] 🚨 触发验证墙，自动跳转 -> {redirect_uri}")
-                    url = redirect_uri
-                    continue
-            return html
-        except Exception as e:
-            print(f"[-] 请求异常 (重试 {attempt+1}/3): {e}")
-            time.sleep(2)
+
+def get(session: requests.Session, url: str) -> requests.Response:
+    response = session.get(url, timeout=REQUEST_TIMEOUT, allow_redirects=True)
+    response.raise_for_status()
+    if is_challenge_page(response.text):
+        raise CqshushuError(
+            "目标站点返回了 JavaScript 安全验证页。请在正常浏览器完成验证后，将该站点"
+            "的 Cookie 整串保存为 CQS_COOKIE（GitHub Actions 请配置为 secret），再运行。"
+        )
+    return response
+
+
+def list_url(province: str, limit: int) -> str:
+    return f"{SITE_URL}?{urlencode({'t': 'all', 'province': province, 'limit': limit})}"
+
+
+def extract_server_links(page: str, page_url: str) -> list[Server]:
+    """Return only anchors whose visible text or URL contains an IPv4 address."""
+    found: list[Server] = []
+    for match in re.finditer(r"<a\b([^>]*)>(.*?)</a>", page, re.I | re.S):
+        attrs, body = match.groups()
+        href_match = re.search(r"\bhref\s*=\s*(['\"])(.*?)\1", attrs, re.I | re.S)
+        if not href_match:
             continue
+        href = html.unescape(href_match.group(2)).strip()
+        visible = text_only(body)
+        host_match = IP_RE.search(visible) or IP_RE.search(href)
+        if not host_match:
+            continue
+        absolute = urljoin(page_url, href)
+        if urlparse(absolute).netloc != urlparse(SITE_URL).netloc:
+            continue
+        found.append(Server(host_match.group(0), absolute))
+
+    # Some releases use an onclick URL instead of an href.  Preserve this
+    # fallback, but do not invent an endpoint: it only accepts same-site URLs.
+    if not found:
+        for url in re.findall(r"(?:location(?:\.href)?|window\.open)\s*\(\s*['\"]([^'\"]+)", page, re.I):
+            absolute = urljoin(page_url, html.unescape(url))
+            host_match = IP_RE.search(absolute)
+            if host_match and urlparse(absolute).netloc == urlparse(SITE_URL).netloc:
+                found.append(Server(host_match.group(0), absolute))
+
+    result: list[Server] = []
+    seen: set[str] = set()
+    for item in found:
+        if item.detail_url not in seen:
+            seen.add(item.detail_url)
+            result.append(item)
+    return result
+
+
+def extract_channel_page(page: str, page_url: str) -> str | None:
+    for match in re.finditer(r"<a\b([^>]*)>(.*?)</a>", page, re.I | re.S):
+        attrs, body = match.groups()
+        if "\u67e5\u770b\u9891\u9053\u5217\u8868" not in text_only(body):
+            continue
+        href = re.search(r"\bhref\s*=\s*(['\"])(.*?)\1", attrs, re.I | re.S)
+        if href:
+            return urljoin(page_url, html.unescape(href.group(2)))
+    # Be tolerant of a minor wording change, while preferring a link that
+    # looks like a channel route.
+    for href, body in re.findall(r"<a\b[^>]*href\s*=\s*['\"]([^'\"]+)['\"][^>]*>(.*?)</a>", page, re.I | re.S):
+        if "\u9891\u9053" in text_only(body):
+            return urljoin(page_url, html.unescape(href))
     return None
 
-def extract_channels_from_html(html_text: str) -> list[str]:
-    """ 强力正则提取器：通吃 HTML 表格、原生 M3U 文本、原生 TXT 文本 """
-    lines = []
-    
-    # 1. 提取 HTML 表格数据
-    for row_html in re.findall(r"<tr[^>]*>(.*?)</tr>", html_text, flags=re.IGNORECASE | re.DOTALL):
-        tds = re.findall(r"<td[^>]*>(.*?)</td>", row_html, flags=re.IGNORECASE | re.DOTALL)
-        if len(tds) >= 2:
-            name = _strip_html(tds[0] if len(tds) == 2 else tds[1]).strip()
-            play_url = _strip_html(tds[1] if len(tds) == 2 else tds[2]).strip()
-            if re.search(r"^(https?|rtp|udp|igmp)://", play_url, flags=re.IGNORECASE):
-                lines.append(f"{name},{play_url}")
-                
-    # 2. 提取原生 M3U 格式文本 (使用三引号防止单引号闭合错误)
-    for m in re.finditer(r"""#EXTINF.*?,(.*?)\r?\n((?:https?|rtp|udp|igmp)://[^\s<>"']+)""", html_text, re.IGNORECASE):
-        lines.append(f"{m.group(1).strip()},{m.group(2).strip()}")
 
-    # 3. 提取原生 TXT 格式文本，限制匹配行首防止误伤JS
-    for m in re.finditer(r"""^([^,<>\n]+),((?:https?|rtp|udp|igmp)://[^\s<>"']+)""", html_text, re.IGNORECASE | re.MULTILINE):
-        name = m.group(1).strip()
-        if "{" in name or "}" in name or "function" in name: continue
-        lines.append(f"{name},{m.group(2).strip()}")
-        
-    return list(dict.fromkeys(lines))
+def extract_m3u_url(page: str, page_url: str) -> str | None:
+    """Find the M3U interface in attributes, inline scripts, or copy buttons."""
+    candidates: list[str] = []
+    for match in re.finditer(r"<[^>]+>(.*?)</(?:a|button|span)>", page, re.I | re.S):
+        if "m3u\u63a5\u53e3" not in text_only(match.group(1)).lower():
+            continue
+        tag_start = page.rfind("<", 0, match.start())
+        tag = page[tag_start: page.find(">", tag_start) + 1]
+        candidates.extend(re.findall(r"(?:href|data-(?:url|copy|m3u))\s*=\s*['\"]([^'\"]+)", tag, re.I))
+    candidates.extend(M3U_URL_RE.findall(html.unescape(page)))
+    for candidate in unique(html.unescape(x).replace("\\/", "/") for x in candidates):
+        absolute = urljoin(page_url, candidate)
+        if absolute.lower().startswith(("http://", "https://")):
+            return absolute
+    return None
 
-def fetch_region_data(session, province, max_pages=30):
-    print(f"[*] 正在模拟用户搜索，寻找 [{province}] 节点...")
-    all_rows = []
-    seen_tokens = set()
 
-    for page_num in range(1, max_pages + 1):
-        url = f"{BASE_URL}?q={quote(province)}"
-        if page_num > 1: url += f"&page={page_num}"
-        
-        html = fetch_with_challenge_bypass(session, url)
-        if not html: break
-            
-        rows = re.findall(r'<tr[^>]*>(.*?)</tr>', html, flags=re.S | re.I)
-        added = 0
-        
-        for row in rows:
-            if 'data-label="IP:"' not in row: continue
-            
-            # 正则完美匹配 gotoIP('token', 'type')
-            m_goto = re.search(r"""gotoIP\(['"]([^'"]+)['"],\s*['"]([^'"]+)['"].*?>\s*([\d\.:]+)\s*<""", row, re.S)
-            if not m_goto: continue
-            
-            p_token = m_goto.group(1)
-            node_type = m_goto.group(2)
-            ip_addr = m_goto.group(3).strip()
-            
-            if p_token in seen_tokens: continue
-            seen_tokens.add(p_token)
-            
-            m_type = re.search(r'<td[^>]*类型:[^>]*>(.*?)</td>', row, re.S)
-            m_update = re.search(r'<td[^>]*更新时间:[^>]*>(.*?)</td>', row, re.S)
-            m_status = re.search(r'<span[^>]*status-badge[^>]*>(.*?)</span>', row, re.S)
-            
-            all_rows.append({
-                "p_token": p_token,
-                "host": ip_addr,
-                "node_type": node_type,
-                "type": _strip_html(m_type.group(1)) if m_type else province,
-                "update_time": _strip_html(m_update.group(1)) if m_update else "",
-                "status": _strip_html(m_status.group(1)) if m_status else "存活"
-            })
-            added += 1
-            
-        print(f"[*] [{province}] 第{page_num}页搜索完成，新增 {added} 个节点。")
-        if added == 0: break
+def m3u_to_txt(content: str) -> list[str]:
+    lines = [line.strip() for line in content.replace("\r", "").split("\n")]
+    output: list[str] = []
+    pending_name = ""
+    for line in lines:
+        if line.startswith("#EXTINF"):
+            pending_name = line.rsplit(",", 1)[-1].strip() if "," in line else "频道"
+        elif line and not line.startswith("#") and pending_name:
+            output.append(f"{pending_name},{line}")
+            pending_name = ""
+    return unique(output)
 
-    print(f"[*] [{province}] 合计抓取到 {len(all_rows)} 个有效服务器。")
-    return all_rows
 
-def follow_links_to_channels(session, p_token, node_type):
-    """
-    完美修复版追踪器：严格屏蔽公共导航链接，直抵核心源
-    """
-    # 策略 1：盲猜标准 M3U 直链 API 接口 (速度最快)
-    api_endpoints = [
-        f"https://iptv.cqshushu.com/m3u.php?p={p_token}",
-        f"https://iptv.cqshushu.com/api.php?action=m3u&p={p_token}",
-        f"https://iptv.cqshushu.com/txt.php?p={p_token}"
-    ]
-    for api_url in api_endpoints:
-        html = fetch_with_challenge_bypass(session, api_url)
-        if html:
-            channels = extract_channels_from_html(html)
-            if channels: return channels
+def safe_stem(host: str, index: int) -> str:
+    return f"{index:03d}_{host.replace(':', '_')}"
 
-    # 策略 2：模拟真实点击逻辑 [详情页]
-    detail_url = f"{BASE_URL}?p={p_token}&t={node_type}"
-    html = fetch_with_challenge_bypass(session, detail_url)
-    if not html: return []
-    
-    channels = extract_channels_from_html(html)
-    if channels: return channels
-    
-    # 策略 3：寻找 [查看频道列表] 或 [M3U接口] 按钮
-    # 🚨 必须屏蔽的陷阱链接 (公共导航栏)
-    ignore_keywords = ['iptv_channel', 'txt2m3u', 'jiekou', 'proxy_checker', 'index.php?q=']
-    
-    list_url = None
-    # 精确匹配"查看列表"相关文字
-    m_link = re.search(r'<a[^>]*href=["\']([^"\']+)["\'][^>]*>.*?查看.*?列表.*?</a>', html, re.I | re.S)
-    if m_link:
-        list_url = m_link.group(1)
+
+def write_playlist(m3u_dir: Path, txt_dir: Path, server: Server, index: int, m3u_url: str, content: str) -> int:
+    stem = safe_stem(server.host, index)
+    m3u_path = m3u_dir / f"{stem}.m3u"
+    txt_path = txt_dir / f"{stem}.txt"
+    m3u_path.write_text(content if content.endswith("\n") else content + "\n", encoding="utf-8")
+    channel_lines = m3u_to_txt(content)
+    if channel_lines:
+        txt_path.write_text("\n".join(channel_lines) + "\n", encoding="utf-8")
     else:
-        # 寻找包含该 token 的专属链接
-        for link in re.findall(r'href=["\']([^"\']+)["\']', html, re.I):
-            if any(ign in link for ign in ignore_keywords) or link == "?" or link == "index.php?":
-                continue
-            if p_token in link or 'list' in link.lower() or 'detail' in link.lower():
-                list_url = link
-                break
-                
-    if list_url:
-        list_url = urljoin("https://iptv.cqshushu.com/", list_url)
-        print(f"    -> 深入有效列表页: {list_url}")
-        
-        list_html = fetch_with_challenge_bypass(session, list_url)
-        if not list_html: return []
-        
-        channels = extract_channels_from_html(list_html)
-        if channels: return channels
-        
-        # 找隐藏的 M3U 复制链接
-        m_copy = re.search(r"""(https?://iptv\.cqshushu\.com/[^\s'"<]+\?(?:m3u|id|p|s|token)=?[^\s'"<]*)""", list_html)
-        if m_copy:
-            m3u_url = m_copy.group(1)
-            print(f"    -> 提取到最终 M3U 接口: {m3u_url}")
-            m3u_html = fetch_with_challenge_bypass(session, m3u_url)
-            if m3u_html:
-                return extract_channels_from_html(m3u_html)
-                
-    return []
+        # Keep the interface URL visible if the provider temporarily returns a
+        # non-standard playlist format; this is more useful than empty output.
+        txt_path.write_text(f"M3U接口,{m3u_url}\n", encoding="utf-8")
+    return len(channel_lines)
 
-def normalize_group_title(raw_type: str, province: str) -> str:
-    text = (raw_type or "").strip()
-    if not text: return province
-    if "|" in text:
-        right = text.split("|")[-1].strip()
-        if right: return right
-    for carrier in ("电信", "联通", "移动", "广电"):
-        if carrier in text: return f"{province}{carrier}"
-    return f"{province}组播"
 
-def fetch_channel_lines_by_province(province: str, max_per_carrier: int = 5, max_pages: int = 10, max_age_hours: int = 72):
-    session = get_session()
-    rows = fetch_region_data(session, province, max_pages=max_pages)
-    
-    if not rows:
-        return [], "list_empty", province
-        
-    now_dt = datetime.now()
+def clear_old_outputs(*directories: Path) -> None:
+    for directory in directories:
+        directory.mkdir(parents=True, exist_ok=True)
+        for file in directory.glob("*"):
+            if file.is_file() and file.suffix.lower() in {".m3u", ".m3u8", ".txt"}:
+                file.unlink()
 
-    def _is_usable_status(status: str) -> bool:
-        return ("新上线" in status) or ("存活" in status)
 
-    selected_rows = []
-    selected_tokens = set()
-    
-    # 筛选可用且新鲜的最优节点
-    for carrier in ("电信", "移动", "联通"):
-        carrier_rows = [r for r in rows if carrier in r.get("type", "") and _is_usable_status(r.get("status", ""))]
-        carrier_rows = sorted(carrier_rows, key=lambda x: _parse_site_datetime(x.get("update_time", "")).timestamp() if _parse_site_datetime(x.get("update_time", "")) else 0.0, reverse=True)
-        
-        for row in carrier_rows[:max_per_carrier]:
-            if row["p_token"] not in selected_tokens:
-                selected_rows.append(row)
-                selected_tokens.add(row["p_token"])
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="抓取 iptv.cqshushu.com 的公开 M3U 接口。")
+    parser.add_argument("--province", default=DEFAULT_PROVINCE, help="省份代码，四川为 sc（默认）。")
+    parser.add_argument("--limit", type=int, default=DEFAULT_LIMIT, help="列表页显示数量（默认 10）。")
+    parser.add_argument("--max-servers", type=int, default=0, help="最多处理的 IP 数，0 表示全部。")
+    parser.add_argument("--cookie", default=os.getenv("CQS_COOKIE", ""), help="站点 Cookie；也可设置 CQS_COOKIE。")
+    parser.add_argument("--dry-run", action="store_true", help="只列出 IP 详情页，不下载 M3U。")
+    parser.add_argument("--keep-old", action="store_true", help="不清空本脚本以往的独立输出目录。")
+    return parser.parse_args()
 
-    group_to_sources: dict[str, list[list[str]]] = {}
-    success_count = 0
-    
-    for picked in selected_rows:
-        group_title = normalize_group_title(picked.get("type", ""), province)
-        token = picked.get("p_token", "")
-        node_type = picked.get("node_type", "multicast")
-        
-        print(f"[*] 正在层层提取节点频道: {picked['host']} ({group_title})...")
-        lines = follow_links_to_channels(session, token, node_type)
-        
-        if lines:
-            group_to_sources.setdefault(group_title, []).append(lines)
-            success_count += 1
-            print(f"[+] 🎯 成功截获 {len(lines)} 条直播源直链！")
-        else:
-            print(f"[-] 节点 {picked['host']} 各级页面均未找到播放链接。")
 
-    if not group_to_sources:
-        return [], "channel_lines_empty", province
-        
-    return group_to_sources, "ok", province
-
-def build_tvg_logo_url(channel_name: str) -> str:
-    safe_name = quote(channel_name.strip(), safe="")
-    return f"{TVG_LOGO_BASE_URL}{safe_name}.png"
-
-def txt_to_m3u_format(txt_content, group_title):
-    m3u_lines = []
-    for line in txt_content.splitlines():
-        line = line.strip()
-        if not line or '#genre#' in line: continue
-        if ',' in line:
-            name, url = [p.strip() for p in line.split(',', 1)]
-            m3u_lines.append(f'#EXTINF:-1 tvg-id="{name}" tvg-logo="{build_tvg_logo_url(name)}" group-title="{group_title}",{name}\n{url}')
-    return "\n".join(m3u_lines)
-
-def _build_readme_section_table(repo_root: str, subdir: str, ext: str, updated_at: str) -> str:
-    target_dir = os.path.join(repo_root, subdir)
-    if not os.path.exists(target_dir): return '暂无文件\n'
-    names = sorted([n for n in os.listdir(target_dir) if n.endswith(ext)])
-    if not names: return '暂无文件\n'
-
-    rows = []
-    for name in names:
-        encoded_name = quote(name)
-        proxy_url = f"{PROXY_PREFIX}{RAW_BASE_URL}/{subdir}/{encoded_name}"
-        rows.append(f"| {name} | [下载链接]({proxy_url}) | {updated_at} | `{proxy_url}` |")
-    
-    header = "| 文件名 | 加速链接 | 最近更新时间 | 可复制直链 |\n| --- | --- | --- | --- |\n"
-    return header + "\n".join(rows)
-
-def update_readme_file_list(repo_root: str) -> None:
-    readme_path = os.path.join(repo_root, README_FILE)
-    updated_at = datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%d %H:%M:%S") if ZoneInfo else datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
-    m3u_table = _build_readme_section_table(repo_root, "m3u_iptv", ".m3u", updated_at)
-    txt_table = _build_readme_section_table(repo_root, "txt_iptv", ".txt", updated_at)
-    
-    content = f"# 新源 IPTV 文件列表\n\n## M3U 文件列表\n\n{m3u_table}\n\n## TXT 文件列表\n\n{txt_table}\n"
-    with open(readme_path, "w", encoding="utf-8") as f:
-        f.write(content)
-    print(f"[+] {README_FILE} 文件列表已自动生成/更新。")
-
-def process_province(province, txt_output_dir, m3u_output_dir, max_pages, max_per_carrier, max_age_hours):
-    grouped_sources, status, _ = fetch_channel_lines_by_province(province, max_per_carrier, max_pages, max_age_hours)
-    if not grouped_sources:
-        print(f"[-] [{province}] 频道提取最终失败: {status}")
-        return
-
-    total_channels = exported_sources = 0
-    for group_title, sources in grouped_sources.items():
-        for idx, channel_lines in enumerate(sources):
-            if not channel_lines: continue
-            suffix = str(idx + 1)
-            file_stem = f"{group_title}{suffix}"
-            out_txt = os.path.join(txt_output_dir, f"{file_stem}.txt")
-            out_m3u = os.path.join(m3u_output_dir, f"{file_stem}.m3u")
-            txt_content = "\n".join(channel_lines)
-            
-            with open(out_txt, 'w', encoding='utf-8') as f_txt, open(out_m3u, 'w', encoding='utf-8') as f_m3u:
-                f_txt.write(txt_content + "\n")
-                f_m3u.write(f'#EXTM3U x-tvg-url="{EPG_URL}"\n')
-                f_m3u.write(txt_to_m3u_format(txt_content, group_title) + "\n")
-            exported_sources += 1
-            total_channels += len(channel_lines)
-    print(f"[+] 完美！[{province}] 更新完成，导出 {total_channels} 条频道，生成 {exported_sources} 条源文件。")
-
-def push_to_github(files):
-    existing_files = [f for f in files if os.path.exists(f)]
-    if not existing_files: return
-    try:
-        subprocess.run(["git", "add", "--"] + existing_files, capture_output=True)
-        check = subprocess.run(["git", "diff", "--cached", "--quiet"], capture_output=True)
-        if check.returncode == 0: return
-        subprocess.run(["git", "commit", "-m", f"{GITHUB_COMMIT_PREFIX} at {time.strftime('%Y-%m-%d %H:%M:%S')}"], capture_output=True)
-        subprocess.run(["git", "push"], capture_output=True)
-        print("[+] 已成功推送到 GitHub。")
-    except Exception as e:
-        print(f"[!] GitHub 同步异常: {e}")
-
-def parse_args():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--push", action="store_true")
-    ap.add_argument("--max-age-hours", type=int, default=168)
-    ap.add_argument("--max-per-carrier", type=int, default=5)
-    ap.add_argument("--max-pages", type=int, default=5) 
-    return ap.parse_args()
-
-def main():
+def main() -> int:
     args = parse_args()
-    repo_root = os.path.dirname(os.path.abspath(__file__))
-    
-    txt_output_dir = os.path.join(repo_root, "txt_iptv")
-    m3u_output_dir = os.path.join(repo_root, "m3u_iptv")
-    
-    os.makedirs(txt_output_dir, exist_ok=True)
-    os.makedirs(m3u_output_dir, exist_ok=True)
-    clear_output_files(txt_output_dir, m3u_output_dir)
+    if args.limit < 1 or args.max_servers < 0:
+        raise SystemExit("--limit 必须大于 0，--max-servers 不可为负数。")
+    repo_root = Path(__file__).resolve().parent.parent
+    m3u_dir, txt_dir = repo_root / "cqshushu_m3u", repo_root / "cqshushu_txt"
+    if not args.keep_old and not args.dry_run:
+        clear_old_outputs(m3u_dir, txt_dir)
+    else:
+        m3u_dir.mkdir(parents=True, exist_ok=True)
+        txt_dir.mkdir(parents=True, exist_ok=True)
 
-    for province in PROVINCES:
-        print(f"\n{'='*50}\n 正在处理地区任务: {province}\n{'='*50}")
-        process_province(province, txt_output_dir, m3u_output_dir, args.max_pages, args.max_per_carrier, args.max_age_hours)
+    session = make_session(args.cookie)
+    source_url = list_url(args.province, args.limit)
+    print(f"[*] 列表页：{source_url}")
+    servers = extract_server_links(get(session, source_url).text, source_url)
+    if args.max_servers:
+        servers = servers[:args.max_servers]
+    if not servers:
+        raise CqshushuError("列表页未找到 IP 详情链接：页面结构可能已变更，或 Cookie 已失效。")
+    print(f"[*] 找到 {len(servers)} 个 IP 详情页。")
+    if args.dry_run:
+        for item in servers:
+            print(f"  {item.host}\t{item.detail_url}")
+        return 0
 
-    generated_files = [os.path.join("txt_iptv", f) for f in os.listdir(txt_output_dir) if f.endswith('.txt')] + \
-                      [os.path.join("m3u_iptv", f) for f in os.listdir(m3u_output_dir) if f.endswith('.m3u')]
-    
-    update_readme_file_list(repo_root)
-    generated_files.append(README_FILE)
-    
-    if args.push:
-        push_to_github(generated_files)
+    exported = channels = failures = 0
+    for index, server in enumerate(servers, 1):
+        try:
+            detail = get(session, server.detail_url)
+            channel_url = extract_channel_page(detail.text, detail.url)
+            if not channel_url:
+                raise CqshushuError("详情页没有“查看频道列表”链接")
+            channel = get(session, channel_url)
+            m3u_url = extract_m3u_url(channel.text, channel.url)
+            if not m3u_url:
+                raise CqshushuError("频道页没有找到 M3U 接口 URL")
+            playlist = get(session, m3u_url)
+            count = write_playlist(m3u_dir, txt_dir, server, index, m3u_url, playlist.text)
+            exported += 1
+            channels += count
+            print(f"[+] {server.host}: {count} 个频道 -> {m3u_url}")
+        except (requests.RequestException, CqshushuError) as exc:
+            failures += 1
+            print(f"[-] {server.host}: {exc}", file=sys.stderr)
+        time.sleep(0.4)
+    print(f"[*] 完成：成功 {exported} 个源，{channels} 个频道，失败 {failures} 个。")
+    return 0 if exported else 2
 
-if __name__ == '__main__':
-    main()
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except CqshushuError as exc:
+        print(f"[-] {exc}", file=sys.stderr)
+        raise SystemExit(2)
