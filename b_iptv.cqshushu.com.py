@@ -1,4 +1,3 @@
-import requests
 import os
 import re
 import time
@@ -11,26 +10,24 @@ from html import unescape
 from urllib.parse import quote
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
+# 替换原生 requests，使用自带浏览器指纹的 curl_cffi 过盾
+from curl_cffi import requests
+
 try:
     from zoneinfo import ZoneInfo
 except Exception:
     ZoneInfo = None
 
 # ================= 配置区域 =================
-# 1. 更新为最新的目标网站入口
 MULTICAST_SOURCE_URL = "https://iptv.cqshushu.com/index.php?t=multicast"
-
-# 2. GitHub 推送配置
 GITHUB_COMMIT_PREFIX = "Auto update IPTV cqshushu"
 # ============================================
 EPG_URL = "http://epg.51zmt.top:8000/e.xml.gz"
 TVG_LOGO_BASE_URL = "https://gcore.jsdelivr.net/gh/taksssss/tv/icon/"
-# 独立 README 文件，防止冲突
 README_FILE = "README_IPTV.md"
 RAW_BASE_URL = "https://raw.githubusercontent.com/jia070310/4K-IPTV-M3U/main"
 PROXY_PREFIX = "https://gh-proxy.org/"
 
-# 你需要的省份列表
 PROVINCES = ["安徽", "四川", "浙江"]
 
 def get_root_domain(domain):
@@ -41,14 +38,6 @@ def get_root_domain(domain):
             return ".".join(parts[-3:])
         else: return ".".join(parts[-2:])
     return domain
-
-def check_and_clear_existing(txt_file, m3u_file):
-    if not os.path.exists(txt_file):
-        return False
-    print(f"[*] 不做测流，清空旧文件后重新导出...")
-    for file in [txt_file, m3u_file]:
-        with open(file, 'w', encoding='utf-8') as f: f.write("")
-    return False
 
 def clear_output_files(txt_output_dir, m3u_output_dir):
     for out_dir, suffix in ((txt_output_dir, ".txt"), (m3u_output_dir, ".m3u")):
@@ -83,28 +72,19 @@ def _encrypt_token(raw_token):
     return base64.b64encode(encrypted).decode("utf-8")
 
 def _extract_ajax_config(html):
-    # 1. 尝试匹配原有的固定变量名
     m = re.search(r"var\s+multicastIptvAjax\s*=\s*(\{.*?\});", html, flags=re.IGNORECASE | re.DOTALL)
     if m:
-        try:
-            return json.loads(m.group(1))
-        except Exception:
-            pass
+        try: return json.loads(m.group(1))
+        except Exception: pass
 
-    # 2. 宽泛匹配策略：寻找任何一个同时包含 ajaxUrl、nonce 和 token 的 JSON 对象
     m2 = re.search(r"=\s*(\{.*?\"ajaxUrl\".*?\"nonce\".*?\"token\".*?\})\s*;", html, flags=re.IGNORECASE | re.DOTALL)
     if m2:
-        try:
-            return json.loads(m2.group(1))
-        except Exception:
-            pass
+        try: return json.loads(m2.group(1))
+        except Exception: pass
             
-    # 3. 终极排查：如果都找不到，极大概率是遇到了防爬虫拦截
     with open("debug_iptv_html.txt", "w", encoding="utf-8") as f:
         f.write(html)
-    print("[-] 🚨 严重警告：正则匹配不到 Ajax 配置！")
-    print("[-] 当前网页源码已保存到本地的 debug_iptv_html.txt 文件中。")
-    print("[-] 请打开该文本文件，检查网站是否弹出了 Cloudflare 验证码或盾牌拦截。")
+    print("[-] 🚨 严重警告：正则匹配不到 Ajax 配置！可能遭遇 Cloudflare 拦截。已保存源码。")
     return None
 
 def _extract_region_code_map(html):
@@ -115,9 +95,7 @@ def _extract_region_code_map(html):
     options_html = m.group(1)
     for code, name in re.findall(r'<option\s+value="([^"]*)"\s*[^>]*>(.*?)</option>', options_html, flags=re.IGNORECASE | re.DOTALL):
         code = code.strip()
-        if not code:
-            continue
-        code_map[_strip_html(name)] = code
+        if code: code_map[_strip_html(name)] = code
     return code_map
 
 def _parse_rows_from_html_fragment(fragment_html):
@@ -126,14 +104,10 @@ def _parse_rows_from_html_fragment(fragment_html):
     for row_html in rows:
         ip_match = re.search(
             r'<a[^>]*class="[^"]*ip-link[^"]*"[^>]*data-p="([^"]+)"[^>]*>\s*([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+:[0-9]+)\s*</a>',
-            row_html,
-            flags=re.IGNORECASE | re.DOTALL,
-        )
-        if not ip_match:
-            continue
+            row_html, flags=re.IGNORECASE | re.DOTALL)
+        if not ip_match: continue
         tds = re.findall(r"<td[^>]*>(.*?)</td>", row_html, flags=re.IGNORECASE | re.DOTALL)
-        if len(tds) < 6:
-            continue
+        if len(tds) < 6: continue
         result.append({
             "p_token": ip_match.group(1).strip(),
             "host": ip_match.group(2).strip(),
@@ -144,19 +118,21 @@ def _parse_rows_from_html_fragment(fragment_html):
         })
     return result
 
-def fetch_region_rows_by_ajax(province, limit=20, max_pages=30):
-    print(f"[*] 正在抓取组播源页面: {MULTICAST_SOURCE_URL}")
-    session = requests.Session()
+def get_session():
+    # 核心：使用 impersonate 参数完美伪装成 Chrome 120 浏览器，绕过 WAF
+    session = requests.Session(impersonate="chrome120")
+    # 强制设置 Referer 等头信息，显得更像真实流量
     session.headers.update({
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/124.0.0.0 Safari/537.36"
-        )
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+        "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+        "Referer": "https://iptv.cqshushu.com/"
     })
+    return session
+
+def fetch_region_rows_by_ajax(session, province, limit=20, max_pages=30):
+    print(f"[*] 正在抓取组播源页面: {MULTICAST_SOURCE_URL}")
     try:
-        home_resp = session.get(MULTICAST_SOURCE_URL, timeout=15)
-        home_resp.raise_for_status()
+        home_resp = session.get(MULTICAST_SOURCE_URL, timeout=20)
     except Exception as e:
         print(f"[-] 访问组播源页面失败: {e}")
         return []
@@ -165,8 +141,8 @@ def fetch_region_rows_by_ajax(province, limit=20, max_pages=30):
     ajax_cfg = _extract_ajax_config(home_html)
     code_map = _extract_region_code_map(home_html)
     region_code = code_map.get(province)
+    
     if not ajax_cfg:
-        print("[-] 页面中未找到 Ajax 配置。")
         return []
     if not region_code:
         print(f"[-] 页面中未找到省份 [{province}] 的 region code。")
@@ -178,39 +154,31 @@ def fetch_region_rows_by_ajax(province, limit=20, max_pages=30):
 
     for page_num in range(1, max_pages + 1):
         payload = {
-            "action": "multicast_iptv_ajax",
-            "action_type": "list",
-            "page_num": page_num,
-            "limit": limit,
-            "region": region_code,
-            "search": "",
-            "nonce": ajax_cfg.get("nonce", ""),
-            "token": _encrypt_token(ajax_cfg.get("token", "")),
+            "action": "multicast_iptv_ajax", "action_type": "list", "page_num": page_num,
+            "limit": limit, "region": region_code, "search": "",
+            "nonce": ajax_cfg.get("nonce", ""), "token": _encrypt_token(ajax_cfg.get("token", ""))
         }
         try:
-            resp = session.post(ajax_cfg.get("ajaxUrl", ""), data=payload, timeout=15)
-            resp.raise_for_status()
+            resp = session.post(ajax_cfg.get("ajaxUrl", ""), data=payload, timeout=20)
             data = resp.json()
         except Exception as e:
             print(f"[-] Ajax 请求省份 [{province}] 第{page_num}页失败: {e}")
             break
-        if not data.get("success"):
-            break
+            
+        if not data.get("success"): break
 
         fragment = data.get("data", {}).get("html", "")
         rows = _parse_rows_from_html_fragment(fragment)
         if not rows:
             empty_page_hits += 1
-            if empty_page_hits >= 2:
-                break
+            if empty_page_hits >= 2: break
             continue
 
         empty_page_hits = 0
         added = 0
         for row in rows:
             token = row.get("p_token")
-            if not token or token in seen_tokens:
-                continue
+            if not token or token in seen_tokens: continue
             seen_tokens.add(token)
             all_rows.append(row)
             added += 1
@@ -221,46 +189,37 @@ def fetch_region_rows_by_ajax(province, limit=20, max_pages=30):
 
 def parse_s_token(detail_html: str) -> str | None:
     m = re.search(r'data-s="([^"]+)"', detail_html, flags=re.IGNORECASE | re.DOTALL)
-    if m:
-        return m.group(1)
+    if m: return m.group(1)
     m = re.search(r'href="[^"]*[?&]s=([^"&]+)', detail_html, flags=re.IGNORECASE | re.DOTALL)
-    if m:
-        return m.group(1)
+    if m: return m.group(1)
     return None
 
 def parse_channel_lines(channels_html: str) -> list[str]:
     lines = []
     for row_html in re.findall(r"<tr[^>]*>(.*?)</tr>", channels_html, flags=re.IGNORECASE | re.DOTALL):
         tds = re.findall(r"<td[^>]*>(.*?)</td>", row_html, flags=re.IGNORECASE | re.DOTALL)
-        if len(tds) < 3:
-            continue
+        if len(tds) < 3: continue
         name = _strip_html(tds[1])
         play_url = _strip_html(tds[2])
-        if not name or not play_url:
-            continue
-        if not re.search(r"(https?://|rtp/|udp/|igmp/)", play_url, flags=re.IGNORECASE):
-            continue
+        if not name or not play_url: continue
+        if not re.search(r"(https?://|rtp/|udp/|igmp/)", play_url, flags=re.IGNORECASE): continue
         lines.append(f"{name},{play_url}")
     return lines
 
 def normalize_group_title(raw_type: str, province: str) -> str:
     text = (raw_type or "").strip()
-    if not text:
-        return province
+    if not text: return province
     if "|" in text:
         right = text.split("|")[-1].strip()
-        if right:
-            return right
-    carriers = ("电信", "联通", "移动", "广电")
-    for carrier in carriers:
-        if carrier in text:
-            return f"{province}{carrier}"
+        if right: return right
+    for carrier in ("电信", "联通", "移动", "广电"):
+        if carrier in text: return f"{province}{carrier}"
     return province
 
 def fetch_channel_lines_by_province(province: str, max_per_carrier: int = 10, max_pages: int = 30, max_age_hours: int = 72):
-    rows = fetch_region_rows_by_ajax(province, limit=20, max_pages=max_pages)
-    if not rows:
-        return [], "list_empty", province
+    session = get_session()
+    rows = fetch_region_rows_by_ajax(session, province, limit=20, max_pages=max_pages)
+    if not rows: return [], "list_empty", province
 
     now_dt = datetime.now()
 
@@ -269,8 +228,7 @@ def fetch_channel_lines_by_province(province: str, max_per_carrier: int = 10, ma
 
     def _is_recent_update(row: dict) -> bool:
         dt = _parse_site_datetime(row.get("update_time", "")) or _parse_site_datetime(row.get("online_time", ""))
-        if not dt:
-            return False
+        if not dt: return False
         age_hours = (now_dt - dt).total_seconds() / 3600
         return age_hours <= max_age_hours
 
@@ -283,8 +241,7 @@ def fetch_channel_lines_by_province(province: str, max_per_carrier: int = 10, ma
             return (2 if "新上线" in row.get("status", "") else 1, dt.timestamp() if dt else 0.0)
 
         carrier_rows = sorted(carrier_rows, key=_sort_key, reverse=True)
-        picked = []
-        seen = set()
+        picked, seen = [], set()
         for row in carrier_rows:
             token = row.get("p_token")
             if not token or token in seen: continue
@@ -302,12 +259,9 @@ def fetch_channel_lines_by_province(province: str, max_per_carrier: int = 10, ma
                 selected_rows.append(row)
                 selected_tokens.add(token)
 
-    if not selected_rows:
-        return [], "no_recent_new_or_alive", province
+    if not selected_rows: return [], "no_recent_new_or_alive", province
 
-    session = requests.Session()
-    session.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"})
-    home_resp = session.get(MULTICAST_SOURCE_URL, timeout=15)
+    home_resp = session.get(MULTICAST_SOURCE_URL, timeout=20)
     ajax_cfg = _extract_ajax_config(home_resp.text)
     if not ajax_cfg: return [], "ajax_cfg_missing", province
     token_plain = ajax_cfg.get("token", "")
@@ -320,8 +274,11 @@ def fetch_channel_lines_by_province(province: str, max_per_carrier: int = 10, ma
             "action": "multicast_iptv_ajax", "action_type": "detail", "p": picked.get("p_token", ""),
             "nonce": ajax_cfg.get("nonce", ""), "token": _encrypt_token(token_plain)
         }
-        detail_resp = session.post(ajax_cfg.get("ajaxUrl", ""), data=detail_payload, timeout=15)
-        detail_json = detail_resp.json()
+        try:
+            detail_resp = session.post(ajax_cfg.get("ajaxUrl", ""), data=detail_payload, timeout=20)
+            detail_json = detail_resp.json()
+        except Exception: continue
+        
         detail_html = detail_json.get("data", {}).get("html", "")
         if not detail_html: continue
         
@@ -333,17 +290,18 @@ def fetch_channel_lines_by_province(province: str, max_per_carrier: int = 10, ma
             "action": "multicast_iptv_ajax", "action_type": "channels", "s": s_token,
             "nonce": ajax_cfg.get("nonce", ""), "token": _encrypt_token(token_plain)
         }
-        channels_resp = session.post(ajax_cfg.get("ajaxUrl", ""), data=channels_payload, timeout=15)
-        channels_html = channels_resp.json().get("data", {}).get("html", "")
+        try:
+            channels_resp = session.post(ajax_cfg.get("ajaxUrl", ""), data=channels_payload, timeout=20)
+            channels_html = channels_resp.json().get("data", {}).get("html", "")
+        except Exception: continue
+        
         if not channels_html: continue
         
         lines = parse_channel_lines(channels_html)
         if lines:
             group_to_sources.setdefault(group_title, []).append(list(dict.fromkeys(lines)))
 
-    if not group_to_sources:
-        return [], "channel_lines_empty", province
-
+    if not group_to_sources: return [], "channel_lines_empty", province
     return group_to_sources, "ok", province
 
 def build_tvg_logo_url(channel_name: str) -> str:
@@ -388,7 +346,7 @@ def update_readme_file_list(repo_root: str) -> None:
     print(f"[+] {README_FILE} 文件列表已自动生成/更新。")
 
 def process_province(province, txt_output_dir, m3u_output_dir, max_pages, max_per_carrier, max_age_hours):
-    grouped_sources, status, _ = fetch_channel_lines_by_province(province, max_pages, max_per_carrier, max_age_hours)
+    grouped_sources, status, _ = fetch_channel_lines_by_province(province, max_per_carrier, max_pages, max_age_hours)
     if not grouped_sources:
         print(f"[-] [{province}] 频道提取失败: {status}")
         return
