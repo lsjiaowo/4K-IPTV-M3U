@@ -4,6 +4,7 @@ import time
 import random
 import subprocess
 import argparse
+import json
 from datetime import datetime
 from html import unescape
 from urllib.parse import quote
@@ -16,6 +17,8 @@ except Exception:
 
 # ================= 配置区域 =================
 BASE_URL = "https://iptv.cqshushu.com/index.php"
+# 破解出的核心获取频道接口
+SCAN_API_URL = "https://iptv.cqshushu.com/index.php?action=scan"
 GITHUB_COMMIT_PREFIX = "Auto update IPTV cqshushu"
 EPG_URL = "http://epg.51zmt.top:8000/e.xml.gz"
 TVG_LOGO_BASE_URL = "https://gcore.jsdelivr.net/gh/taksssss/tv/icon/"
@@ -24,9 +27,6 @@ RAW_BASE_URL = "https://raw.githubusercontent.com/jia070310/4K-IPTV-M3U/main"
 PROXY_PREFIX = "https://gh-proxy.org/"
 
 PROVINCES = ["安徽", "四川", "浙江"]
-
-# 全局变量：用于缓存嗅探成功的详情页路由，避免重复探测导致封IP
-GLOBAL_VALID_ROUTE = None
 # ============================================
 
 def clear_output_files(txt_output_dir, m3u_output_dir):
@@ -50,6 +50,7 @@ def _parse_site_datetime(value: str) -> datetime | None:
     return None
 
 def get_session():
+    # 使用 curl_cffi 完美伪装浏览器
     session = requests.Session(impersonate="chrome120")
     session.headers.update({
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -60,14 +61,20 @@ def get_session():
     session.cookies.set("ad_ok", "1", domain="iptv.cqshushu.com", path="/")
     return session
 
-def fetch_with_challenge_bypass(session, url):
-    """ 智能破壁函数，带防 CC 封禁的延迟控制 """
+def fetch_with_challenge_bypass(session, url, method="GET", data=None):
+    """ 智能破壁函数，支持 GET/POST 及自动处理安全跳转 """
     for attempt in range(3):
         try:
             time.sleep(random.uniform(1.0, 2.5)) # 防 CC 随机休眠
-            resp = session.get(url, timeout=20)
+            
+            if method == "POST":
+                resp = session.post(url, data=data, timeout=20)
+            else:
+                resp = session.get(url, timeout=20)
+                
             html = resp.text
             
+            # 检测防爬拦截墙
             if "安全验证中" in html and "data-redirect" in html:
                 m_redirect = re.search(r'data-redirect="([^"]+)"', html)
                 if m_redirect:
@@ -75,7 +82,9 @@ def fetch_with_challenge_bypass(session, url):
                     if not redirect_uri.startswith("http"):
                         redirect_uri = f"https://iptv.cqshushu.com/{redirect_uri.lstrip('/')}"
                     print(f"[*] 🚨 触发安全验证，自动执行跳转 -> {redirect_uri}")
-                    url = redirect_uri 
+                    url = redirect_uri
+                    method = "GET" # 跳转验证一般是 GET
+                    data = None
                     continue
             return html
         except Exception as e:
@@ -85,6 +94,7 @@ def fetch_with_challenge_bypass(session, url):
 
 def extract_channels_from_html(html_text: str) -> list[str]:
     lines = []
+    # 提取 HTML 表格里的直链
     for row_html in re.findall(r"<tr[^>]*>(.*?)</tr>", html_text, flags=re.IGNORECASE | re.DOTALL):
         tds = re.findall(r"<td[^>]*>(.*?)</td>", row_html, flags=re.IGNORECASE | re.DOTALL)
         if len(tds) >= 2:
@@ -93,6 +103,7 @@ def extract_channels_from_html(html_text: str) -> list[str]:
             if re.search(r"^(https?|rtp|udp|igmp)://", play_url, flags=re.IGNORECASE):
                 lines.append(f"{name},{play_url}")
                 
+    # 提取文本格式的直链
     matches = re.findall(r"([^,<>\"'\n]{2,30})\s*,\s*((?:https?|rtp|udp|igmp)://[^\s<>\"']+)", html_text, flags=re.IGNORECASE)
     for name, url in matches:
         lines.append(f"{name.strip()},{url.strip()}")
@@ -136,64 +147,62 @@ def fetch_region_data(session, province, max_pages=30):
             m_update = re.search(r'<td[^>]*更新时间:[^>]*>(.*?)</td>', row, re.S)
             m_status = re.search(r'<span[^>]*status-badge[^>]*>(.*?)</span>', row, re.S)
             
+            # 原型里还有隐藏的 type (如 multicast, hotel) 供 POST 时使用
+            node_type = "multicast"
+            if m_type and "酒店" in m_type.group(1): node_type = "hotel"
+            
             all_rows.append({
                 "p_token": p_token,
                 "host": ip_addr,
                 "type": _strip_html(m_type.group(1)) if m_type else province,
+                "node_type": node_type,
                 "update_time": _strip_html(m_update.group(1)) if m_update else "",
                 "status": _strip_html(m_status.group(1)) if m_status else "存活"
             })
             added += 1
             
         all_direct_channels = list(dict.fromkeys(all_direct_channels))
-        print(f"[*] [{province}] 第{page_num}页搜索完成，新增 {added} 个节点。")
+        print(f"[*] [{province}] 第{page_num}页搜索完成，新增 {added} 个节点，直链 {len(channels)} 个。")
         
         if added == 0 and len(channels) == 0:
             if page_num == 1:
-                print(f"[-] 🚨 警告：搜索 [{province}] 首页为空！可能已被 WAF 封禁，稍后请重试。")
+                print(f"[-] 🚨 警告：搜索 [{province}] 首页为空！IP可能被暂时封禁。")
             break
 
-    print(f"[*] [{province}] 合计抓取到 {len(all_rows)} 个有效服务器，{len(all_direct_channels)} 个直链。")
+    print(f"[*] [{province}] 合计抓取到 {len(all_rows)} 个有效服务器，累计直链 {len(all_direct_channels)} 个。")
     return all_rows, all_direct_channels
 
-def dump_js_files(session):
-    """ 终极后路：下载目标网站的 JS 文件，供人工逆向破解 gotoIP 函数 """
-    print("[-] ⚠️ 正在尝试下载核心 JS 文件进行分析...")
-    js_content = ""
-    for js_file in ["js/iptv.js", "js/pae06.js", "js/paer.js"]:
+def fetch_channels_by_scan_api(session, row):
+    """
+    逆向解密：调用隐藏的 action=scan 接口直接拉取该节点下所有的直播源
+    """
+    payload = {
+        "ip": row["host"],
+        "type": row["node_type"],
+        "token": row["p_token"]
+    }
+    # 模拟从网页发出 AJAX POST 的头部要求
+    session.headers.update({
+        "Content-Type": "application/x-www-form-urlencoded",
+        "X-Requested-With": "XMLHttpRequest"
+    })
+    
+    html = fetch_with_challenge_bypass(session, SCAN_API_URL, method="POST", data=payload)
+    
+    # 恢复基础头部
+    session.headers.pop("X-Requested-With", None)
+    
+    if html:
+        # scan 接口如果返回 JSON，先尝试提取
         try:
-            resp = session.get(f"https://iptv.cqshushu.com/{js_file}", timeout=10)
-            js_content += f"\n\n/* ================= {js_file} ================= */\n"
-            js_content += resp.text
-        except: pass
-    with open("debug_js_files.txt", "w", encoding="utf-8") as f:
-        f.write(js_content)
-    print("[-] 🚨 核心 JS 文件已保存为 debug_js_files.txt。请查阅其内容，寻找 gotoIP 函数的实现逻辑！")
-
-def extract_channels_for_token(session, p_token):
-    global GLOBAL_VALID_ROUTE
-    
-    # 智能嗅探：如果之前已经找到了正确的路由，直接复用，不再盲猜！
-    if GLOBAL_VALID_ROUTE:
-        endpoints = [GLOBAL_VALID_ROUTE.replace("TOKEN_PLACEHOLDER", p_token)]
-    else:
-        # 如果还没找到，尝试探测常见路由
-        endpoints = [
-            f"https://iptv.cqshushu.com/index.php?t=detail&p={p_token}",
-            f"https://iptv.cqshushu.com/iptv_detail.php?p={p_token}",
-            f"https://iptv.cqshushu.com/detail.php?id={p_token}",
-            f"https://iptv.cqshushu.com/index.php?p={p_token}"
-        ]
-    
-    for url in endpoints:
-        html = fetch_with_challenge_bypass(session, url)
-        if html:
-            lines = extract_channels_from_html(html)
-            if lines:
-                if not GLOBAL_VALID_ROUTE:
-                    GLOBAL_VALID_ROUTE = url.replace(p_token, "TOKEN_PLACEHOLDER")
-                    print(f"[+] 🎯 成功嗅探到真实详情页路由: {GLOBAL_VALID_ROUTE}")
-                return lines
+            res_json = json.loads(html)
+            # 有时返回的 html 字段里包裹了真正的频道数据
+            if "data" in res_json and "html" in res_json["data"]:
+                html = res_json["data"]["html"]
+        except:
+            pass
+            
+        return extract_channels_from_html(html)
     return []
 
 def normalize_group_title(raw_type: str, province: str) -> str:
@@ -226,7 +235,7 @@ def fetch_channel_lines_by_province(province: str, max_per_carrier: int = 5, max
     selected_rows = []
     selected_tokens = set()
     
-    # 三大运营商最优节点筛选
+    # 三大运营商最优节点筛选，且状态为可用
     for carrier in ("电信", "移动", "联通"):
         carrier_rows = [r for r in rows if carrier in r.get("type", "") and _is_usable_status(r.get("status", ""))]
         carrier_rows = sorted(carrier_rows, key=lambda x: _parse_site_datetime(x.get("update_time", "")).timestamp() if _parse_site_datetime(x.get("update_time", "")) else 0.0, reverse=True)
@@ -237,22 +246,19 @@ def fetch_channel_lines_by_province(province: str, max_per_carrier: int = 5, max
                 selected_tokens.add(row["p_token"])
 
     success_count = 0
+    # 开始请求隐藏 API 拉取直播源
     for picked in selected_rows:
         group_title = normalize_group_title(picked.get("type", ""), province)
-        token = picked.get("p_token", "")
         
-        print(f"[*] 正在尝试解析节点: {picked['host']} ({group_title})...")
-        lines = extract_channels_for_token(session, token)
+        print(f"[*] 正在通过 action=scan 接口抓取节点: {picked['host']} ({group_title})...")
+        lines = fetch_channels_by_scan_api(session, picked)
         
         if lines:
             group_to_sources.setdefault(group_title, []).append(lines)
             success_count += 1
+            print(f"[+] 🎯 成功抓取到 {len(lines)} 条直链！")
         else:
-            print(f"[-] 节点 {picked['host']} 解析失败，探针被阻断。")
-
-    # 如果所有探测全部失败，下载目标站点的 JS 源码以供逆向
-    if success_count == 0 and selected_rows:
-        dump_js_files(session)
+            print(f"[-] 节点 {picked['host']} 请求详情接口无返回或失效。")
 
     if not group_to_sources:
         return [], "channel_lines_empty", province
@@ -341,9 +347,7 @@ def parse_args():
     ap = argparse.ArgumentParser()
     ap.add_argument("--push", action="store_true")
     ap.add_argument("--max-age-hours", type=int, default=168)
-    # 为防止测试期间再次被封 IP，默认提取数下调为单网3个
     ap.add_argument("--max-per-carrier", type=int, default=3)
-    # 限制单省最多只翻前 5 页
     ap.add_argument("--max-pages", type=int, default=5) 
     return ap.parse_args()
 
