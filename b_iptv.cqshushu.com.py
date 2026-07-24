@@ -86,7 +86,7 @@ def extract_channels_from_html(html_text: str) -> list[str]:
     """ 强力正则提取器：通吃 HTML 表格、原生 M3U 文本、原生 TXT 文本 """
     lines = []
     
-    # 1. 提取 HTML 表格数据 (<td>名字</td> <td>链接</td>)
+    # 1. 提取 HTML 表格数据
     for row_html in re.findall(r"<tr[^>]*>(.*?)</tr>", html_text, flags=re.IGNORECASE | re.DOTALL):
         tds = re.findall(r"<td[^>]*>(.*?)</td>", row_html, flags=re.IGNORECASE | re.DOTALL)
         if len(tds) >= 2:
@@ -95,12 +95,12 @@ def extract_channels_from_html(html_text: str) -> list[str]:
             if re.search(r"^(https?|rtp|udp|igmp)://", play_url, flags=re.IGNORECASE):
                 lines.append(f"{name},{play_url}")
                 
-    # 2. 提取原生 M3U 格式文本 (#EXTINF:-1,CCTV-1 \n http://...)
-    for m in re.finditer(r'#EXTINF.*?,(.*?)\r?\n((?:https?|rtp|udp|igmp)://[^\s<>\"']+)', html_text, re.IGNORECASE):
+    # 2. 提取原生 M3U 格式文本 (使用三引号防止单引号闭合错误)
+    for m in re.finditer(r"""#EXTINF.*?,(.*?)\r?\n((?:https?|rtp|udp|igmp)://[^\s<>"']+)""", html_text, re.IGNORECASE):
         lines.append(f"{m.group(1).strip()},{m.group(2).strip()}")
 
-    # 3. 提取原生 TXT 格式文本 (CCTV-1,http://...)，限制匹配行首防止误伤JS
-    for m in re.finditer(r'^([^,<>\n]+),((?:https?|rtp|udp|igmp)://[^\s<>\"']+)', html_text, re.IGNORECASE | re.MULTILINE):
+    # 3. 提取原生 TXT 格式文本，限制匹配行首防止误伤JS
+    for m in re.finditer(r"""^([^,<>\n]+),((?:https?|rtp|udp|igmp)://[^\s<>"']+)""", html_text, re.IGNORECASE | re.MULTILINE):
         name = m.group(1).strip()
         if "{" in name or "}" in name or "function" in name: continue
         lines.append(f"{name},{m.group(2).strip()}")
@@ -126,7 +126,7 @@ def fetch_region_data(session, province, max_pages=30):
             if 'data-label="IP:"' not in row: continue
             
             # 正则完美匹配 gotoIP('token', 'type')
-            m_goto = re.search(r"gotoIP\(['\"]([^'\"]+)['\"],\s*['\"]([^'\"]+)['\"].*?>\s*([\d\.:]+)\s*<", row, re.S)
+            m_goto = re.search(r"""gotoIP\(['"]([^'"]+)['"],\s*['"]([^'"]+)['"].*?>\s*([\d\.:]+)\s*<""", row, re.S)
             if not m_goto: continue
             
             p_token = m_goto.group(1)
@@ -196,7 +196,7 @@ def follow_links_to_channels(session, p_token, node_type):
         if channels: return channels
         
         # [寻找第三层入口] 查找复制“M3U接口”的隐藏直链
-        m_copy = re.search(r'(https?://iptv\.cqshushu\.com/[^\s\'"<]+\?(?:m3u|id|p|s)=?[^\s\'"<]*)', list_html)
+        m_copy = re.search(r"""(https?://iptv\.cqshushu\.com/[^\s'"<]+\?(?:m3u|id|p|s)=?[^\s'"<]*)""", list_html)
         if m_copy:
             m3u_url = m_copy.group(1)
             print(f"    -> 提取到最终 M3U 接口: {m3u_url}")
