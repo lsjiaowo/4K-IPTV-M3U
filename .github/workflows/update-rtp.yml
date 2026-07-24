@@ -1,6 +1,5 @@
 name: Update RTP Sources
 
-
 on:
   schedule:
     # 设定每小时的第 5 分钟触发一次，直接避开 00 分整点
@@ -45,8 +44,14 @@ jobs:
             pip install "requests>=2.31.0"
           fi
 
-      - name: Run updater
+      - name: Run original updater
         run: python rtp/b.py --push --max-age-hours 72
+
+      # =================新增步骤=================
+      # 执行抓取新网站的脚本（假设文件放在根目录）
+      - name: Run new IPTV updater
+        run: python b_iptv.cqshushu.com.py --push --max-age-hours 72
+      # ==========================================
 
       - name: Commit and push if changed
         run: |
@@ -56,8 +61,12 @@ jobs:
           git stash push -u -m "generated outputs" || true
           git pull --rebase origin main || true
           git stash pop || true
-          # Stage additions/modifications/deletions under outputs + README.
-          git add -A -- txt m3u README.md || true
+          
+          # =================修改步骤=================
+          # 新增追踪：txt_iptv、m3u_iptv 目录以及 README_IPTV.md 文件
+          git add -A -- txt m3u txt_iptv m3u_iptv README.md README_IPTV.md || true
+          # ==========================================
+          
           if git diff --cached --quiet; then
             echo "No changes to commit."
           else
