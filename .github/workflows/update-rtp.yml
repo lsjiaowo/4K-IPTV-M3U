@@ -44,17 +44,17 @@ jobs:
         run: python rtp/b.py --push --max-age-hours 72
 
 
+
+
       - name: Run new IPTV updater
         run: |
           python b_iptv.cqshushu.com.py --push --max-age-hours 72
-          # 如果生成了排错文件，直接把内容打印到 Actions 日志的控制台中
-          if [ -f "debug_iptv_html.txt" ]; then
-            echo "========== 🚨 开始打印网页源码 🚨 =========="
-            cat debug_iptv_html.txt
-            echo "========== 🚨 网页源码打印结束 🚨 =========="
+          # 如果猜不中详情页路由，强行打印出站长的前端加密源码，人工破译！
+          if [ -f "debug_js_files.txt" ]; then
+            echo "========== 🚨 捕获到目标核心 JS 源码 🚨 =========="
+            cat debug_js_files.txt
+            echo "========== 🚨 JS 源码打印结束 🚨 =========="
           fi
-
-
 
         
 
