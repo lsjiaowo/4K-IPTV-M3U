@@ -17,8 +17,8 @@ except Exception:
     ZoneInfo = None
 
 # ================= 配置区域 =================
-# 1. 更新为新的目标网站
-MULTICAST_SOURCE_URL = "https://iptv.cqshushu.com"
+# 1. 更新为最新的目标网站入口
+MULTICAST_SOURCE_URL = "https://iptv.cqshushu.com/index.php?t=multicast"
 
 # 2. GitHub 推送配置
 GITHUB_COMMIT_PREFIX = "Auto update IPTV cqshushu"
@@ -100,13 +100,13 @@ def _extract_ajax_config(html):
             pass
             
     # 3. 终极排查：如果都找不到，极大概率是遇到了防爬虫拦截
-    # 自动将网页源码输出到本地，方便溯源分析
     with open("debug_iptv_html.txt", "w", encoding="utf-8") as f:
         f.write(html)
     print("[-] 🚨 严重警告：正则匹配不到 Ajax 配置！")
     print("[-] 当前网页源码已保存到本地的 debug_iptv_html.txt 文件中。")
     print("[-] 请打开该文本文件，检查网站是否弹出了 Cloudflare 验证码或盾牌拦截。")
     return None
+
 def _extract_region_code_map(html):
     code_map = {}
     m = re.search(r'<select\s+name="region"[^>]*>(.*?)</select>', html, flags=re.IGNORECASE | re.DOTALL)
@@ -397,7 +397,6 @@ def process_province(province, txt_output_dir, m3u_output_dir, max_pages, max_pe
     for group_title, sources in grouped_sources.items():
         for idx, channel_lines in enumerate(sources):
             if not channel_lines: continue
-            # 优化序号逻辑：永远自带数字后缀，例：四川电信1.m3u
             suffix = str(idx + 1)
             file_stem = f"{group_title}{suffix}"
             out_txt = os.path.join(txt_output_dir, f"{file_stem}.txt")
@@ -428,9 +427,7 @@ def push_to_github(files):
 def parse_args():
     ap = argparse.ArgumentParser()
     ap.add_argument("--push", action="store_true")
-    # 修改默认阈值为 72 小时，避免报 no_recent_new_or_alive 错误
     ap.add_argument("--max-age-hours", type=int, default=72)
-    # 修改默认获取数量为 10
     ap.add_argument("--max-per-carrier", type=int, default=10)
     ap.add_argument("--max-pages", type=int, default=30)
     return ap.parse_args()
@@ -439,7 +436,6 @@ def main():
     args = parse_args()
     repo_root = os.path.dirname(os.path.abspath(__file__))
     
-    # 启用隔离的输出目录，避免与老脚本冲突
     txt_output_dir = os.path.join(repo_root, "txt_iptv")
     m3u_output_dir = os.path.join(repo_root, "m3u_iptv")
     
