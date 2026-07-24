@@ -1,3 +1,4 @@
+import requests
 import os
 import re
 import time
@@ -10,8 +11,6 @@ from html import unescape
 from urllib.parse import quote
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
-# 替换原生 requests，使用自带浏览器指纹的 curl_cffi 过盾
-from curl_cffi import requests
 
 try:
     from zoneinfo import ZoneInfo
@@ -66,25 +65,49 @@ def _parse_site_datetime(value: str) -> datetime | None:
     return None
 
 def _encrypt_token(raw_token):
-    key = b"cQshuShu88888888"
+    # 注意：如果依然失败，大概率是这个硬编码的 Key 被站长改了！
+    # 你可能需要逆向分析新网站的 js 才能找到新 Key。
+    key = b"cQshuShu88888888" 
     cipher = AES.new(key, AES.MODE_ECB)
     encrypted = cipher.encrypt(pad(raw_token.encode("utf-8"), AES.block_size))
     return base64.b64encode(encrypted).decode("utf-8")
 
 def _extract_ajax_config(html):
-    m = re.search(r"var\s+multicastIptvAjax\s*=\s*(\{.*?\});", html, flags=re.IGNORECASE | re.DOTALL)
-    if m:
-        try: return json.loads(m.group(1))
-        except Exception: pass
-
-    m2 = re.search(r"=\s*(\{.*?\"ajaxUrl\".*?\"nonce\".*?\"token\".*?\})\s*;", html, flags=re.IGNORECASE | re.DOTALL)
-    if m2:
-        try: return json.loads(m2.group(1))
-        except Exception: pass
+    """
+    终极容错版配置提取：
+    放弃正则死板匹配变量名，直接在整个 HTML 源码中寻找包含所需字段的 JSON 字符串结构。
+    """
+    # 尝试找到整个 script 标签块，里面包含配置信息
+    scripts = re.findall(r"<script[^>]*>(.*?)</script>", html, flags=re.IGNORECASE | re.DOTALL)
+    for script_content in scripts:
+        # 如果代码块里同时出现了这几个关键词，说明配置就在这里面
+        if "ajaxUrl" in script_content and "nonce" in script_content and "token" in script_content:
+            # 暴力提取被大括号包裹的内容
+            matches = re.findall(r"(\{.*?\"ajaxUrl\".*?\})", script_content, flags=re.DOTALL)
+            for m in matches:
+                try:
+                    config = json.loads(m)
+                    if config.get("ajaxUrl") and config.get("nonce") and config.get("token"):
+                        return config
+                except Exception:
+                    pass
             
+            # 如果上面的正则失败，尝试另一种常见结构
+            matches_alt = re.findall(r"(\{.*?ajaxUrl.*?\})", script_content, flags=re.DOTALL)
+            for m in matches_alt:
+                # 尝试修复不是标准 JSON 的格式（把无引号的 key 加上引号）
+                fixed_m = re.sub(r'([{,]\s*)([a-zA-Z0-9_]+)\s*:', r'\1"\2":', m)
+                try:
+                    config = json.loads(fixed_m)
+                    if config.get("ajaxUrl"):
+                        return config
+                except Exception:
+                    pass
+
+    # 兜底：如果还是找不到，保存排错文件
     with open("debug_iptv_html.txt", "w", encoding="utf-8") as f:
         f.write(html)
-    print("[-] 🚨 严重警告：正则匹配不到 Ajax 配置！可能遭遇 Cloudflare 拦截。已保存源码。")
+    print("[-] 🚨 提取配置失败！源码已保存。请检查目标站点的 JS 混淆程度。")
     return None
 
 def _extract_region_code_map(html):
@@ -119,13 +142,15 @@ def _parse_rows_from_html_fragment(fragment_html):
     return result
 
 def get_session():
-    # 核心：使用 impersonate 参数完美伪装成 Chrome 120 浏览器，绕过 WAF
-    session = requests.Session(impersonate="chrome120")
-    # 强制设置 Referer 等头信息，显得更像真实流量
+    # 使用标准 requests，但增强请求头伪装
+    session = requests.Session()
     session.headers.update({
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
         "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-        "Referer": "https://iptv.cqshushu.com/"
+        "Referer": "https://iptv.cqshushu.com/",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1"
     })
     return session
 
@@ -133,6 +158,7 @@ def fetch_region_rows_by_ajax(session, province, limit=20, max_pages=30):
     print(f"[*] 正在抓取组播源页面: {MULTICAST_SOURCE_URL}")
     try:
         home_resp = session.get(MULTICAST_SOURCE_URL, timeout=20)
+        home_resp.raise_for_status()
     except Exception as e:
         print(f"[-] 访问组播源页面失败: {e}")
         return []
@@ -159,13 +185,18 @@ def fetch_region_rows_by_ajax(session, province, limit=20, max_pages=30):
             "nonce": ajax_cfg.get("nonce", ""), "token": _encrypt_token(ajax_cfg.get("token", ""))
         }
         try:
-            resp = session.post(ajax_cfg.get("ajaxUrl", ""), data=payload, timeout=20)
+            # 加入 Ajax 请求特有的头部标识
+            headers = {"X-Requested-With": "XMLHttpRequest"}
+            resp = session.post(ajax_cfg.get("ajaxUrl", ""), data=payload, headers=headers, timeout=20)
             data = resp.json()
         except Exception as e:
             print(f"[-] Ajax 请求省份 [{province}] 第{page_num}页失败: {e}")
             break
             
-        if not data.get("success"): break
+        if not data.get("success"): 
+            msg = data.get("data", {}).get("message", "unknown error")
+            print(f"[-] Ajax 第{page_num}页返回失败 (可能是 Token 或鉴权错误): {msg}")
+            break
 
         fragment = data.get("data", {}).get("html", "")
         rows = _parse_rows_from_html_fragment(fragment)
@@ -275,7 +306,7 @@ def fetch_channel_lines_by_province(province: str, max_per_carrier: int = 10, ma
             "nonce": ajax_cfg.get("nonce", ""), "token": _encrypt_token(token_plain)
         }
         try:
-            detail_resp = session.post(ajax_cfg.get("ajaxUrl", ""), data=detail_payload, timeout=20)
+            detail_resp = session.post(ajax_cfg.get("ajaxUrl", ""), data=detail_payload, headers={"X-Requested-With": "XMLHttpRequest"}, timeout=20)
             detail_json = detail_resp.json()
         except Exception: continue
         
@@ -291,7 +322,7 @@ def fetch_channel_lines_by_province(province: str, max_per_carrier: int = 10, ma
             "nonce": ajax_cfg.get("nonce", ""), "token": _encrypt_token(token_plain)
         }
         try:
-            channels_resp = session.post(ajax_cfg.get("ajaxUrl", ""), data=channels_payload, timeout=20)
+            channels_resp = session.post(ajax_cfg.get("ajaxUrl", ""), data=channels_payload, headers={"X-Requested-With": "XMLHttpRequest"}, timeout=20)
             channels_html = channels_resp.json().get("data", {}).get("html", "")
         except Exception: continue
         
