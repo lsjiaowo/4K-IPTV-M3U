@@ -47,7 +47,6 @@ def _parse_site_datetime(value: str) -> datetime | None:
     return None
 
 def get_session():
-    # 使用 curl_cffi 完美伪装浏览器
     session = requests.Session(impersonate="chrome120")
     session.headers.update({
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -55,14 +54,39 @@ def get_session():
         "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
         "Referer": "https://iptv.cqshushu.com/"
     })
-    # 🚨 核心破解：注入防广告检测 Cookie，让服务器乖乖交出数据
     session.cookies.set("ad_ok", "1", domain="iptv.cqshushu.com", path="/")
     return session
 
+def fetch_with_challenge_bypass(session, url):
+    """
+    智能破壁函数：自动检测 JS 人机验证页面，提取跳转链接并强行通过
+    """
+    for attempt in range(3):
+        try:
+            resp = session.get(url, timeout=20)
+            html = resp.text
+            
+            # 如果遇到验证墙
+            if "安全验证中" in html and "data-redirect" in html:
+                m_redirect = re.search(r'data-redirect="([^"]+)"', html)
+                if m_redirect:
+                    # 提取并解码挑战 URL (处理 &amp; 等 HTML 实体)
+                    redirect_uri = unescape(m_redirect.group(1))
+                    if not redirect_uri.startswith("http"):
+                        redirect_uri = f"https://iptv.cqshushu.com/{redirect_uri.lstrip('/')}"
+                    
+                    print(f"[*] 🚨 触发安全验证，正在自动执行 JS 挑战跳转 -> {redirect_uri}")
+                    time.sleep(1.5) # 模拟 JS 运算的延迟时间
+                    url = redirect_uri # 更新 URL 为带 challenge 的地址，准备重试
+                    continue
+            return html
+        except Exception as e:
+            print(f"[-] 请求异常: {e}")
+            return None
+    return None
+
 def extract_channels_from_html(html_text: str) -> list[str]:
-    """ 暴力提取器：从任意杂乱的 HTML 中抠出频道名和播放链接 """
     lines = []
-    # 1. 尝试解析标准的 HTML 表格 <td>频道名</td> <td>链接</td>
     for row_html in re.findall(r"<tr[^>]*>(.*?)</tr>", html_text, flags=re.IGNORECASE | re.DOTALL):
         tds = re.findall(r"<td[^>]*>(.*?)</td>", row_html, flags=re.IGNORECASE | re.DOTALL)
         if len(tds) >= 2:
@@ -71,12 +95,10 @@ def extract_channels_from_html(html_text: str) -> list[str]:
             if re.search(r"^(https?|rtp|udp|igmp)://", play_url, flags=re.IGNORECASE):
                 lines.append(f"{name},{play_url}")
                 
-    # 2. 暴力解析文本类型的 "频道名,链接" 格式（兼容 M3U8/TXT 混排）
     matches = re.findall(r"([^,<>\"'\n]{2,30})\s*,\s*((?:https?|rtp|udp|igmp)://[^\s<>\"']+)", html_text, flags=re.IGNORECASE)
     for name, url in matches:
         lines.append(f"{name.strip()},{url.strip()}")
         
-    # 去重返回
     return list(dict.fromkeys(lines))
 
 def fetch_region_data(session, province, max_pages=30):
@@ -86,24 +108,20 @@ def fetch_region_data(session, province, max_pages=30):
     seen_tokens = set()
 
     for page_num in range(1, max_pages + 1):
-        # 🚨 核心修复：第一页绝对不能加 &page=1，否则会导致搜索崩溃为空白
         url = f"{BASE_URL}?q={quote(province)}"
         if page_num > 1:
             url += f"&page={page_num}"
         
-        try:
-            resp = session.get(url, timeout=20)
-            html = resp.text
-        except Exception as e:
-            print(f"[-] 获取省份 [{province}] 第{page_num}页失败: {e}")
+        # 使用强化版的过盾请求函数
+        html = fetch_with_challenge_bypass(session, url)
+        if not html:
+            print(f"[-] 获取省份 [{province}] 第{page_num}页失败，HTML 为空。")
             break
             
-        # 探针1：直接在搜索页面暴力提取直链
         channels = extract_channels_from_html(html)
         if channels:
             all_direct_channels.extend(channels)
             
-        # 探针2：解析 IP 节点表格
         rows = re.findall(r'<tr[^>]*>(.*?)</tr>', html, flags=re.S | re.I)
         added = 0
         
@@ -132,23 +150,18 @@ def fetch_region_data(session, province, max_pages=30):
             })
             added += 1
             
-        # 去重直链列表
         all_direct_channels = list(dict.fromkeys(all_direct_channels))
         print(f"[*] [{province}] 第{page_num}页搜索完成，新增 {added} 个节点，累计获取 {len(all_direct_channels)} 个直链。")
         
-        # 翻页结束条件
         if added == 0 and len(channels) == 0:
             if page_num == 1:
-                print(f"[-] 🚨 警告：搜索 [{province}] 首页完全空白！打印部分防屏蔽源码：")
-                body_m = re.search(r'<body[^>]*>(.*?)</body>', html, re.S | re.I)
-                print((body_m.group(1) if body_m else html)[:1000].replace('\n', ' '))
+                print(f"[-] 🚨 警告：搜索 [{province}] 首页完全空白！可能是 IP 被暂时封禁。")
             break
 
     print(f"[*] [{province}] 合计抓取到 {len(all_rows)} 个有效服务器，{len(all_direct_channels)} 个直链。")
     return all_rows, all_direct_channels
 
 def extract_channels_for_token(session, p_token):
-    """ 黑盒探测：盲猜站长的接口路由，尝试 4 种常见详情页 """
     endpoints = [
         f"https://iptv.cqshushu.com/detail.php?id={p_token}",
         f"https://iptv.cqshushu.com/iptv_detail.php?p={p_token}",
@@ -157,11 +170,10 @@ def extract_channels_for_token(session, p_token):
     ]
     
     for url in endpoints:
-        try:
-            resp = session.get(url, timeout=10)
-            lines = extract_channels_from_html(resp.text)
+        html = fetch_with_challenge_bypass(session, url)
+        if html:
+            lines = extract_channels_from_html(html)
             if lines: return lines
-        except Exception: continue
     return []
 
 def normalize_group_title(raw_type: str, province: str) -> str:
@@ -180,7 +192,6 @@ def fetch_channel_lines_by_province(province: str, max_per_carrier: int = 10, ma
     
     group_to_sources: dict[str, list[list[str]]] = {}
     
-    # 优先保存直接抓取到的频道（如有）
     if direct_channels:
         group_to_sources.setdefault(f"{province}直接提取", []).append(direct_channels)
 
@@ -201,7 +212,6 @@ def fetch_channel_lines_by_province(province: str, max_per_carrier: int = 10, ma
     selected_rows = []
     selected_tokens = set()
     
-    # 三大运营商最优节点筛选
     for carrier in ("电信", "移动", "联通"):
         carrier_rows = [r for r in rows if carrier in r.get("type", "") and _is_usable_status(r.get("status", "")) and _is_recent_update(r)]
         carrier_rows = sorted(carrier_rows, key=lambda x: _parse_site_datetime(x.get("update_time", "")).timestamp() if _parse_site_datetime(x.get("update_time", "")) else 0.0, reverse=True)
@@ -211,7 +221,6 @@ def fetch_channel_lines_by_province(province: str, max_per_carrier: int = 10, ma
                 selected_rows.append(row)
                 selected_tokens.add(row["p_token"])
 
-    # 深度盲抓节点详情
     for picked in selected_rows:
         group_title = normalize_group_title(picked.get("type", ""), province)
         token = picked.get("p_token", "")
@@ -310,7 +319,7 @@ def parse_args():
     ap.add_argument("--push", action="store_true")
     ap.add_argument("--max-age-hours", type=int, default=168)
     ap.add_argument("--max-per-carrier", type=int, default=10)
-    ap.add_argument("--max-pages", type=int, default=10) # 防止无意义搜索导致IP被封
+    ap.add_argument("--max-pages", type=int, default=10) 
     return ap.parse_args()
 
 def main():
