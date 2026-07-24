@@ -83,14 +83,30 @@ def _encrypt_token(raw_token):
     return base64.b64encode(encrypted).decode("utf-8")
 
 def _extract_ajax_config(html):
+    # 1. 尝试匹配原有的固定变量名
     m = re.search(r"var\s+multicastIptvAjax\s*=\s*(\{.*?\});", html, flags=re.IGNORECASE | re.DOTALL)
-    if not m:
-        return None
-    try:
-        return json.loads(m.group(1))
-    except Exception:
-        return None
+    if m:
+        try:
+            return json.loads(m.group(1))
+        except Exception:
+            pass
 
+    # 2. 宽泛匹配策略：寻找任何一个同时包含 ajaxUrl、nonce 和 token 的 JSON 对象
+    m2 = re.search(r"=\s*(\{.*?\"ajaxUrl\".*?\"nonce\".*?\"token\".*?\})\s*;", html, flags=re.IGNORECASE | re.DOTALL)
+    if m2:
+        try:
+            return json.loads(m2.group(1))
+        except Exception:
+            pass
+            
+    # 3. 终极排查：如果都找不到，极大概率是遇到了防爬虫拦截
+    # 自动将网页源码输出到本地，方便溯源分析
+    with open("debug_iptv_html.txt", "w", encoding="utf-8") as f:
+        f.write(html)
+    print("[-] 🚨 严重警告：正则匹配不到 Ajax 配置！")
+    print("[-] 当前网页源码已保存到本地的 debug_iptv_html.txt 文件中。")
+    print("[-] 请打开该文本文件，检查网站是否弹出了 Cloudflare 验证码或盾牌拦截。")
+    return None
 def _extract_region_code_map(html):
     code_map = {}
     m = re.search(r'<select\s+name="region"[^>]*>(.*?)</select>', html, flags=re.IGNORECASE | re.DOTALL)
