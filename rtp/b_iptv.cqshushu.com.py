@@ -84,12 +84,21 @@ def make_session(cookie: str) -> requests.Session:
 
 def get(session: requests.Session, url: str) -> requests.Response:
     response = session.get(url, timeout=REQUEST_TIMEOUT, allow_redirects=True)
-    response.raise_for_status()
+    # The site deliberately uses HTTP 403 for its JavaScript verification
+    # document.  Inspect the response before raise_for_status(), otherwise a
+    # useful configuration error is hidden by requests.HTTPError.
     if is_challenge_page(response.text):
         raise CqshushuError(
             "目标站点返回了 JavaScript 安全验证页。请在正常浏览器完成验证后，将该站点"
             "的 Cookie 整串保存为 CQS_COOKIE（GitHub Actions 请配置为 secret），再运行。"
         )
+    try:
+        response.raise_for_status()
+    except requests.HTTPError as exc:
+        raise CqshushuError(
+            f"访问目标站点失败：HTTP {response.status_code}。如果这是 GitHub Actions，"
+            "请检查 CQS_COOKIE 是否已配置、未过期，且仍被该站点接受。"
+        ) from exc
     return response
 
 
@@ -229,6 +238,11 @@ def main() -> int:
         m3u_dir.mkdir(parents=True, exist_ok=True)
         txt_dir.mkdir(parents=True, exist_ok=True)
 
+    if not args.cookie:
+        raise CqshushuError(
+            "未提供 CQS_COOKIE。该站点当前拒绝无浏览器会话的请求；请在 GitHub 仓库"
+            "Settings -> Secrets and variables -> Actions 中添加名为 CQS_COOKIE 的 secret。"
+        )
     session = make_session(args.cookie)
     source_url = list_url(args.province, args.limit)
     print(f"[*] 列表页：{source_url}")
