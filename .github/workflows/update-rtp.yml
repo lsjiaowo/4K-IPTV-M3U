@@ -28,45 +28,36 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Debug workspace
-        run: |
-          pwd
-          ls -la
-          ls -la "${{ github.workspace }}"
-
-
-
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          echo "Installing curl_cffi and pycryptodome to bypass Cloudflare..."
-          pip install "curl_cffi>=0.5.10" "pycryptodome>=3.18.0"
-
-
+          # 完美修复：同时安装老脚本需要的 requests，以及新脚本需要的 curl_cffi 和 pycryptodome
+          echo "Installing dependencies for both original and new scripts..."
+          pip install "requests>=2.31.0" "curl_cffi>=0.5.10" "pycryptodome>=3.18.0"
           
+          # 如果仓库有 requirements.txt 也一并安装，防止遗漏原作者的其他依赖
+          if [ -f "${{ github.workspace }}/requirements.txt" ]; then
+            pip install -r "${{ github.workspace }}/requirements.txt"
+          fi
 
       - name: Run original updater
         run: python rtp/b.py --push --max-age-hours 72
 
-      # =================新增步骤=================
-      # 执行抓取新网站的脚本（假设文件放在根目录）
       - name: Run new IPTV updater
         run: python b_iptv.cqshushu.com.py --push --max-age-hours 72
-      # ==========================================
 
       - name: Commit and push if changed
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          
           # Rebase onto latest remote safely (generated files may exist).
           git stash push -u -m "generated outputs" || true
           git pull --rebase origin main || true
           git stash pop || true
           
-          # =================修改步骤=================
-          # 新增追踪：txt_iptv、m3u_iptv 目录以及 README_IPTV.md 文件
+          # 追踪新老脚本产生的所有目录和文件
           git add -A -- txt m3u txt_iptv m3u_iptv README.md README_IPTV.md || true
-          # ==========================================
           
           if git diff --cached --quiet; then
             echo "No changes to commit."
