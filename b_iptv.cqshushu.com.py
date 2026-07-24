@@ -6,7 +6,7 @@ import subprocess
 import argparse
 from datetime import datetime
 from html import unescape
-from urllib.parse import quote
+from urllib.parse import quote, urljoin
 from curl_cffi import requests
 
 try:
@@ -59,11 +59,12 @@ def get_session():
     return session
 
 def fetch_with_challenge_bypass(session, url):
-    """ 智能过盾请求：自动处理 Cloudflare 和 自定义 JS 挑战 """
+    """ 智能过盾请求：自动处理 Cloudflare 和 自定义 JS 挑战，防超时 """
     for attempt in range(3):
         try:
-            time.sleep(random.uniform(0.8, 1.5)) # 防封禁延迟
-            resp = session.get(url, timeout=20)
+            time.sleep(random.uniform(1.0, 2.5)) # 防封禁延迟
+            # 将超时时间放宽到 30 秒，防止误判为 Timeout
+            resp = session.get(url, timeout=30)
             html = resp.text
             
             # 检测防爬拦截墙并提取跳转链接
@@ -71,15 +72,15 @@ def fetch_with_challenge_bypass(session, url):
                 m_redirect = re.search(r'data-redirect="([^"]+)"', html)
                 if m_redirect:
                     redirect_uri = unescape(m_redirect.group(1))
-                    if not redirect_uri.startswith("http"):
-                        redirect_uri = f"https://iptv.cqshushu.com/{redirect_uri.lstrip('/')}"
+                    redirect_uri = urljoin("https://iptv.cqshushu.com/", redirect_uri)
                     print(f"[*] 🚨 触发验证墙，自动跳转 -> {redirect_uri}")
                     url = redirect_uri
                     continue
             return html
         except Exception as e:
-            print(f"[-] 请求异常: {e}")
-            return None
+            print(f"[-] 请求异常 (重试 {attempt+1}/3): {e}")
+            time.sleep(2)
+            continue
     return None
 
 def extract_channels_from_html(html_text: str) -> list[str]:
@@ -158,45 +159,58 @@ def fetch_region_data(session, province, max_pages=30):
 
 def follow_links_to_channels(session, p_token, node_type):
     """
-    终极提取法：沿着用户的点击逻辑一步步追踪，直到抓到直链
-    第一层：详情页 -> 第二层：频道列表页 -> 第三层：M3U接口
+    完美修复版追踪器：严格屏蔽公共导航链接，直抵核心源
     """
-    # [第一层] 请求点击 IP 后的详情页
+    # 策略 1：盲猜标准 M3U 直链 API 接口 (速度最快)
+    api_endpoints = [
+        f"https://iptv.cqshushu.com/m3u.php?p={p_token}",
+        f"https://iptv.cqshushu.com/api.php?action=m3u&p={p_token}",
+        f"https://iptv.cqshushu.com/txt.php?p={p_token}"
+    ]
+    for api_url in api_endpoints:
+        html = fetch_with_challenge_bypass(session, api_url)
+        if html:
+            channels = extract_channels_from_html(html)
+            if channels: return channels
+
+    # 策略 2：模拟真实点击逻辑 [详情页]
     detail_url = f"{BASE_URL}?p={p_token}&t={node_type}"
     html = fetch_with_challenge_bypass(session, detail_url)
     if not html: return []
     
-    # 尝试在详情页直接解析（如有展示）
     channels = extract_channels_from_html(html)
     if channels: return channels
     
-    # [寻找第二层入口] 查找“查看频道列表”按钮的链接
+    # 策略 3：寻找 [查看频道列表] 或 [M3U接口] 按钮
+    # 🚨 必须屏蔽的陷阱链接 (公共导航栏)
+    ignore_keywords = ['iptv_channel', 'txt2m3u', 'jiekou', 'proxy_checker', 'index.php?q=']
+    
     list_url = None
-    m_link = re.search(r'<a[^>]*href="([^"]+)"[^>]*>.*?查看频道列表.*?</a>', html, re.I | re.S)
+    # 精确匹配"查看列表"相关文字
+    m_link = re.search(r'<a[^>]*href=["\']([^"\']+)["\'][^>]*>.*?查看.*?列表.*?</a>', html, re.I | re.S)
     if m_link:
         list_url = m_link.group(1)
     else:
-        # 暴力寻找页面里带有 channel 或 m3u 关键字的链接
-        for link in re.findall(r'<a[^>]*href="([^"]+)"', html, re.I):
-            if any(x in link.lower() for x in ['channel', 'list', 'm3u', 'txt']):
+        # 寻找包含该 token 的专属链接
+        for link in re.findall(r'href=["\']([^"\']+)["\']', html, re.I):
+            if any(ign in link for ign in ignore_keywords) or link == "?" or link == "index.php?":
+                continue
+            if p_token in link or 'list' in link.lower() or 'detail' in link.lower():
                 list_url = link
                 break
                 
     if list_url:
-        if not list_url.startswith("http"):
-            if list_url.startswith("?"): list_url = f"{BASE_URL}{list_url}"
-            else: list_url = f"https://iptv.cqshushu.com/{list_url.lstrip('/')}"
-            
-        print(f"    -> 深入列表页: {list_url}")
+        list_url = urljoin("https://iptv.cqshushu.com/", list_url)
+        print(f"    -> 深入有效列表页: {list_url}")
+        
         list_html = fetch_with_challenge_bypass(session, list_url)
         if not list_html: return []
         
-        # 尝试在列表页提取频道
         channels = extract_channels_from_html(list_html)
         if channels: return channels
         
-        # [寻找第三层入口] 查找复制“M3U接口”的隐藏直链
-        m_copy = re.search(r"""(https?://iptv\.cqshushu\.com/[^\s'"<]+\?(?:m3u|id|p|s)=?[^\s'"<]*)""", list_html)
+        # 找隐藏的 M3U 复制链接
+        m_copy = re.search(r"""(https?://iptv\.cqshushu\.com/[^\s'"<]+\?(?:m3u|id|p|s|token)=?[^\s'"<]*)""", list_html)
         if m_copy:
             m3u_url = m_copy.group(1)
             print(f"    -> 提取到最终 M3U 接口: {m3u_url}")
@@ -231,7 +245,7 @@ def fetch_channel_lines_by_province(province: str, max_per_carrier: int = 5, max
     selected_rows = []
     selected_tokens = set()
     
-    # 三大运营商最优节点筛选
+    # 筛选可用且新鲜的最优节点
     for carrier in ("电信", "移动", "联通"):
         carrier_rows = [r for r in rows if carrier in r.get("type", "") and _is_usable_status(r.get("status", ""))]
         carrier_rows = sorted(carrier_rows, key=lambda x: _parse_site_datetime(x.get("update_time", "")).timestamp() if _parse_site_datetime(x.get("update_time", "")) else 0.0, reverse=True)
