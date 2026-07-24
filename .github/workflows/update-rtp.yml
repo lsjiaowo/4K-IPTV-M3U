@@ -34,15 +34,16 @@ jobs:
           ls -la
           ls -la "${{ github.workspace }}"
 
+
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          if [ -f "${{ github.workspace }}/requirements.txt" ]; then
-            pip install -r "${{ github.workspace }}/requirements.txt"
-          else
-            echo "requirements.txt not found, fallback to direct install."
-            pip install "requests>=2.31.0"
-          fi
+          echo "Installing curl_cffi and pycryptodome to bypass Cloudflare..."
+          pip install "curl_cffi>=0.5.10" "pycryptodome>=3.18.0"
+
+
+          
 
       - name: Run original updater
         run: python rtp/b.py --push --max-age-hours 72
