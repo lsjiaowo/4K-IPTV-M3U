@@ -1,13 +1,13 @@
-name: Update RTP Sources
+name: Update CQShuShu IPTV Sources
 
 on:
+  workflow_dispatch:
   schedule:
-    # 设定每小时的第 5 分钟触发一次，直接避开 00 分整点
-    - cron: '5 * * * *'
-  workflow_dispatch: # 保留手动触发按钮
+    # UTC 01:20 and 13:20; offset from the legacy RTP workflow.
+    - cron: "20 1,13 * * *"
 
 concurrency:
-  group: update-rtp-${{ github.ref }}
+  group: update-cqshushu-iptv-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -16,7 +16,7 @@ permissions:
 jobs:
   update:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -29,51 +29,23 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          # 完美修复：同时安装老脚本需要的 requests，以及新脚本需要的 curl_cffi 和 pycryptodome
-          echo "Installing dependencies for both original and new scripts..."
-          pip install "requests>=2.31.0" "curl_cffi>=0.5.10" "pycryptodome>=3.18.0"
-          
-          # 如果仓库有 requirements.txt 也一并安装，防止遗漏原作者的其他依赖
-          if [ -f "${{ github.workspace }}/requirements.txt" ]; then
-            pip install -r "${{ github.workspace }}/requirements.txt"
-          fi
+        run: python -m pip install --disable-pip-version-check "requests>=2.31.0"
 
-      - name: Run original updater
-        run: python rtp/b.py --push --max-age-hours 72
-
-
-
-
-      - name: Run new IPTV updater
-        run: |
-          python b_iptv.cqshushu.com.py --push --max-age-hours 72
-          # 如果猜不中详情页路由，强行打印出站长的前端加密源码，人工破译！
-          if [ -f "debug_js_files.txt" ]; then
-            echo "========== 🚨 捕获到目标核心 JS 源码 🚨 =========="
-            cat debug_js_files.txt
-            echo "========== 🚨 JS 源码打印结束 🚨 =========="
-          fi
-
-        
+      - name: Fetch CQShuShu playlists
+        env:
+          # Add a repository secret named CQS_COOKIE after completing normal
+          # browser verification on iptv.cqshushu.com.  Do not print this value.
+          CQS_COOKIE: ${{ secrets.CQS_COOKIE }}
+        run: python rtp/b_iptv.cqshushu.com.py --province sc --limit 10
 
       - name: Commit and push if changed
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          
-          # Rebase onto latest remote safely (generated files may exist).
-          git stash push -u -m "generated outputs" || true
-          git pull --rebase origin main || true
-          git stash pop || true
-          
-          # 追踪新老脚本产生的所有目录和文件
-          git add -A -- txt m3u txt_iptv m3u_iptv README.md README_IPTV.md || true
-          
+          git add -A -- cqshushu_txt cqshushu_m3u
           if git diff --cached --quiet; then
             echo "No changes to commit."
           else
-            git commit -m "chore: auto update rtp sources"
+            git commit -m "chore: update CQShuShu IPTV sources"
             git push
           fi
