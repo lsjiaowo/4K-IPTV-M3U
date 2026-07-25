@@ -3,8 +3,8 @@ name: Update RTP Sources
 on:
   workflow_dispatch:
   schedule:
-    # 每小时执行一次（UTC）
-    - cron: "0 * * * *"
+    # 每天执行 2 次（UTC 00:00、12:00）
+    - cron: "0 0,12 * * *"
 
 concurrency:
   group: update-rtp-${{ github.ref }}
@@ -17,15 +17,7 @@ jobs:
   update:
     runs-on: ubuntu-latest
     timeout-minutes: 45
-
     steps:
-      - name: Random delay
-        run: |
-          # 随机等待 0-3599 秒（0-59分钟）
-          DELAY=$((RANDOM % 3600))
-          echo "Random delay: ${DELAY} seconds"
-          sleep ${DELAY}
-
       - name: Checkout
         uses: actions/checkout@v5
         with:
@@ -59,15 +51,12 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
           # Rebase onto latest remote safely (generated files may exist).
           git stash push -u -m "generated outputs" || true
           git pull --rebase origin main || true
           git stash pop || true
-
           # Stage additions/modifications/deletions under outputs + README.
           git add -A -- txt m3u README.md || true
-
           if git diff --cached --quiet; then
             echo "No changes to commit."
           else
