@@ -1,13 +1,13 @@
-name: Update CQShuShu IPTV Sources
+name: Update RTP Sources
 
 on:
   workflow_dispatch:
   schedule:
-    # UTC 01:20 and 13:20; offset from the legacy RTP workflow.
-    - cron: "20 1,13 * * *"
+    # 每天执行 2 次（UTC 00:00、12:00）
+    - cron: "0 0,12 * * *"
 
 concurrency:
-  group: update-cqshushu-iptv-${{ github.ref }}
+  group: update-rtp-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -16,7 +16,7 @@ permissions:
 jobs:
   update:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -28,24 +28,38 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install dependencies
-        run: python -m pip install --disable-pip-version-check "requests>=2.31.0"
+      - name: Debug workspace
+        run: |
+          pwd
+          ls -la
+          ls -la "${{ github.workspace }}"
 
-      - name: Fetch CQShuShu playlists
-        env:
-          # Add a repository secret named CQS_COOKIE after completing normal
-          # browser verification on iptv.cqshushu.com.  Do not print this value.
-          CQS_COOKIE: ${{ secrets.CQS_COOKIE }}
-        run: python rtp/b_iptv.cqshushu.com.py --province sc --limit 10
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f "${{ github.workspace }}/requirements.txt" ]; then
+            pip install -r "${{ github.workspace }}/requirements.txt"
+          else
+            echo "requirements.txt not found, fallback to direct install."
+            pip install "requests>=2.31.0"
+          fi
+
+      - name: Run updater
+        run: python rtp/b.py
 
       - name: Commit and push if changed
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A -- cqshushu_txt cqshushu_m3u
+          # Rebase onto latest remote safely (generated files may exist).
+          git stash push -u -m "generated outputs" || true
+          git pull --rebase origin main || true
+          git stash pop || true
+          # Stage additions/modifications/deletions under outputs + README.
+          git add -A -- txt m3u README.md || true
           if git diff --cached --quiet; then
             echo "No changes to commit."
           else
-            git commit -m "chore: update CQShuShu IPTV sources"
+            git commit -m "chore: auto update rtp sources"
             git push
           fi
