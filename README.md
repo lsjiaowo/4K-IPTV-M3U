@@ -55,7 +55,7 @@ GitHub README 不支持可执行脚本，`onclick` 复制按钮会失效，因�
 </tr>
 </thead>
 <tbody>
-<tr><td style="white-space:nowrap;">安徽电信1.m3u</td><td style="white-space:nowrap;"><a href="https://gh-proxy.org/https://raw.githubusercontent.com/lsjiaowo/4K-IPTV-M3U/main/m3u/%E5%AE%89%E5%BE%BD%E7%94%B5%E4%BF%A11.m3u">下载链接</a></td><td style="white-space:nowrap;">2026-08-15 14:51:37</td><td><code>https://gh-proxy.org/https://raw.githubusercontent.com/lsjiaowo/4K-IPTV-M3U/main/m3u/%E5%AE%89%E5%BE%BD%E7%94%B5%E4%BF%A11.m3u</code></td></tr>
+<tr><td style="white-space:nowrap;">安徽电信1.m3u</td><td style="white-space:nowrap;"><a href="https://gh-proxy.org/https://raw.githubusercontent.com/lsjiaowo/4K-IPTV-M3U/main/m3u/%E5%AE%89%E5%BE%BD%E7%94%B5%E4%BF%A11.m3u">下载链接</a></td><td style="white-space:nowrap;">2026-08-15 15:40:52</td><td><code>https://gh-proxy.org/https://raw.githubusercontent.com/lsjiaowo/4K-IPTV-M3U/main/m3u/%E5%AE%89%E5%BE%BD%E7%94%B5%E4%BF%A11.m3u</code></td></tr>
 </tbody>
 </table>
 ## TXT 文件列表
@@ -76,7 +76,7 @@ GitHub README 不支持可执行脚本，`onclick` 复制按钮会失效，因�
 </tr>
 </thead>
 <tbody>
-<tr><td style="white-space:nowrap;">安徽电信1.txt</td><td style="white-space:nowrap;"><a href="https://gh-proxy.org/https://raw.githubusercontent.com/lsjiaowo/4K-IPTV-M3U/main/txt/%E5%AE%89%E5%BE%BD%E7%94%B5%E4%BF%A11.txt">下载链接</a></td><td style="white-space:nowrap;">2026-08-15 14:51:37</td><td><code>https://gh-proxy.org/https://raw.githubusercontent.com/lsjiaowo/4K-IPTV-M3U/main/txt/%E5%AE%89%E5%BE%BD%E7%94%B5%E4%BF%A11.txt</code></td></tr>
+<tr><td style="white-space:nowrap;">安徽电信1.txt</td><td style="white-space:nowrap;"><a href="https://gh-proxy.org/https://raw.githubusercontent.com/lsjiaowo/4K-IPTV-M3U/main/txt/%E5%AE%89%E5%BE%BD%E7%94%B5%E4%BF%A11.txt">下载链接</a></td><td style="white-space:nowrap;">2026-08-15 15:40:52</td><td><code>https://gh-proxy.org/https://raw.githubusercontent.com/lsjiaowo/4K-IPTV-M3U/main/txt/%E5%AE%89%E5%BE%BD%E7%94%B5%E4%BF%A11.txt</code></td></tr>
 </tbody>
 </table>
 ---
