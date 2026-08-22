@@ -55,8 +55,8 @@ GitHub README 不支持可执行脚本，`onclick` 复制按钮会失效，因�
 </tr>
 </thead>
 <tbody>
-<tr><td style="white-space:nowrap;">广东电信1.m3u</td><td style="white-space:nowrap;"><a href="https://gh-proxy.org/https://raw.githubusercontent.com/lsjiaowo/4K-IPTV-M3U/main/m3u/%E5%B9%BF%E4%B8%9C%E7%94%B5%E4%BF%A11.m3u">下载链接</a></td><td style="white-space:nowrap;">2026-08-22 19:31:11</td><td><code>https://gh-proxy.org/https://raw.githubusercontent.com/lsjiaowo/4K-IPTV-M3U/main/m3u/%E5%B9%BF%E4%B8%9C%E7%94%B5%E4%BF%A11.m3u</code></td></tr>
-<tr><td style="white-space:nowrap;">湖南电信1.m3u</td><td style="white-space:nowrap;"><a href="https://gh-proxy.org/https://raw.githubusercontent.com/lsjiaowo/4K-IPTV-M3U/main/m3u/%E6%B9%96%E5%8D%97%E7%94%B5%E4%BF%A11.m3u">下载链接</a></td><td style="white-space:nowrap;">2026-08-22 19:31:11</td><td><code>https://gh-proxy.org/https://raw.githubusercontent.com/lsjiaowo/4K-IPTV-M3U/main/m3u/%E6%B9%96%E5%8D%97%E7%94%B5%E4%BF%A11.m3u</code></td></tr>
+<tr><td style="white-space:nowrap;">广东电信1.m3u</td><td style="white-space:nowrap;"><a href="https://gh-proxy.org/https://raw.githubusercontent.com/lsjiaowo/4K-IPTV-M3U/main/m3u/%E5%B9%BF%E4%B8%9C%E7%94%B5%E4%BF%A11.m3u">下载链接</a></td><td style="white-space:nowrap;">2026-08-22 20:54:09</td><td><code>https://gh-proxy.org/https://raw.githubusercontent.com/lsjiaowo/4K-IPTV-M3U/main/m3u/%E5%B9%BF%E4%B8%9C%E7%94%B5%E4%BF%A11.m3u</code></td></tr>
+<tr><td style="white-space:nowrap;">湖南电信1.m3u</td><td style="white-space:nowrap;"><a href="https://gh-proxy.org/https://raw.githubusercontent.com/lsjiaowo/4K-IPTV-M3U/main/m3u/%E6%B9%96%E5%8D%97%E7%94%B5%E4%BF%A11.m3u">下载链接</a></td><td style="white-space:nowrap;">2026-08-22 20:54:09</td><td><code>https://gh-proxy.org/https://raw.githubusercontent.com/lsjiaowo/4K-IPTV-M3U/main/m3u/%E6%B9%96%E5%8D%97%E7%94%B5%E4%BF%A11.m3u</code></td></tr>
 </tbody>
 </table>
 ## TXT 文件列表
@@ -77,8 +77,8 @@ GitHub README 不支持可执行脚本，`onclick` 复制按钮会失效，因�
 </tr>
 </thead>
 <tbody>
-<tr><td style="white-space:nowrap;">广东电信1.txt</td><td style="white-space:nowrap;"><a href="https://gh-proxy.org/https://raw.githubusercontent.com/lsjiaowo/4K-IPTV-M3U/main/txt/%E5%B9%BF%E4%B8%9C%E7%94%B5%E4%BF%A11.txt">下载链接</a></td><td style="white-space:nowrap;">2026-08-22 19:31:11</td><td><code>https://gh-proxy.org/https://raw.githubusercontent.com/lsjiaowo/4K-IPTV-M3U/main/txt/%E5%B9%BF%E4%B8%9C%E7%94%B5%E4%BF%A11.txt</code></td></tr>
-<tr><td style="white-space:nowrap;">湖南电信1.txt</td><td style="white-space:nowrap;"><a href="https://gh-proxy.org/https://raw.githubusercontent.com/lsjiaowo/4K-IPTV-M3U/main/txt/%E6%B9%96%E5%8D%97%E7%94%B5%E4%BF%A11.txt">下载链接</a></td><td style="white-space:nowrap;">2026-08-22 19:31:11</td><td><code>https://gh-proxy.org/https://raw.githubusercontent.com/lsjiaowo/4K-IPTV-M3U/main/txt/%E6%B9%96%E5%8D%97%E7%94%B5%E4%BF%A11.txt</code></td></tr>
+<tr><td style="white-space:nowrap;">广东电信1.txt</td><td style="white-space:nowrap;"><a href="https://gh-proxy.org/https://raw.githubusercontent.com/lsjiaowo/4K-IPTV-M3U/main/txt/%E5%B9%BF%E4%B8%9C%E7%94%B5%E4%BF%A11.txt">下载链接</a></td><td style="white-space:nowrap;">2026-08-22 20:54:09</td><td><code>https://gh-proxy.org/https://raw.githubusercontent.com/lsjiaowo/4K-IPTV-M3U/main/txt/%E5%B9%BF%E4%B8%9C%E7%94%B5%E4%BF%A11.txt</code></td></tr>
+<tr><td style="white-space:nowrap;">湖南电信1.txt</td><td style="white-space:nowrap;"><a href="https://gh-proxy.org/https://raw.githubusercontent.com/lsjiaowo/4K-IPTV-M3U/main/txt/%E6%B9%96%E5%8D%97%E7%94%B5%E4%BF%A11.txt">下载链接</a></td><td style="white-space:nowrap;">2026-08-22 20:54:09</td><td><code>https://gh-proxy.org/https://raw.githubusercontent.com/lsjiaowo/4K-IPTV-M3U/main/txt/%E6%B9%96%E5%8D%97%E7%94%B5%E4%BF%A11.txt</code></td></tr>
 </tbody>
 </table>
 ---
