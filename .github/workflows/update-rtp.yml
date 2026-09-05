@@ -52,8 +52,16 @@ jobs:
           echo "Waiting ${DELAY} seconds before update..."
           sleep $DELAY
 
+
       - name: Run updater
-        run: python rtp/b.py
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: python -u rtp/b.py --max-pages 10 --max-per-carrier 2
+
+
+
+
+        
 
       - name: Commit and push if changed
         run: |
