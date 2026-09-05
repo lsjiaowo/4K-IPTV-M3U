@@ -530,6 +530,51 @@ def extract_test_targets(template_content, max_targets=5):
             break
     return targets
 
+
+
+
+# 优先置顶的频道关键词，顺序不可随意调整
+PRIORITY_CHANNEL_KEYWORDS = [
+    "凤凰",
+    "CCTV4K",
+    "安徽经济",
+    "安徽影视",
+    "安徽公共",
+    "安徽综艺",
+    "安徽农业",
+    "安徽国际",
+]
+
+
+def sort_priority_channels(channel_lines: list[str]) -> list[str]:
+    """
+    将包含指定关键词的频道移到列表顶部。
+
+    同一个关键词匹配到多个频道时，保持它们原来的相对顺序；
+    未匹配的其他频道也保持原有顺序。
+    """
+
+    def priority_key(line: str) -> int:
+        # 每行格式为：频道名称,播放地址
+        channel_name = line.split(",", 1)[0].strip()
+        normalized_name = channel_name.casefold()
+
+        for index, keyword in enumerate(PRIORITY_CHANNEL_KEYWORDS):
+            if keyword.casefold() in normalized_name:
+                return index
+
+        # 未匹配的频道全部排在优先频道之后
+        return len(PRIORITY_CHANNEL_KEYWORDS)
+
+    return sorted(channel_lines, key=priority_key)
+
+
+
+
+
+
+
+
 def build_tvg_logo_url(channel_name: str) -> str:
     safe_name = quote(channel_name.strip(), safe="")
     return f"{TVG_LOGO_BASE_URL}{safe_name}.png"
@@ -686,9 +731,25 @@ def process_province(
     total_channels = 0
     exported_sources = 0
     for group_title, sources in grouped_sources.items():
-        for idx, channel_lines in enumerate(sources):
+                for idx, channel_lines in enumerate(sources):
             if not channel_lines:
                 continue
+
+            # 根据关键词优先级调整频道顺序
+            channel_lines = sort_priority_channels(channel_lines)
+
+            suffix = "" if idx == 0 else str(idx)
+            file_stem = f"{group_title}{suffix}"
+            out_txt = os.path.join(txt_output_dir, f"{file_stem}.txt")
+            out_m3u = os.path.join(m3u_output_dir, f"{file_stem}.m3u")
+
+            txt_content = "\n".join(channel_lines)
+            
+
+
+
+
+            
             suffix = "" if idx == 0 else str(idx)
             file_stem = f"{group_title}{suffix}"
             out_txt = os.path.join(txt_output_dir, f"{file_stem}.txt")
