@@ -1,4 +1,10 @@
 #EXTM3U x-tvg-url="http://epg.51zmt.top:8000/e.xml.gz"
+#EXTINF:-1 tvg-id="凤凰中文" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%87%A4%E5%87%B0%E4%B8%AD%E6%96%87.png" group-title="浙江电信",凤凰中文
+http://125.109.5.185:8188/rtp/233.50.202.35:5140
+#EXTINF:-1 tvg-id="凤凰资讯" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%87%A4%E5%87%B0%E8%B5%84%E8%AE%AF.png" group-title="浙江电信",凤凰资讯
+http://125.109.5.185:8188/rtp/233.50.202.36:5140
+#EXTINF:-1 tvg-id="CCTV4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV4K.png" group-title="浙江电信",CCTV4K
+http://125.109.5.185:8188/rtp/233.50.201.226:5140
 #EXTINF:-1 tvg-id="CCTV1" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV1.png" group-title="浙江电信",CCTV1
 http://125.109.5.185:8188/rtp/233.50.201.222:5140
 #EXTINF:-1 tvg-id="CCTV1" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV1.png" group-title="浙江电信",CCTV1
@@ -165,8 +171,6 @@ http://125.109.5.185:8188/rtp/233.50.200.182:5140
 http://125.109.5.185:8188/rtp/233.50.200.183:5140
 #EXTINF:-1 tvg-id="百事通电影4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E7%99%BE%E4%BA%8B%E9%80%9A%E7%94%B5%E5%BD%B14K.png" group-title="浙江电信",百事通电影4K
 http://125.109.5.185:8188/rtp/233.50.200.185:5140
-#EXTINF:-1 tvg-id="CCTV4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV4K.png" group-title="浙江电信",CCTV4K
-http://125.109.5.185:8188/rtp/233.50.201.226:5140
 #EXTINF:-1 tvg-id="浙江卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%B5%99%E6%B1%9F%E5%8D%AB%E8%A7%864K.png" group-title="浙江电信",浙江卫视4K
 http://125.109.5.185:8188/rtp/233.50.202.104:5140
 #EXTINF:-1 tvg-id="欢笑剧场4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%AC%A2%E7%AC%91%E5%89%A7%E5%9C%BA4K.png" group-title="浙江电信",欢笑剧场4K
@@ -285,10 +289,6 @@ http://125.109.5.185:8188/rtp/233.50.200.167:5140
 http://125.109.5.185:8188/rtp/233.50.200.166:5140
 #EXTINF:-1 tvg-id="卡酷少儿" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%8D%A1%E9%85%B7%E5%B0%91%E5%84%BF.png" group-title="浙江电信",卡酷少儿
 http://125.109.5.185:8188/rtp/233.50.202.33:5140
-#EXTINF:-1 tvg-id="凤凰中文" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%87%A4%E5%87%B0%E4%B8%AD%E6%96%87.png" group-title="浙江电信",凤凰中文
-http://125.109.5.185:8188/rtp/233.50.202.35:5140
-#EXTINF:-1 tvg-id="凤凰资讯" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%87%A4%E5%87%B0%E8%B5%84%E8%AE%AF.png" group-title="浙江电信",凤凰资讯
-http://125.109.5.185:8188/rtp/233.50.202.36:5140
 #EXTINF:-1 tvg-id="北京纪实科教" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%8C%97%E4%BA%AC%E7%BA%AA%E5%AE%9E%E7%A7%91%E6%95%99.png" group-title="浙江电信",北京纪实科教
 http://125.109.5.185:8188/rtp/233.50.202.34:5140
 #EXTINF:-1 tvg-id="东方财经" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E4%B8%9C%E6%96%B9%E8%B4%A2%E7%BB%8F.png" group-title="浙江电信",东方财经
