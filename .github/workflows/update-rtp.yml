@@ -45,13 +45,6 @@ jobs:
             pip install "requests>=2.31.0"
           fi
 
-      # 随机延迟 3~5 分钟
-      - name: Random delay
-        run: |
-          DELAY=$((180 + RANDOM % 121))
-          echo "Waiting ${DELAY} seconds before update..."
-          sleep $DELAY
-
 
       - name: Run updater
         env:
