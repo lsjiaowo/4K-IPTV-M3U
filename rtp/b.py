@@ -110,10 +110,10 @@ def generate_paer_token() -> str:
     return f"{ts}|{rand}|{sig}"
 
 
-# 重试退避计算的基础时间
+# 仅用于 429/503 等重试退避的基础时间。
 REQUEST_DELAY_SEC = 0.8
 
-# 每次成功请求后的随机间隔
+# 每次成功请求后的随机间隔，避免短时间内请求过于密集。
 REQUEST_DELAY_MIN_SEC = 2.0
 REQUEST_DELAY_MAX_SEC = 4.0
 REQUEST_MAX_RETRIES = 5
@@ -140,8 +140,11 @@ def signed_get(path_query: str, session: requests.Session | None = None) -> dict
                 continue
             resp.raise_for_status()
             time.sleep(
-    random.uniform(REQUEST_DELAY_MIN_SEC, REQUEST_DELAY_MAX_SEC)
-)
+                random.uniform(
+                    REQUEST_DELAY_MIN_SEC,
+                    REQUEST_DELAY_MAX_SEC,
+                )
+            )
             return resp.json()
         except requests.HTTPError as e:
             last_error = e
@@ -311,13 +314,12 @@ def fetch_channel_lines_by_s(s_token: str, session: requests.Session | None = No
                 continue
             seen.add(line)
             all_lines.append(line)
-            print(
+
+        print(
             f"[*] 正在抓取频道列表：第{page_num}页，"
             f"本页{len(page_lines)}条，累计{len(all_lines)}条"
         )
 
-        if "下一页" not in html and page_num > 1:
-            break
         if "下一页" not in html and page_num > 1:
             break
     return all_lines
@@ -470,14 +472,11 @@ def fetch_channel_lines_by_province(
     selected_ops: list[str] = []
 
     for picked in selected_rows:
-        
         print(
             f"[*] [{province}] 正在提取源："
             f"{picked.get('type', '')} {picked.get('host', '')}"
         )
 
-        picked_type = picked.get("type", "")
-        group_title = normalize_group_title(picked_type, province)
         picked_type = picked.get("type", "")
         group_title = normalize_group_title(picked_type, province)
         selected_ops.append(group_title)
@@ -531,9 +530,7 @@ def extract_test_targets(template_content, max_targets=5):
     return targets
 
 
-
-
-# 优先置顶的频道关键词，顺序不可随意调整
+# 匹配越靠前的关键词，导出时的排序优先级越高。
 PRIORITY_CHANNEL_KEYWORDS = [
     "凤凰",
     "CCTV4K",
@@ -547,33 +544,19 @@ PRIORITY_CHANNEL_KEYWORDS = [
 
 
 def sort_priority_channels(channel_lines: list[str]) -> list[str]:
-    """
-    将包含指定关键词的频道移到列表顶部。
+    """将包含指定关键词的频道移到列表顶部。
 
-    同一个关键词匹配到多个频道时，保持它们原来的相对顺序；
-    未匹配的其他频道也保持原有顺序。
+    同一优先级内及未命中关键词的频道都保持原有相对顺序。
     """
 
     def priority_key(line: str) -> int:
-        # 每行格式为：频道名称,播放地址
-        channel_name = line.split(",", 1)[0].strip()
-        normalized_name = channel_name.casefold()
-
+        channel_name = line.split(",", 1)[0].strip().casefold()
         for index, keyword in enumerate(PRIORITY_CHANNEL_KEYWORDS):
-            if keyword.casefold() in normalized_name:
+            if keyword.casefold() in channel_name:
                 return index
-
-        # 未匹配的频道全部排在优先频道之后
         return len(PRIORITY_CHANNEL_KEYWORDS)
 
     return sorted(channel_lines, key=priority_key)
-
-
-
-
-
-
-
 
 def build_tvg_logo_url(channel_name: str) -> str:
     safe_name = quote(channel_name.strip(), safe="")
@@ -731,25 +714,12 @@ def process_province(
     total_channels = 0
     exported_sources = 0
     for group_title, sources in grouped_sources.items():
-                for idx, channel_lines in enumerate(sources):
+        for idx, channel_lines in enumerate(sources):
             if not channel_lines:
                 continue
 
-            # 根据关键词优先级调整频道顺序
             channel_lines = sort_priority_channels(channel_lines)
 
-            suffix = "" if idx == 0 else str(idx)
-            file_stem = f"{group_title}{suffix}"
-            out_txt = os.path.join(txt_output_dir, f"{file_stem}.txt")
-            out_m3u = os.path.join(m3u_output_dir, f"{file_stem}.m3u")
-
-            txt_content = "\n".join(channel_lines)
-            
-
-
-
-
-            
             suffix = "" if idx == 0 else str(idx)
             file_stem = f"{group_title}{suffix}"
             out_txt = os.path.join(txt_output_dir, f"{file_stem}.txt")
