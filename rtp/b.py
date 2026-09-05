@@ -311,6 +311,13 @@ def fetch_channel_lines_by_s(s_token: str, session: requests.Session | None = No
                 continue
             seen.add(line)
             all_lines.append(line)
+            print(
+            f"[*] 正在抓取频道列表：第{page_num}页，"
+            f"本页{len(page_lines)}条，累计{len(all_lines)}条"
+        )
+
+        if "下一页" not in html and page_num > 1:
+            break
         if "下一页" not in html and page_num > 1:
             break
     return all_lines
@@ -463,6 +470,14 @@ def fetch_channel_lines_by_province(
     selected_ops: list[str] = []
 
     for picked in selected_rows:
+        
+        print(
+            f"[*] [{province}] 正在提取源："
+            f"{picked.get('type', '')} {picked.get('host', '')}"
+        )
+
+        picked_type = picked.get("type", "")
+        group_title = normalize_group_title(picked_type, province)
         picked_type = picked.get("type", "")
         group_title = normalize_group_title(picked_type, province)
         selected_ops.append(group_title)
