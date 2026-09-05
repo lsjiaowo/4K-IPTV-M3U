@@ -110,7 +110,12 @@ def generate_paer_token() -> str:
     return f"{ts}|{rand}|{sig}"
 
 
+# 重试退避计算的基础时间
 REQUEST_DELAY_SEC = 0.8
+
+# 每次成功请求后的随机间隔
+REQUEST_DELAY_MIN_SEC = 2.0
+REQUEST_DELAY_MAX_SEC = 4.0
 REQUEST_MAX_RETRIES = 5
 
 
@@ -134,7 +139,9 @@ def signed_get(path_query: str, session: requests.Session | None = None) -> dict
                 time.sleep(wait)
                 continue
             resp.raise_for_status()
-            time.sleep(REQUEST_DELAY_SEC)
+            time.sleep(
+    random.uniform(REQUEST_DELAY_MIN_SEC, REQUEST_DELAY_MAX_SEC)
+)
             return resp.json()
         except requests.HTTPError as e:
             last_error = e
