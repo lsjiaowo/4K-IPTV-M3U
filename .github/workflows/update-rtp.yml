@@ -49,8 +49,7 @@ jobs:
       - name: Run updater
         env:
           PYTHONUNBUFFERED: "1"
-        run: python -u rtp/b.py --max-pages 10 --max-per-carrier 2
-
+        run: python -u rtp/b.py --max-pages 5 --max-per-carrier 2
 
 
 
