@@ -530,33 +530,45 @@ def extract_test_targets(template_content, max_targets=5):
     return targets
 
 
-# 匹配越靠前的关键词，导出时的排序优先级越高。
-PRIORITY_CHANNEL_KEYWORDS = [
-    "凤凰",
-    "CCTV4K",
-    "安徽经济",
-    "安徽影视",
-    "安徽公共",
-    "安徽综艺",
-    "安徽农业",
-    "安徽国际",
+# 频道置顶规则：每个元组中的关键词必须全部出现
+PRIORITY_CHANNEL_RULES = [
+    ("凤凰", "中文"),   # 第一优先：凤凰中文
+    ("凤凰", "资讯"),   # 第二优先：凤凰资讯
+    ("凤凰",),          # 其他凤凰频道
+    ("CCTV4K",),
+    ("安徽经济",),
+    ("安徽影视",),
+    ("安徽公共",),
+    ("安徽综艺",),
+    ("安徽农业",),
+    ("安徽国际",),
 ]
 
 
 def sort_priority_channels(channel_lines: list[str]) -> list[str]:
-    """将包含指定关键词的频道移到列表顶部。
+    """
+    按指定规则将频道移到列表顶部。
 
-    同一优先级内及未命中关键词的频道都保持原有相对顺序。
+    每条规则中的关键词必须全部包含在频道名称中。
+    相同优先级的频道保持原来的相对顺序。
     """
 
     def priority_key(line: str) -> int:
+        # 每行格式：频道名称,播放地址
         channel_name = line.split(",", 1)[0].strip().casefold()
-        for index, keyword in enumerate(PRIORITY_CHANNEL_KEYWORDS):
-            if keyword.casefold() in channel_name:
+
+        for index, required_keywords in enumerate(PRIORITY_CHANNEL_RULES):
+            if all(
+                keyword.casefold() in channel_name
+                for keyword in required_keywords
+            ):
                 return index
-        return len(PRIORITY_CHANNEL_KEYWORDS)
+
+        # 没有匹配规则的频道放在最后
+        return len(PRIORITY_CHANNEL_RULES)
 
     return sorted(channel_lines, key=priority_key)
+    
 
 def build_tvg_logo_url(channel_name: str) -> str:
     safe_name = quote(channel_name.strip(), safe="")
