@@ -546,7 +546,7 @@ def fetch_channel_lines_by_province(
         age_hours = (now_dt - dt).total_seconds() / 3600
         return age_hours <= max_age_hours
 
-    def _pick_many(rows_pool, carrier: str, limit: int):
+    def _pick_candidates(rows_pool, carrier: str, target_count: int):
         carrier_rows = [
             r
             for r in rows_pool
@@ -554,7 +554,7 @@ def fetch_channel_lines_by_province(
             and _is_usable_status(r.get("status", ""))
             and _is_recent_update(r)
         ]
-        if not carrier_rows or limit <= 0:
+        if not carrier_rows or target_count <= 0:
             return []
 
         def _sort_key(row: dict):
@@ -563,6 +563,9 @@ def fetch_channel_lines_by_province(
             return (source_status_rank(row.get("status", ""), province), ts)
 
         carrier_rows = sorted(carrier_rows, key=_sort_key, reverse=True)
+        # 测速前不能只截取目标数量，否则候选测速失败后无法向后补足。
+        # 每个运营商最多尝试目标数的4倍，兼顾成功率与Action运行时间。
+        candidate_limit = max(target_count, target_count * 4)
         picked = []
         seen = set()
         for row in carrier_rows:
@@ -571,25 +574,30 @@ def fetch_channel_lines_by_province(
                 continue
             seen.add(token)
             picked.append(row)
-            if len(picked) >= limit:
+            if len(picked) >= candidate_limit:
                 break
         return picked
 
-    selected_rows = []
+    selected_rows: list[tuple[str, dict]] = []
     selected_tokens = set()
     for carrier in ("电信", "移动", "联通"):
-        for row in _pick_many(rows, carrier, max_per_carrier):
+        carrier_candidates = _pick_candidates(rows, carrier, max_per_carrier)
+        print(
+            f"[*] [{province}{carrier}] 找到 {len(carrier_candidates)} 条候选，"
+            f"目标获取 {max_per_carrier} 条可播放源。"
+        )
+        for row in carrier_candidates:
             token = row.get("p_token")
             if not token or token in selected_tokens:
                 continue
-            selected_rows.append(row)
+            selected_rows.append((carrier, row))
             selected_tokens.add(token)
 
     # 兜底也严格使用相同的状态白名单。
     if not selected_rows:
         for row in rows:
             if _is_usable_status(row.get("status", "")) and _is_recent_update(row):
-                selected_rows = [row]
+                selected_rows = [("其他", row)]
                 break
 
     if not selected_rows:
@@ -598,8 +606,12 @@ def fetch_channel_lines_by_province(
     # group_title -> list of sources, each source is list of "name,url" lines
     group_to_sources: dict[str, list[list[str]]] = {}
     selected_ops: list[str] = []
+    playable_counts = {"电信": 0, "移动": 0, "联通": 0, "其他": 0}
 
-    for picked in selected_rows:
+    for carrier, picked in selected_rows:
+        if playable_counts.get(carrier, 0) >= max_per_carrier:
+            continue
+
         print(
             f"[*] [{province}] 正在提取源："
             f"{picked.get('type', '')} {picked.get('host', '')}"
@@ -636,9 +648,22 @@ def fetch_channel_lines_by_province(
 
         selected_ops.append(group_title)
         group_to_sources.setdefault(group_title, []).append(lines)
+        playable_counts[carrier] = playable_counts.get(carrier, 0) + 1
+        print(
+            f"[+] [{province}{carrier}] 已找到 "
+            f"{playable_counts[carrier]}/{max_per_carrier} 条可播放源。"
+        )
 
     if not group_to_sources:
         return [], "no_playable_source", province
+
+    for carrier in ("电信", "移动", "联通"):
+        found = playable_counts.get(carrier, 0)
+        if found < max_per_carrier:
+            print(
+                f"[!] [{province}{carrier}] 候选已测试完，"
+                f"仅找到 {found}/{max_per_carrier} 条可播放源。"
+            )
 
     unique_ops = sorted(set(selected_ops))
     playable_source_count = sum(len(sources) for sources in group_to_sources.values())
