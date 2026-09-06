@@ -38,7 +38,7 @@ RAW_BASE_URL = "https://raw.githubusercontent.com/lsjiaowo/4K-IPTV-M3U/main"
 PROXY_PREFIX = "https://gh-proxy.org/"
 
 # 中国省份全称及简称对照表，用于智能嗅探
-PROVINCES = ["浙江", "安徽", "福建", "湖南", "广东", "四川"]
+PROVINCES = ["浙江", "安徽", "福建", "湖南", "广东", "四川","山西","湖北",]
 
 # 新站点省份筛选 code（与 iptv.cqshushu.com 下拉框一致）
 PROVINCE_CODES = {
