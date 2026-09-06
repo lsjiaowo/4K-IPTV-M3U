@@ -2,8 +2,24 @@ name: Update RTP Sources
 
 on:
   workflow_dispatch:
+    inputs:
+      province:
+        description: "选择要更新的省份"
+        required: true
+        default: "全部"
+        type: choice
+        options:
+          - "全部"
+          - "浙江"
+          - "安徽"
+          - "福建"
+          - "湖南"
+          - "广东"
+          - "四川"
+          - "山西"
+          - "湖北"
   schedule:
-    # 每小时第N分钟触发，避开GitHub整点高峰
+    # 每小时第18分钟触发；定时运行始终更新全部省份。
     - cron: "18 * * * *"
 
 concurrency:
@@ -45,15 +61,25 @@ jobs:
             pip install "requests>=2.31.0"
           fi
 
-
       - name: Run updater
         env:
           PYTHONUNBUFFERED: "1"
-        run: python -u rtp/b.py --max-pages 5 --max-per-carrier 2
-
-
-
-        
+          SELECTED_PROVINCE: "${{ github.event.inputs.province }}"
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] &&
+             [ -n "$SELECTED_PROVINCE" ] &&
+             [ "$SELECTED_PROVINCE" != "全部" ]; then
+            echo "[*] 手动运行：仅更新 $SELECTED_PROVINCE"
+            python -u rtp/b.py \
+              --only-province "$SELECTED_PROVINCE" \
+              --max-pages 5 \
+              --max-per-carrier 2
+          else
+            echo "[*] 定时运行或手动选择全部：更新所有省份"
+            python -u rtp/b.py \
+              --max-pages 5 \
+              --max-per-carrier 2
+          fi
 
       - name: Commit and push if changed
         run: |
