@@ -253,23 +253,24 @@ def fetch_region_rows_by_ajax(province, limit=20, max_pages=30, session=None):
     return all_rows
 
 
-def source_status_rank(status: str) -> int:
-    """返回允许抓取的状态优先级，0 表示不抓取。"""
+def source_status_rank(status: str, province: str) -> int:
+    """按省份返回允许抓取的状态优先级，0 表示不抓取。
+
+    安徽：新上线、存活1天。
+    其他省份：仅新上线。
+    """
     normalized = re.sub(r"\s+", "", status or "")
     if "新上线" in normalized:
-        return 4
+        return 2
 
     # 使用完整匹配，避免把“存活10天”误判成“存活1天”。
-    alive_match = re.fullmatch(r"存活([123])天", normalized)
-    if not alive_match:
-        return 0
-
-    alive_days = int(alive_match.group(1))
-    return 4 - alive_days
+    if province == "安徽" and re.fullmatch(r"存活1天", normalized):
+        return 1
+    return 0
 
 
 def get_region_assets(province, rows=None):
-    """按地区提取新上线或存活1至3天的服务器，最多返回前5条。"""
+    """按省份专属状态规则提取服务器，最多返回前5条。"""
     rows = rows if rows is not None else fetch_region_rows_by_ajax(province)
     region_all = [r for r in rows if province in r.get("type", "")]
     if not region_all:
@@ -277,12 +278,17 @@ def get_region_assets(province, rows=None):
         return [], []
 
     preferred = sorted(
-        [r for r in region_all if source_status_rank(r.get("status", "")) > 0],
-        key=lambda r: source_status_rank(r.get("status", "")),
+        [
+            r
+            for r in region_all
+            if source_status_rank(r.get("status", ""), province) > 0
+        ],
+        key=lambda r: source_status_rank(r.get("status", ""), province),
         reverse=True,
     )[:5]
     if not preferred:
-        print(f"[-] [{province}] 当前没有新上线或存活1至3天的服务器，本次不提取。")
+        allowed_text = "新上线或存活1天" if province == "安徽" else "新上线"
+        print(f"[-] [{province}] 当前没有{allowed_text}服务器，本次不提取。")
         return region_all, []
     return region_all, preferred
 
@@ -349,6 +355,103 @@ def fetch_channel_lines_by_s(s_token: str, session: requests.Session | None = No
         if "下一页" not in html and page_num > 1:
             break
     return all_lines
+
+
+def measure_stream_speed(
+    play_url: str,
+    sample_seconds: float = 3.0,
+    connect_timeout: float = 5.0,
+    read_timeout: float = 5.0,
+) -> tuple[float, int]:
+    """流式读取直播地址，返回平均下载速度（MB/s）和读取字节数。"""
+    headers = {
+        "User-Agent": "Mozilla/5.0 IPTV-Stream-Validator/1.0",
+        "Accept": "*/*",
+        "Connection": "close",
+    }
+    total_bytes = 0
+    first_byte_at = None
+
+    with requests.get(
+        play_url,
+        headers=headers,
+        stream=True,
+        allow_redirects=True,
+        timeout=(connect_timeout, read_timeout),
+    ) as response:
+        response.raise_for_status()
+        for chunk in response.iter_content(chunk_size=64 * 1024):
+            if not chunk:
+                continue
+            now = time.monotonic()
+            if first_byte_at is None:
+                first_byte_at = now
+            total_bytes += len(chunk)
+            if now - first_byte_at >= sample_seconds:
+                break
+
+    if first_byte_at is None or total_bytes == 0:
+        return 0.0, 0
+
+    elapsed = max(time.monotonic() - first_byte_at, 0.001)
+    # 返回很快结束的小型错误页不能算直播流；至少持续读取1秒。
+    if elapsed < min(max(sample_seconds, 0.1), 1.0):
+        return 0.0, total_bytes
+    speed_mb_s = total_bytes / elapsed / (1024 * 1024)
+    return speed_mb_s, total_bytes
+
+
+def is_source_playable(
+    channel_lines: list[str],
+    source_label: str,
+    min_speed_mb_s: float = 1.0,
+    sample_seconds: float = 3.0,
+    test_channels: int = 2,
+) -> bool:
+    """抽测频道；任意一个达到速度阈值，即认为该服务器有效。"""
+    candidates: list[tuple[str, str]] = []
+    seen_urls: set[str] = set()
+
+    for line in channel_lines:
+        if "," not in line:
+            continue
+        channel_name, play_url = line.split(",", 1)
+        play_url = play_url.strip()
+        if not play_url.lower().startswith(("http://", "https://")):
+            continue
+        if play_url in seen_urls:
+            continue
+        seen_urls.add(play_url)
+        candidates.append((channel_name.strip(), play_url))
+        if len(candidates) >= max(1, test_channels):
+            break
+
+    if not candidates:
+        print(f"[-] [{source_label}] 没有可测试的 HTTP/HTTPS 频道地址，判定无效。")
+        return False
+
+    for channel_name, play_url in candidates:
+        print(f"[*] [{source_label}] 测速频道：{channel_name} {play_url}")
+        try:
+            speed_mb_s, total_bytes = measure_stream_speed(
+                play_url,
+                sample_seconds=sample_seconds,
+            )
+        except requests.RequestException as exc:
+            print(f"[-] [{source_label}] 测速失败：{exc}")
+            continue
+
+        print(
+            f"[*] [{source_label}] 下载 {total_bytes / (1024 * 1024):.2f} MB，"
+            f"平均速度 {speed_mb_s:.2f} MB/s，要求 >= {min_speed_mb_s:.2f} MB/s"
+        )
+        if speed_mb_s >= min_speed_mb_s:
+            print(f"[+] [{source_label}] 播放源测速通过。")
+            return True
+
+    print(f"[-] [{source_label}] 所有抽测频道均未达到速度要求，丢弃该服务器。")
+    return False
+
 
 def parse_channel_lines(channels_html: str) -> list[str]:
     lines = []
@@ -419,6 +522,9 @@ def fetch_channel_lines_by_province(
     max_per_carrier: int = 5,
     max_pages: int = 30,
     max_age_hours: int = 24,
+    min_stream_speed_mb_s: float = 1.0,
+    stream_test_seconds: float = 3.0,
+    test_channels_per_source: int = 2,
 ):
     session = requests.Session()
     rows = fetch_region_rows_by_ajax(province, limit=20, max_pages=max_pages, session=session)
@@ -428,7 +534,7 @@ def fetch_channel_lines_by_province(
     now_dt = datetime.now()
 
     def _is_usable_status(status: str) -> bool:
-        return source_status_rank(status) > 0
+        return source_status_rank(status, province) > 0
 
     def _is_recent_update(row: dict) -> bool:
         dt = _parse_site_datetime(row.get("update_time", ""))
@@ -454,7 +560,7 @@ def fetch_channel_lines_by_province(
         def _sort_key(row: dict):
             dt = _parse_site_datetime(row.get("update_time", "")) or _parse_site_datetime(row.get("online_time", ""))
             ts = dt.timestamp() if dt else 0.0
-            return (source_status_rank(row.get("status", "")), ts)
+            return (source_status_rank(row.get("status", ""), province), ts)
 
         carrier_rows = sorted(carrier_rows, key=_sort_key, reverse=True)
         picked = []
@@ -501,7 +607,6 @@ def fetch_channel_lines_by_province(
 
         picked_type = picked.get("type", "")
         group_title = normalize_group_title(picked_type, province)
-        selected_ops.append(group_title)
         try:
             detail_html = fetch_detail_html(picked.get("p_token", ""), session=session)
         except Exception as e:
@@ -518,15 +623,29 @@ def fetch_channel_lines_by_province(
         lines = fetch_channel_lines_by_s(s_token, session=session)
         if not lines:
             continue
+
+        source_label = f"{group_title} {picked.get('host', '')}".strip()
+        if not is_source_playable(
+            lines,
+            source_label=source_label,
+            min_speed_mb_s=min_stream_speed_mb_s,
+            sample_seconds=stream_test_seconds,
+            test_channels=test_channels_per_source,
+        ):
+            continue
+
+        selected_ops.append(group_title)
         group_to_sources.setdefault(group_title, []).append(lines)
 
     if not group_to_sources:
-        return [], "channel_lines_empty", province
+        return [], "no_playable_source", province
 
     unique_ops = sorted(set(selected_ops))
+    playable_source_count = sum(len(sources) for sources in group_to_sources.values())
+    allowed_text = "新上线/存活1天" if province == "安徽" else "仅新上线"
     print(
-        f"[*] [{province}] 已提取源数量: {len(selected_rows)}"
-        f"（仅限新上线/存活1至3天，电信/移动/联通各最多{max_per_carrier}条，"
+        f"[*] [{province}] 已通过测速源数量: {playable_source_count}"
+        f"（状态={allowed_text}，电信/移动/联通各最多{max_per_carrier}条，"
         f"更新时间<= {max_age_hours}小时），来源: {', '.join(unique_ops)}"
     )
     return group_to_sources, "ok", province
@@ -718,6 +837,9 @@ def process_province(
     max_pages=30,
     max_per_carrier=5,
     max_age_hours=72,
+    min_stream_speed_mb_s=1.0,
+    stream_test_seconds=3.0,
+    test_channels_per_source=2,
 ):
     """单一省份核心流水线"""
     group_title = province
@@ -733,6 +855,9 @@ def process_province(
         max_pages=max_pages,
         max_per_carrier=max_per_carrier,
         max_age_hours=max_age_hours,
+        min_stream_speed_mb_s=min_stream_speed_mb_s,
+        stream_test_seconds=stream_test_seconds,
+        test_channels_per_source=test_channels_per_source,
     )
     if not grouped_sources:
         print(f"[-] [{province}] 频道提取失败: {status}")
@@ -848,13 +973,31 @@ def parse_args():
         "--max-per-carrier",
         type=int,
         default=5,
-        help="每个运营商最多选取新上线或存活1至3天的源数量（默认5）。",
+        help="每个运营商按省份状态规则最多选取的源数量（默认5）。",
     )
     ap.add_argument(
         "--max-age-hours",
         type=int,
         default=72,
         help="仅提取最近更新 N 小时内的源（默认72，约3天）。",
+    )
+    ap.add_argument(
+        "--min-stream-speed",
+        type=float,
+        default=1.0,
+        help="直播源抽测最低平均下载速度，单位 MB/s（默认1.0）。",
+    )
+    ap.add_argument(
+        "--stream-test-seconds",
+        type=float,
+        default=3.0,
+        help="每个抽测频道的测速时长，单位秒（默认3）。",
+    )
+    ap.add_argument(
+        "--test-channels-per-source",
+        type=int,
+        default=2,
+        help="每条服务器最多抽测的频道数量（默认2）。",
     )
     return ap.parse_args()
 
@@ -872,6 +1015,9 @@ def main():
             max_pages=args.max_pages,
             max_per_carrier=args.max_per_carrier,
             max_age_hours=args.max_age_hours,
+            min_stream_speed_mb_s=args.min_stream_speed,
+            stream_test_seconds=args.stream_test_seconds,
+            test_channels_per_source=args.test_channels_per_source,
         )
         total = (
             sum(len(lines) for sources in grouped_sources.values() for lines in sources)
@@ -905,6 +1051,9 @@ def main():
             max_pages=args.max_pages,
             max_per_carrier=args.max_per_carrier,
             max_age_hours=args.max_age_hours,
+            min_stream_speed_mb_s=args.min_stream_speed,
+            stream_test_seconds=args.stream_test_seconds,
+            test_channels_per_source=args.test_channels_per_source,
         )
 
     generated_files = []
