@@ -3,7 +3,7 @@ name: Update RTP Sources
 on:
   workflow_dispatch:
   schedule:
-    # 每小时第17分钟触发，避开GitHub整点高峰
+    # 每小时第18分钟触发，避开GitHub整点高峰
     - cron: "18 * * * *"
 
 concurrency:
