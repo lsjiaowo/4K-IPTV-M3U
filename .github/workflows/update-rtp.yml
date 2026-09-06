@@ -19,8 +19,8 @@ on:
           - "山西"
           - "湖北"
   schedule:
-    # 每小时第18分钟触发；定时运行始终更新全部省份。
-    - cron: "18 * * * *"
+    # 每小时提供4个候选触发点；小时锁确保实际最多更新一次。
+    - cron: "7,22,37,52 * * * *"
 
 concurrency:
   group: update-rtp-${{ github.ref }}
@@ -40,18 +40,40 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Build hourly lock key
+        id: hourly-slot
+        shell: bash
+        run: |
+          echo "cache_key=update-rtp-hour-$(date -u +'%Y%m%d%H')" >> "$GITHUB_OUTPUT"
+
+      - name: Check whether this hour has already run
+        id: hourly-cache
+        if: github.event_name == 'schedule'
+        uses: actions/cache/restore@v4
+        with:
+          path: .github-hourly-run
+          key: ${{ steps.hourly-slot.outputs.cache_key }}
+          lookup-only: true
+
+      - name: Explain skipped duplicate
+        if: github.event_name == 'schedule' && steps.hourly-cache.outputs.cache-hit == 'true'
+        run: echo "[*] 本小时已经成功更新过，跳过本次候选触发。"
+
       - name: Set up Python
+        if: github.event_name == 'workflow_dispatch' || steps.hourly-cache.outputs.cache-hit != 'true'
         uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
       - name: Debug workspace
+        if: github.event_name == 'workflow_dispatch' || steps.hourly-cache.outputs.cache-hit != 'true'
         run: |
           pwd
           ls -la
           ls -la "${{ github.workspace }}"
 
       - name: Install dependencies
+        if: github.event_name == 'workflow_dispatch' || steps.hourly-cache.outputs.cache-hit != 'true'
         run: |
           python -m pip install --upgrade pip
           if [ -f "${{ github.workspace }}/requirements.txt" ]; then
@@ -62,6 +84,7 @@ jobs:
           fi
 
       - name: Run updater
+        if: github.event_name == 'workflow_dispatch' || steps.hourly-cache.outputs.cache-hit != 'true'
         env:
           PYTHONUNBUFFERED: "1"
           SELECTED_PROVINCE: "${{ github.event.inputs.province }}"
@@ -82,6 +105,7 @@ jobs:
           fi
 
       - name: Commit and push if changed
+        if: github.event_name == 'workflow_dispatch' || steps.hourly-cache.outputs.cache-hit != 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -100,3 +124,17 @@ jobs:
             git commit -m "chore: auto update rtp sources"
             git push
           fi
+
+      - name: Create successful hourly marker
+        if: success() && github.event_name == 'schedule' && steps.hourly-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          mkdir -p .github-hourly-run
+          date -u +'%Y-%m-%dT%H:%M:%SZ' > .github-hourly-run/completed-at.txt
+
+      - name: Save successful hourly marker
+        if: success() && github.event_name == 'schedule' && steps.hourly-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .github-hourly-run
+          key: ${{ steps.hourly-slot.outputs.cache_key }}
