@@ -38,7 +38,7 @@ RAW_BASE_URL = "https://raw.githubusercontent.com/lsjiaowo/4K-IPTV-M3U/main"
 PROXY_PREFIX = "https://gh-proxy.org/"
 
 # 中国省份全称及简称对照表，用于智能嗅探
-PROVINCES = ["浙江", "安徽", "福建", "湖南", "广东", "四川","山西","湖北",]
+PROVINCES = ["浙江", "安徽", "福建", "湖南", "广东", "四川"]
 
 # 新站点省份筛选 code（与 iptv.cqshushu.com 下拉框一致）
 PROVINCE_CODES = {
@@ -245,18 +245,18 @@ def fetch_region_rows_by_ajax(province, limit=20, max_pages=30, session=None):
 
 
 def get_region_assets(province, rows=None):
-    """按地区提取服务器，优先新上线，再存活，最多返回前5条。"""
+    """按地区提取状态为“新上线”的服务器，最多返回前5条。"""
     rows = rows if rows is not None else fetch_region_rows_by_ajax(province)
     region_all = [r for r in rows if province in r.get("type", "")]
     if not region_all:
         print(f"[-] 未找到 [{province}] 地区服务器。")
         return [], []
 
-    preferred_new = [r for r in region_all if "新上线" in r.get("status", "")]
-    preferred_alive = [r for r in region_all if "存活" in r.get("status", "")]
-    preferred = (preferred_new + preferred_alive)[:5]
+    preferred = [
+        r for r in region_all if "新上线" in r.get("status", "")
+    ][:5]
     if not preferred:
-        print(f"[-] [{province}] 当前没有“新上线”或“存活”服务器，本次不提取。")
+        print(f"[-] [{province}] 当前没有“新上线”服务器，本次不提取。")
         return region_all, []
     return region_all, preferred
 
@@ -402,7 +402,8 @@ def fetch_channel_lines_by_province(
     now_dt = datetime.now()
 
     def _is_usable_status(status: str) -> bool:
-        return ("新上线" in status) or ("存活" in status)
+        # 只允许站点标记为“新上线”的服务器进入候选集。
+        return "新上线" in (status or "")
 
     def _is_recent_update(row: dict) -> bool:
         dt = _parse_site_datetime(row.get("update_time", ""))
@@ -413,10 +414,6 @@ def fetch_channel_lines_by_province(
             return False
         age_hours = (now_dt - dt).total_seconds() / 3600
         return age_hours <= max_age_hours
-
-    def _status_rank(status: str) -> int:
-        # 新上线优先于存活
-        return 2 if "新上线" in status else 1
 
     def _pick_many(rows_pool, carrier: str, limit: int):
         carrier_rows = [
@@ -431,8 +428,7 @@ def fetch_channel_lines_by_province(
 
         def _sort_key(row: dict):
             dt = _parse_site_datetime(row.get("update_time", "")) or _parse_site_datetime(row.get("online_time", ""))
-            ts = dt.timestamp() if dt else 0.0
-            return (_status_rank(row.get("status", "")), ts)
+            return dt.timestamp() if dt else 0.0
 
         carrier_rows = sorted(carrier_rows, key=_sort_key, reverse=True)
         picked = []
@@ -457,7 +453,7 @@ def fetch_channel_lines_by_province(
             selected_rows.append(row)
             selected_tokens.add(token)
 
-    # 兜底：三网都没有可用源时，至少保留1条“新上线/存活”
+    # 兜底也严格限定为“新上线”，不使用“存活”源。
     if not selected_rows:
         for row in rows:
             if _is_usable_status(row.get("status", "")) and _is_recent_update(row):
@@ -465,7 +461,7 @@ def fetch_channel_lines_by_province(
                 break
 
     if not selected_rows:
-        return [], "no_recent_new_or_alive", province
+        return [], "no_recent_new_online", province
 
     # group_title -> list of sources, each source is list of "name,url" lines
     group_to_sources: dict[str, list[list[str]]] = {}
@@ -504,7 +500,8 @@ def fetch_channel_lines_by_province(
     unique_ops = sorted(set(selected_ops))
     print(
         f"[*] [{province}] 已提取源数量: {len(selected_rows)}"
-        f"（电信/移动/联通各最多{max_per_carrier}条，更新时间<= {max_age_hours}小时），来源: {', '.join(unique_ops)}"
+        f"（仅限新上线，电信/移动/联通各最多{max_per_carrier}条，"
+        f"更新时间<= {max_age_hours}小时），来源: {', '.join(unique_ops)}"
     )
     return group_to_sources, "ok", province
 
@@ -530,45 +527,33 @@ def extract_test_targets(template_content, max_targets=5):
     return targets
 
 
-# 频道置顶规则：每个元组中的关键词必须全部出现
-PRIORITY_CHANNEL_RULES = [
-    ("凤凰", "中文"),   # 第一优先：凤凰中文
-    ("凤凰", "资讯"),   # 第二优先：凤凰资讯
-    ("凤凰",),          # 其他凤凰频道
-    ("CCTV4K",),
-    ("安徽经济",),
-    ("安徽影视",),
-    ("安徽公共",),
-    ("安徽综艺",),
-    ("安徽农业",),
-    ("安徽国际",),
+# 匹配越靠前的关键词，导出时的排序优先级越高。
+PRIORITY_CHANNEL_KEYWORDS = [
+    "凤凰",
+    "CCTV4K",
+    "安徽经济",
+    "安徽影视",
+    "安徽公共",
+    "安徽综艺",
+    "安徽农业",
+    "安徽国际",
 ]
 
 
 def sort_priority_channels(channel_lines: list[str]) -> list[str]:
-    """
-    按指定规则将频道移到列表顶部。
+    """将包含指定关键词的频道移到列表顶部。
 
-    每条规则中的关键词必须全部包含在频道名称中。
-    相同优先级的频道保持原来的相对顺序。
+    同一优先级内及未命中关键词的频道都保持原有相对顺序。
     """
 
     def priority_key(line: str) -> int:
-        # 每行格式：频道名称,播放地址
         channel_name = line.split(",", 1)[0].strip().casefold()
-
-        for index, required_keywords in enumerate(PRIORITY_CHANNEL_RULES):
-            if all(
-                keyword.casefold() in channel_name
-                for keyword in required_keywords
-            ):
+        for index, keyword in enumerate(PRIORITY_CHANNEL_KEYWORDS):
+            if keyword.casefold() in channel_name:
                 return index
-
-        # 没有匹配规则的频道放在最后
-        return len(PRIORITY_CHANNEL_RULES)
+        return len(PRIORITY_CHANNEL_KEYWORDS)
 
     return sorted(channel_lines, key=priority_key)
-    
 
 def build_tvg_logo_url(channel_name: str) -> str:
     safe_name = quote(channel_name.strip(), safe="")
@@ -831,7 +816,7 @@ def parse_args():
         "--max-per-carrier",
         type=int,
         default=5,
-        help="每个运营商最多选取“新上线/存活”源数量（默认5）。",
+        help="每个运营商最多选取“新上线”源数量（默认5）。",
     )
     ap.add_argument(
         "--max-age-hours",
