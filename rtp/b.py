@@ -50,7 +50,7 @@ PROVINCE_CODES = {
     "山东": "sd", "河南": "ha", "湖北": "hb", "湖南": "hn", "广东": "gd",
     "广西": "gx", "海南": "hi", "重庆": "cq", "四川": "sc", "贵州": "gz",
     "云南": "yn", "陕西": "sn", "甘肃": "gs", "青海": "qh", "宁夏": "nx",
-    "新疆": "xj",
+    "新疆": "xj", "台湾": "tw", "俄罗斯": "ru", "韩国": "kr",
 }
 
 
@@ -391,11 +391,11 @@ def measure_stream_speed(
 def is_source_playable(
     channel_lines: list[str],
     source_label: str,
-    min_speed_mb_s: float = 500.0 / 1024.0,
+    min_speed_mb_s: float = 100.0 / 1024.0,
     sample_seconds: float = 3.0,
     test_channels: int = 2,
 ) -> bool:
-    """从 CCTV1 至 CCTV15 中随机抽测指定数量，全部通过才算有效。"""
+    """从 CCTV1 至 CCTV15 中排除标清/SD后随机抽测，任意一个通过即有效。"""
     candidates: list[tuple[str, str]] = []
     seen_urls: set[str] = set()
     cctv_pattern = re.compile(
@@ -410,6 +410,9 @@ def is_source_playable(
         play_url = play_url.strip()
         if not cctv_pattern.search(channel_name):
             continue
+        # 只排除明确标记为“标清”或“SD”的频道；普通、高清、HD名称均可抽测。
+        if "标清" in channel_name or "SD" in channel_name.upper():
+            continue
         if not play_url.lower().startswith(("http://", "https://")):
             continue
         if play_url in seen_urls:
@@ -420,7 +423,7 @@ def is_source_playable(
     required_count = max(1, test_channels)
     if len(candidates) < required_count:
         print(
-            f"[-] [{source_label}] CCTV1-CCTV15 可测试频道不足："
+            f"[-] [{source_label}] CCTV1-CCTV15 非标清可测试频道不足："
             f"{len(candidates)}/{required_count}，判定无效。"
         )
         return False
@@ -428,7 +431,7 @@ def is_source_playable(
     sampled_channels = random.sample(candidates, required_count)
     passed_count = 0
     print(
-        f"[*] [{source_label}] 从 {len(candidates)} 个 CCTV1-CCTV15 频道中"
+        f"[*] [{source_label}] 从 {len(candidates)} 个 CCTV1-CCTV15 非标清频道中"
         f"随机抽测 {required_count} 个。"
     )
 
@@ -454,12 +457,15 @@ def is_source_playable(
         else:
             print(f"[-] [{source_label}] {channel_name} 速度不足。")
 
-    if passed_count == required_count:
-        print(f"[+] [{source_label}] {passed_count}/{required_count} 个抽测频道全部通过。")
+    if passed_count >= 1:
+        print(
+            f"[+] [{source_label}] {passed_count}/{required_count} 个抽测频道通过，"
+            "服务器判定有效。"
+        )
         return True
 
     print(
-        f"[-] [{source_label}] 仅 {passed_count}/{required_count} 个抽测频道通过，"
+        f"[-] [{source_label}] {passed_count}/{required_count} 个抽测频道通过，"
         "丢弃该服务器。"
     )
     return False
@@ -535,7 +541,7 @@ def fetch_channel_lines_by_province(
     max_per_carrier: int = 5,
     max_pages: int = 30,
     max_age_hours: int = 24,
-    min_stream_speed_mb_s: float = 500.0 / 1024.0,
+    min_stream_speed_mb_s: float = 100.0 / 1024.0,
     stream_test_seconds: float = 3.0,
     test_channels_per_source: int = 2,
 ):
@@ -876,7 +882,7 @@ def process_province(
     max_pages=30,
     max_per_carrier=5,
     max_age_hours=72,
-    min_stream_speed_mb_s=500.0 / 1024.0,
+    min_stream_speed_mb_s=100.0 / 1024.0,
     stream_test_seconds=3.0,
     test_channels_per_source=2,
 ):
@@ -1091,8 +1097,8 @@ def parse_args():
     ap.add_argument(
         "--min-stream-speed",
         type=float,
-        default=500.0 / 1024.0,
-        help="直播源抽测最低平均下载速度，单位 MB/s（默认500 KB/s，即0.4883 MB/s）。",
+        default=100.0 / 1024.0,
+        help="直播源抽测最低平均下载速度，单位 MB/s（默认100 KB/s，即0.0977 MB/s）。",
     )
     ap.add_argument(
         "--stream-test-seconds",
