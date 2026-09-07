@@ -3,16 +3,139 @@ name: Update RTP Sources
 on:
   workflow_dispatch:
     inputs:
-      provinces:
-        description: "省份：全部，或用逗号分隔，例如 安徽,湖北"
+      province_1:
+        description: "省份1（选择“全部”时忽略省份2和省份3）"
         required: true
         default: "全部"
-        type: string
+        type: choice
+        options:
+          - "全部"
+          - "北京"
+          - "天津"
+          - "河北"
+          - "山西"
+          - "内蒙古"
+          - "辽宁"
+          - "吉林"
+          - "黑龙江"
+          - "上海"
+          - "江苏"
+          - "浙江"
+          - "安徽"
+          - "福建"
+          - "江西"
+          - "山东"
+          - "河南"
+          - "湖北"
+          - "湖南"
+          - "广东"
+          - "广西"
+          - "海南"
+          - "重庆"
+          - "四川"
+          - "贵州"
+          - "云南"
+          - "陕西"
+          - "甘肃"
+          - "青海"
+          - "宁夏"
+          - "新疆"
+          - "台湾"
+          - "俄罗斯"
+          - "韩国"
+      province_2:
+        description: "省份2（可选）"
+        required: true
+        default: "不选择"
+        type: choice
+        options:
+          - "不选择"
+          - "北京"
+          - "天津"
+          - "河北"
+          - "山西"
+          - "内蒙古"
+          - "辽宁"
+          - "吉林"
+          - "黑龙江"
+          - "上海"
+          - "江苏"
+          - "浙江"
+          - "安徽"
+          - "福建"
+          - "江西"
+          - "山东"
+          - "河南"
+          - "湖北"
+          - "湖南"
+          - "广东"
+          - "广西"
+          - "海南"
+          - "重庆"
+          - "四川"
+          - "贵州"
+          - "云南"
+          - "陕西"
+          - "甘肃"
+          - "青海"
+          - "宁夏"
+          - "新疆"
+          - "台湾"
+          - "俄罗斯"
+          - "韩国"
+      province_3:
+        description: "省份3（可选）"
+        required: true
+        default: "不选择"
+        type: choice
+        options:
+          - "不选择"
+          - "北京"
+          - "天津"
+          - "河北"
+          - "山西"
+          - "内蒙古"
+          - "辽宁"
+          - "吉林"
+          - "黑龙江"
+          - "上海"
+          - "江苏"
+          - "浙江"
+          - "安徽"
+          - "福建"
+          - "江西"
+          - "山东"
+          - "河南"
+          - "湖北"
+          - "湖南"
+          - "广东"
+          - "广西"
+          - "海南"
+          - "重庆"
+          - "四川"
+          - "贵州"
+          - "云南"
+          - "陕西"
+          - "甘肃"
+          - "青海"
+          - "宁夏"
+          - "新疆"
+          - "台湾"
+          - "俄罗斯"
+          - "韩国"
       carriers:
-        description: "运营商：全部，或用逗号分隔，例如 电信,联通"
+        description: "选择运营商组合"
         required: true
         default: "全部"
-        type: string
+        type: choice
+        options:
+          - "全部"
+          - "电信"
+          - "联通"
+          - "移动"
+          - "电信,联通"
+          - "电信,移动"
+          - "联通,移动"
   schedule:
     # 每小时提供4个候选触发点；小时锁确保实际最多更新一次。
     - cron: "7,22,37,52 * * * *"
@@ -85,10 +208,23 @@ jobs:
         if: github.event_name == 'workflow_dispatch' || steps.hourly-cache.outputs.cache-hit != 'true'
         env:
           PYTHONUNBUFFERED: "1"
-          SELECTED_PROVINCES: "${{ github.event.inputs.provinces }}"
+          PROVINCE_1: "${{ github.event.inputs.province_1 }}"
+          PROVINCE_2: "${{ github.event.inputs.province_2 }}"
+          PROVINCE_3: "${{ github.event.inputs.province_3 }}"
           SELECTED_CARRIERS: "${{ github.event.inputs.carriers }}"
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            if [ "$PROVINCE_1" = "全部" ]; then
+              SELECTED_PROVINCES="全部"
+            else
+              SELECTED_PROVINCES="$PROVINCE_1"
+              if [ -n "$PROVINCE_2" ] && [ "$PROVINCE_2" != "不选择" ]; then
+                SELECTED_PROVINCES="$SELECTED_PROVINCES,$PROVINCE_2"
+              fi
+              if [ -n "$PROVINCE_3" ] && [ "$PROVINCE_3" != "不选择" ]; then
+                SELECTED_PROVINCES="$SELECTED_PROVINCES,$PROVINCE_3"
+              fi
+            fi
             echo "[*] 手动运行：省份=$SELECTED_PROVINCES；运营商=$SELECTED_CARRIERS"
             python -u rtp/b.py \
               --provinces "$SELECTED_PROVINCES" \
