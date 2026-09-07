@@ -4,11 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       province_1:
-        description: "省份1（选择“全部”时忽略省份2和省份3）"
+        description: "省份1（默认项与自动定时运行相同；选择后忽略其他选项）"
         required: true
-        default: "全部"
+        default: "定时默认7省电信"
         type: choice
         options:
+          - "定时默认7省电信"
           - "全部"
           - "北京"
           - "天津"
@@ -214,8 +215,20 @@ jobs:
           SELECTED_CARRIERS: "${{ github.event.inputs.carriers }}"
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            if [ "$PROVINCE_1" = "全部" ]; then
+            if [ "$PROVINCE_1" = "定时默认7省电信" ]; then
+              echo "[*] 手动运行（定时默认组合）：目标=$AUTO_TARGETS"
+              python -u rtp/b.py \
+                --targets "$AUTO_TARGETS" \
+                --max-pages 5 \
+                --max-per-carrier 2
+            elif [ "$PROVINCE_1" = "全部" ]; then
               SELECTED_PROVINCES="全部"
+              echo "[*] 手动运行：省份=$SELECTED_PROVINCES；运营商=$SELECTED_CARRIERS"
+              python -u rtp/b.py \
+                --provinces "$SELECTED_PROVINCES" \
+                --carriers "$SELECTED_CARRIERS" \
+                --max-pages 5 \
+                --max-per-carrier 2
             else
               SELECTED_PROVINCES="$PROVINCE_1"
               if [ -n "$PROVINCE_2" ] && [ "$PROVINCE_2" != "不选择" ]; then
@@ -224,13 +237,13 @@ jobs:
               if [ -n "$PROVINCE_3" ] && [ "$PROVINCE_3" != "不选择" ]; then
                 SELECTED_PROVINCES="$SELECTED_PROVINCES,$PROVINCE_3"
               fi
+              echo "[*] 手动运行：省份=$SELECTED_PROVINCES；运营商=$SELECTED_CARRIERS"
+              python -u rtp/b.py \
+                --provinces "$SELECTED_PROVINCES" \
+                --carriers "$SELECTED_CARRIERS" \
+                --max-pages 5 \
+                --max-per-carrier 2
             fi
-            echo "[*] 手动运行：省份=$SELECTED_PROVINCES；运营商=$SELECTED_CARRIERS"
-            python -u rtp/b.py \
-              --provinces "$SELECTED_PROVINCES" \
-              --carriers "$SELECTED_CARRIERS" \
-              --max-pages 5 \
-              --max-per-carrier 2
           else
             echo "[*] 定时运行：目标=$AUTO_TARGETS"
             python -u rtp/b.py \
