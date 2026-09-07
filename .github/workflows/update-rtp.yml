@@ -3,21 +3,16 @@ name: Update RTP Sources
 on:
   workflow_dispatch:
     inputs:
-      province:
-        description: "选择要更新的省份"
+      provinces:
+        description: "省份：全部，或用逗号分隔，例如 安徽,湖北"
         required: true
         default: "全部"
-        type: choice
-        options:
-          - "全部"
-          - "浙江"
-          - "安徽"
-          - "福建"
-          - "湖南"
-          - "广东"
-          - "四川"
-          - "山西"
-          - "湖北"
+        type: string
+      carriers:
+        description: "运营商：全部，或用逗号分隔，例如 电信,联通"
+        required: true
+        default: "全部"
+        type: string
   schedule:
     # 每小时提供4个候选触发点；小时锁确保实际最多更新一次。
     - cron: "7,22,37,52 * * * *"
@@ -32,7 +27,10 @@ permissions:
 jobs:
   update:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 180
+    env:
+      # 定时抓取目标：直接在此处增加或删除“省份+运营商”。
+      AUTO_TARGETS: "四川电信,浙江电信,福建电信,山西电信,湖北电信,湖南电信"
 
     steps:
       - name: Checkout
@@ -87,19 +85,20 @@ jobs:
         if: github.event_name == 'workflow_dispatch' || steps.hourly-cache.outputs.cache-hit != 'true'
         env:
           PYTHONUNBUFFERED: "1"
-          SELECTED_PROVINCE: "${{ github.event.inputs.province }}"
+          SELECTED_PROVINCES: "${{ github.event.inputs.provinces }}"
+          SELECTED_CARRIERS: "${{ github.event.inputs.carriers }}"
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] &&
-             [ -n "$SELECTED_PROVINCE" ] &&
-             [ "$SELECTED_PROVINCE" != "全部" ]; then
-            echo "[*] 手动运行：仅更新 $SELECTED_PROVINCE"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "[*] 手动运行：省份=$SELECTED_PROVINCES；运营商=$SELECTED_CARRIERS"
             python -u rtp/b.py \
-              --only-province "$SELECTED_PROVINCE" \
+              --provinces "$SELECTED_PROVINCES" \
+              --carriers "$SELECTED_CARRIERS" \
               --max-pages 5 \
               --max-per-carrier 2
           else
-            echo "[*] 定时运行或手动选择全部：更新所有省份"
+            echo "[*] 定时运行：目标=$AUTO_TARGETS"
             python -u rtp/b.py \
+              --targets "$AUTO_TARGETS" \
               --max-pages 5 \
               --max-per-carrier 2
           fi
