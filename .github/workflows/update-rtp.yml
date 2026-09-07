@@ -153,7 +153,7 @@ jobs:
     timeout-minutes: 180
     env:
       # 定时抓取目标：直接在此处增加或删除“省份+运营商”。
-      AUTO_TARGETS: "四川电信,浙江电信,福建电信,山西电信,湖北电信,湖南电信"
+      AUTO_TARGETS: "四川电信,浙江电信,福建电信,山西电信,湖北电信,湖南电信,安徽电信"
 
     steps:
       - name: Checkout
