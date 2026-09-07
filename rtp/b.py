@@ -247,14 +247,15 @@ def fetch_region_rows_by_ajax(province, limit=20, max_pages=30, session=None):
 
 
 def source_status_rank(status: str) -> int:
-    """返回状态优先级：新上线 > 存活1天 > 存活2天 > 存活3天。"""
+    """返回状态优先级：新上线 > 存活1天 > ... > 存活10天。"""
     normalized = re.sub(r"\s+", "", status or "")
     if "新上线" in normalized:
-        return 4
-    match = re.fullmatch(r"存活([123])天", normalized)
+        return 11
+    # 先匹配10，再匹配1至9，并使用完整匹配排除“存活11天”等状态。
+    match = re.fullmatch(r"存活(10|[1-9])天", normalized)
     if not match:
         return 0
-    return 4 - int(match.group(1))
+    return 11 - int(match.group(1))
 
 
 def get_region_assets(province, rows=None):
@@ -275,7 +276,7 @@ def get_region_assets(province, rows=None):
         reverse=True,
     )[:5]
     if not preferred:
-        print(f"[-] [{province}] 当前没有新上线或存活1至3天的服务器，本次不提取。")
+        print(f"[-] [{province}] 当前没有新上线或存活1至10天的服务器，本次不提取。")
         return region_all, []
     return region_all, preferred
 
@@ -689,7 +690,7 @@ def fetch_channel_lines_by_province(
     playable_source_count = sum(len(sources) for sources in group_to_sources.values())
     print(
         f"[*] [{province}] 已通过测速源数量: {playable_source_count}"
-        f"（状态=新上线/存活1至3天，所选运营商各最多{max_per_carrier}条，"
+        f"（状态=新上线/存活1至10天，所选运营商各最多{max_per_carrier}条，"
         f"更新时间<= {max_age_hours}小时），来源: {', '.join(unique_ops)}"
     )
     return group_to_sources, "ok", province
