@@ -205,6 +205,12 @@ jobs:
             pip install "requests>=2.31.0"
           fi
 
+      - name: Configure Git for incremental publishing
+        if: github.event_name == 'workflow_dispatch' || steps.hourly-cache.outputs.cache-hit != 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
       - name: Run updater
         if: github.event_name == 'workflow_dispatch' || steps.hourly-cache.outputs.cache-hit != 'true'
         env:
@@ -220,7 +226,8 @@ jobs:
               python -u rtp/b.py \
                 --targets "$AUTO_TARGETS" \
                 --max-pages 5 \
-                --max-per-carrier 2
+                --max-per-carrier 2 \
+                --push
             elif [ "$PROVINCE_1" = "全部" ]; then
               SELECTED_PROVINCES="全部"
               echo "[*] 手动运行：省份=$SELECTED_PROVINCES；运营商=$SELECTED_CARRIERS"
@@ -228,7 +235,8 @@ jobs:
                 --provinces "$SELECTED_PROVINCES" \
                 --carriers "$SELECTED_CARRIERS" \
                 --max-pages 5 \
-                --max-per-carrier 2
+                --max-per-carrier 2 \
+                --push
             else
               SELECTED_PROVINCES="$PROVINCE_1"
               if [ -n "$PROVINCE_2" ] && [ "$PROVINCE_2" != "不选择" ]; then
@@ -242,35 +250,16 @@ jobs:
                 --provinces "$SELECTED_PROVINCES" \
                 --carriers "$SELECTED_CARRIERS" \
                 --max-pages 5 \
-                --max-per-carrier 2
+                --max-per-carrier 2 \
+                --push
             fi
           else
             echo "[*] 定时运行：目标=$AUTO_TARGETS"
             python -u rtp/b.py \
               --targets "$AUTO_TARGETS" \
               --max-pages 5 \
-              --max-per-carrier 2
-          fi
-
-      - name: Commit and push if changed
-        if: github.event_name == 'workflow_dispatch' || steps.hourly-cache.outputs.cache-hit != 'true'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          # Rebase onto latest remote safely (generated files may exist).
-          git stash push -u -m "generated outputs" || true
-          git pull --rebase origin main || true
-          git stash pop || true
-
-          # Stage additions/modifications/deletions under outputs + README.
-          git add -A -- txt m3u README.md || true
-
-          if git diff --cached --quiet; then
-            echo "No changes to commit."
-          else
-            git commit -m "chore: auto update rtp sources"
-            git push
+              --max-per-carrier 2 \
+              --push
           fi
 
       - name: Create successful hourly marker
