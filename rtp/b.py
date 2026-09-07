@@ -908,7 +908,7 @@ def process_province(
     )
     if not grouped_sources:
         print(f"[-] [{province}] 频道提取失败: {status}")
-        return
+        return False
 
     # 3. 按运营商分组、按源序号分别生成 txt/m3u
     #    例：山东电信.m3u、山东电信1.m3u、山东电信2.m3u ...
@@ -934,26 +934,22 @@ def process_province(
             total_channels += len(channel_lines)
     if exported_sources == 0:
         print(f"[-] [{province}] 频道提取失败: channel_lines_empty")
-        return
+        return False
     print(f"[+] 完美！[{province}] 更新完成，导出 {total_channels} 条频道，生成 {exported_sources} 条源文件（每运营商多条）。")
+    return True
 
-def push_to_github(files):
+def push_to_github(files, province=""):
     """
     将本次生成文件提交并推送到当前 GitHub 仓库。
     依赖本机已配置好 git 远程与认证（SSH 或凭据管理器）。
     """
-    existing_files = [f for f in files if os.path.exists(f)]
-    if not existing_files:
-        print("[-] 没有可推送文件，跳过 GitHub 同步。")
-        return
-
     print("\n[*] 正在同步到 GitHub 当前仓库...")
     try:
-        add_cmd = ["git", "add", "--"] + existing_files
+        # 使用 -A 同时提交新文件、修改和旧源文件删除。
+        add_cmd = ["git", "add", "-A", "--"] + files
         add_run = subprocess.run(add_cmd, capture_output=True, text=True, encoding="utf-8", errors="ignore")
         if add_run.returncode != 0:
-            print(f"[-] git add 失败:\n{add_run.stderr.strip()}")
-            return
+            raise RuntimeError(f"git add 失败:\n{add_run.stderr.strip()}")
 
         check_run = subprocess.run(
             ["git", "diff", "--cached", "--quiet"],
@@ -964,9 +960,10 @@ def push_to_github(files):
         )
         if check_run.returncode == 0:
             print("[*] 没有新增变更，无需提交。")
-            return
+            return True
 
-        commit_msg = f"{GITHUB_COMMIT_PREFIX} multicast files at {time.strftime('%Y-%m-%d %H:%M:%S')}"
+        target = f" {province}" if province else ""
+        commit_msg = f"{GITHUB_COMMIT_PREFIX}{target} multicast files at {time.strftime('%Y-%m-%d %H:%M:%S')}"
         commit_run = subprocess.run(
             ["git", "commit", "-m", commit_msg],
             capture_output=True,
@@ -975,8 +972,7 @@ def push_to_github(files):
             errors="ignore",
         )
         if commit_run.returncode != 0:
-            print(f"[-] git commit 失败:\n{commit_run.stderr.strip()}")
-            return
+            raise RuntimeError(f"git commit 失败:\n{commit_run.stderr.strip()}")
         print("[+] git commit 成功。")
 
         push_run = subprocess.run(
@@ -987,11 +983,11 @@ def push_to_github(files):
             errors="ignore",
         )
         if push_run.returncode != 0:
-            print(f"[-] git push 失败:\n{push_run.stderr.strip()}")
-            return
+            raise RuntimeError(f"git push 失败:\n{push_run.stderr.strip()}")
         print("[+] 已成功推送到 GitHub。")
+        return True
     except Exception as e:
-        print(f"[!] GitHub 同步异常: {e}")
+        raise RuntimeError(f"GitHub 同步异常: {e}") from e
 
 def split_selection(value: str) -> list[str]:
     """拆分英文/中文逗号或分号分隔的选择项，并保持原顺序去重。"""
@@ -1050,7 +1046,7 @@ def parse_args():
     ap.add_argument(
         "--push",
         action="store_true",
-        help="生成完成后执行 git add/commit/push（默认关闭，便于在 GitHub Actions 由工作流统一提交）。",
+        help="每个省份成功生成后立即更新 README 并执行 git add/commit/push（默认关闭）。",
     )
     ap.add_argument(
         "--test-region",
@@ -1172,7 +1168,8 @@ def main():
         and "全部" in split_selection(args.provinces)
         and selected_carriers == CARRIERS
     )
-    if full_manual_run:
+    # 增量发布时保留尚未轮到的省份，避免第一次推送就让其他省份暂时消失。
+    if full_manual_run and not args.push:
         clear_output_files(txt_output_dir, m3u_output_dir)
 
     print(
@@ -1187,7 +1184,7 @@ def main():
         print(f"\n" + "="*50)
         print(f" 正在处理地区任务: {province}；运营商: {','.join(carriers)}")
         print("="*50)
-        process_province(
+        province_updated = process_province(
             province,
             txt_output_dir,
             m3u_output_dir,
@@ -1200,6 +1197,13 @@ def main():
             test_channels_per_source=args.test_channels_per_source,
         )
 
+        if province_updated:
+            update_readme_file_list(repo_root)
+            if args.push:
+                print(f"\n[*] [{province}] 已完成，立即更新 README 并推送到 GitHub...")
+                push_to_github(["txt", "m3u", README_FILE], province=province)
+                print(f"[+] [{province}] 已发布，继续处理下一个省份。")
+
     generated_files = []
     generated_files.extend(
         [os.path.join("txt", f) for f in os.listdir(txt_output_dir) if f.endswith('.txt')]
@@ -1207,13 +1211,11 @@ def main():
     generated_files.extend(
         [os.path.join("m3u", f) for f in os.listdir(m3u_output_dir) if f.endswith('.m3u')]
     )
-    update_readme_file_list(repo_root)
-    generated_files.append(README_FILE)
     if args.push:
-        print("\n[] 流水线本地文件生成完毕，准备执行 GitHub 同步...")
-        push_to_github(generated_files)
-        print("\n[] 史诗级闭环！全网搜源 -> 深度测流 -> 覆盖生成 -> GitHub 发布，全部完成！")
+        print("\n[] 全部省份处理完毕；每个成功省份均已即时发布。")
     else:
+        update_readme_file_list(repo_root)
+        generated_files.append(README_FILE)
         print("\n[] 流水线本地文件生成完毕（未启用 --push，跳过 git 推送）。")
         print(f"[] 本次生成文件数量: {len(generated_files)}")
 
