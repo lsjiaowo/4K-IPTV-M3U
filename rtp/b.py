@@ -10,7 +10,7 @@ import random
 import string
 from datetime import datetime, timedelta, timezone
 from html import unescape
-from urllib.parse import quote, urlencode
+from urllib.parse import quote, urlencode, urlparse
 try:
     from zoneinfo import ZoneInfo  # py3.9+
 except Exception:  # pragma: no cover
@@ -132,6 +132,50 @@ def clear_unselected_carrier_files(province, carriers, txt_output_dir, m3u_outpu
             f"本次仅允许：{','.join(carriers)}。"
         )
     return removed
+
+
+def normalize_source_host(value: str) -> str:
+    """统一服务器地址为小写的 host:port，便于识别新旧源。"""
+    text = (value or "").strip()
+    if not text:
+        return ""
+    parsed = urlparse(text if "://" in text else f"http://{text}")
+    return parsed.netloc.lower().strip()
+
+
+def load_previous_source_hosts(province, carriers, txt_output_dir):
+    """从该省所选运营商的现有 TXT 列表中读取上一版服务器地址。"""
+    result = {carrier: set() for carrier in carriers}
+    if not os.path.exists(txt_output_dir):
+        return result
+
+    for carrier in carriers:
+        stem_pattern = re.compile(
+            rf"^{re.escape(province + carrier)}\d*\.txt$",
+            flags=re.IGNORECASE,
+        )
+        for name in os.listdir(txt_output_dir):
+            if not stem_pattern.fullmatch(name):
+                continue
+            path = os.path.join(txt_output_dir, name)
+            try:
+                with open(path, "r", encoding="utf-8") as file:
+                    for line in file:
+                        if "," not in line:
+                            continue
+                        play_url = line.split(",", 1)[1].strip()
+                        host = normalize_source_host(play_url)
+                        if host:
+                            result[carrier].add(host)
+            except OSError as exc:
+                print(f"[!] [{province}{carrier}] 读取旧列表失败，跳过新旧比较: {exc}")
+
+        if result[carrier]:
+            print(
+                f"[*] [{province}{carrier}] 从上一版列表识别到 "
+                f"{len(result[carrier])} 个旧服务器地址，新候选将优先测速。"
+            )
+    return result
 
 def _strip_html(raw):
     no_tags = re.sub(r"<[^>]+>", "", raw)
@@ -592,6 +636,7 @@ def fetch_channel_lines_by_province(
     min_stream_speed_mb_s: float = 100.0 / 1024.0,
     stream_test_seconds: float = 3.0,
     test_channels_per_source: int = 2,
+    previous_hosts_by_carrier: dict[str, set[str]] | None = None,
 ):
     session = requests.Session()
     rows = fetch_region_rows_by_ajax(province, limit=20, max_pages=max_pages, session=session)
@@ -630,19 +675,32 @@ def fetch_channel_lines_by_province(
             return (source_status_rank(row.get("status", "")), ts)
 
         carrier_rows = sorted(carrier_rows, key=_sort_key, reverse=True)
+        previous_hosts = (previous_hosts_by_carrier or {}).get(carrier, set())
+        new_rows = [
+            row for row in carrier_rows
+            if normalize_source_host(row.get("host", "")) not in previous_hosts
+        ]
+        old_rows = [
+            row for row in carrier_rows
+            if normalize_source_host(row.get("host", "")) in previous_hosts
+        ]
+        # 新服务器整体优先；各组内部仍保持状态、更新时间优先级。
+        print(
+            f"[*] [{province}{carrier}] 候选新旧分组："
+            f"新地址 {len(new_rows)} 条，旧地址 {len(old_rows)} 条；新地址优先。"
+        )
         # 测速前不能只截取目标数量，否则候选测速失败后无法向后补足。
         # 每个运营商最多尝试目标数的4倍，兼顾成功率与Action运行时间。
         candidate_limit = max(target_count, target_count * 4)
         picked = []
         seen = set()
-        for row in carrier_rows:
+        # 新旧两组各保留足够候选，确保新地址全部失败后还能用旧地址补足。
+        for row in new_rows[:candidate_limit] + old_rows[:candidate_limit]:
             token = row.get("p_token")
             if not token or token in seen:
                 continue
             seen.add(token)
             picked.append(row)
-            if len(picked) >= candidate_limit:
-                break
         return picked
 
     selected_rows: list[tuple[str, dict]] = []
@@ -936,6 +994,9 @@ def process_province(
     if check_and_clear_existing(out_txt, out_m3u): return
 
     # 2. 直接从频道列表提取 频道名+播放地址
+    previous_hosts_by_carrier = load_previous_source_hosts(
+        province, carriers, txt_output_dir
+    )
     grouped_sources, status, _ = fetch_channel_lines_by_province(
         province,
         carriers=carriers,
@@ -945,6 +1006,7 @@ def process_province(
         min_stream_speed_mb_s=min_stream_speed_mb_s,
         stream_test_seconds=stream_test_seconds,
         test_channels_per_source=test_channels_per_source,
+        previous_hosts_by_carrier=previous_hosts_by_carrier,
     )
     if not grouped_sources:
         print(f"[-] [{province}] 频道提取失败: {status}")
