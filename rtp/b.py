@@ -86,6 +86,53 @@ def clear_output_files(txt_output_dir, m3u_output_dir):
                 except OSError:
                     pass
 
+
+def clear_province_output_files(province, txt_output_dir, m3u_output_dir):
+    """成功取得新结果后，清理该省全部旧源文件，避免遗留未选择的运营商。"""
+    carrier_pattern = "|".join(re.escape(carrier) for carrier in ("电信", "联通", "移动", "广电"))
+    stem_pattern = re.compile(
+        rf"^{re.escape(province)}(?:(?:{carrier_pattern})\d*)?$"
+    )
+    removed = []
+    for out_dir, suffix in ((txt_output_dir, ".txt"), (m3u_output_dir, ".m3u")):
+        if not os.path.exists(out_dir):
+            continue
+        for name in os.listdir(out_dir):
+            stem, ext = os.path.splitext(name)
+            if ext.lower() != suffix or not stem_pattern.fullmatch(stem):
+                continue
+            os.remove(os.path.join(out_dir, name))
+            removed.append(name)
+    if removed:
+        print(f"[*] [{province}] 已清理 {len(removed)} 个旧源文件（包括未选择运营商的遗留文件）。")
+    return removed
+
+
+def clear_unselected_carrier_files(province, carriers, txt_output_dir, m3u_output_dir):
+    """清除本省未选择运营商的历史文件，保留所选运营商的上一版结果。"""
+    allowed = set(carriers)
+    carrier_pattern = "|".join(re.escape(carrier) for carrier in ("电信", "联通", "移动", "广电"))
+    stem_pattern = re.compile(
+        rf"^{re.escape(province)}(?P<carrier>{carrier_pattern})\d*$"
+    )
+    removed = []
+    for out_dir, suffix in ((txt_output_dir, ".txt"), (m3u_output_dir, ".m3u")):
+        if not os.path.exists(out_dir):
+            continue
+        for name in os.listdir(out_dir):
+            stem, ext = os.path.splitext(name)
+            match = stem_pattern.fullmatch(stem)
+            if ext.lower() != suffix or not match or match.group("carrier") in allowed:
+                continue
+            os.remove(os.path.join(out_dir, name))
+            removed.append(name)
+    if removed:
+        print(
+            f"[*] [{province}] 已删除 {len(removed)} 个未选择运营商的历史文件；"
+            f"本次仅允许：{','.join(carriers)}。"
+        )
+    return removed
+
 def _strip_html(raw):
     no_tags = re.sub(r"<[^>]+>", "", raw)
     return unescape(no_tags).replace("\xa0", " ").strip()
@@ -613,21 +660,14 @@ def fetch_channel_lines_by_province(
             selected_rows.append((carrier, row))
             selected_tokens.add(token)
 
-    # 兜底也严格使用相同的状态白名单。
     if not selected_rows:
-        for row in rows:
-            if _is_usable_status(row.get("status", "")) and _is_recent_update(row):
-                selected_rows = [("其他", row)]
-                break
-
-    if not selected_rows:
-        return [], "no_recent_allowed_status", province
+        # 严格遵守调用方指定的运营商；没有匹配候选时不跨运营商兜底。
+        return [], "no_matching_carrier_source", province
 
     # group_title -> list of sources, each source is list of "name,url" lines
     group_to_sources: dict[str, list[list[str]]] = {}
     selected_ops: list[str] = []
     playable_counts = {carrier: 0 for carrier in carriers}
-    playable_counts["其他"] = 0
 
     for carrier, picked in selected_rows:
         if playable_counts.get(carrier, 0) >= max_per_carrier:
@@ -638,8 +678,8 @@ def fetch_channel_lines_by_province(
             f"{picked.get('type', '')} {picked.get('host', '')}"
         )
 
-        picked_type = picked.get("type", "")
-        group_title = normalize_group_title(picked_type, province)
+        # 文件分组严格使用请求的运营商，避免站点详情中的异常标签串到其他运营商。
+        group_title = f"{province}{carrier}"
         try:
             detail_html = fetch_detail_html(picked.get("p_token", ""), session=session)
         except Exception as e:
@@ -909,6 +949,9 @@ def process_province(
     if not grouped_sources:
         print(f"[-] [{province}] 频道提取失败: {status}")
         return False
+
+    # 只有抓取成功后才清理，失败时继续保留仓库中的上一版可用列表。
+    clear_province_output_files(province, txt_output_dir, m3u_output_dir)
 
     # 3. 按运营商分组、按源序号分别生成 txt/m3u
     #    例：山东电信.m3u、山东电信1.m3u、山东电信2.m3u ...
@@ -1184,6 +1227,9 @@ def main():
         print(f"\n" + "="*50)
         print(f" 正在处理地区任务: {province}；运营商: {','.join(carriers)}")
         print("="*50)
+        removed_unselected = clear_unselected_carrier_files(
+            province, carriers, txt_output_dir, m3u_output_dir
+        )
         province_updated = process_province(
             province,
             txt_output_dir,
@@ -1197,10 +1243,11 @@ def main():
             test_channels_per_source=args.test_channels_per_source,
         )
 
-        if province_updated:
+        if province_updated or removed_unselected:
             update_readme_file_list(repo_root)
             if args.push:
-                print(f"\n[*] [{province}] 已完成，立即更新 README 并推送到 GitHub...")
+                action = "抓取完成" if province_updated else "已清理未选择运营商的旧文件"
+                print(f"\n[*] [{province}] {action}，立即更新 README 并推送到 GitHub...")
                 push_to_github(["txt", "m3u", README_FILE], province=province)
                 print(f"[+] [{province}] 已发布，继续处理下一个省份。")
 
