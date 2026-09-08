@@ -603,4 +603,730 @@ def parse_operator_name(detail_html: str, province: str) -> str:
     carriers = ("电信", "联通", "移动", "广电")
     # 先在“运营商”附近做精确提取（兼容 th/td 或 div 结构）
     m = re.search(
-        r"运营商[\s\S]{0,120}?(" + re.escape(provinc
+        r"运营商[\s\S]{0,120}?(" + re.escape(province) + r"(?:电信|联通|移动|广电))",
+        detail_html,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if m:
+        value = _strip_html(m.group(1))
+        if value:
+            return value
+    # 次级匹配：不限定“运营商”字样，直接在详情中找“省份+运营商”
+    m = re.search(
+        r"(" + re.escape(province) + r"(?:电信|联通|移动|广电))",
+        detail_html,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if m:
+        value = _strip_html(m.group(1))
+        if value:
+            return value
+    # 最后兜底：匹配任意运营商后缀
+    for carrier in carriers:
+        if carrier in detail_html:
+            return f"{province}{carrier}"
+    return province
+
+def fetch_channel_lines_by_province(
+    province: str,
+    carriers: tuple[str, ...] = CARRIERS,
+    max_per_carrier: int = 5,
+    max_pages: int = 30,
+    max_age_hours: int = 24,
+    min_stream_speed_mb_s: float = 750.0 / 1024.0,
+    stream_test_seconds: float = 3.0,
+    test_channels_per_source: int = 2,
+    previous_hosts_by_carrier: dict[str, set[str]] | None = None,
+):
+    session = requests.Session()
+    rows = fetch_region_rows_by_ajax(province, limit=20, max_pages=max_pages, session=session)
+    if not rows:
+        return [], "list_empty", province
+
+    now_dt = datetime.now()
+
+    def _is_usable_status(status: str) -> bool:
+        return source_status_rank(status) > 0
+
+    def _is_recent_update(row: dict) -> bool:
+        dt = _parse_site_datetime(row.get("update_time", ""))
+        if not dt:
+            # 更新时间缺失时降级看上线时间；都缺失则判定为不新鲜
+            dt = _parse_site_datetime(row.get("online_time", ""))
+        if not dt:
+            return False
+        age_hours = (now_dt - dt).total_seconds() / 3600
+        return age_hours <= max_age_hours
+
+    def _pick_candidates(rows_pool, carrier: str, target_count: int):
+        carrier_rows = [
+            r
+            for r in rows_pool
+            if carrier in r.get("type", "")
+            and _is_usable_status(r.get("status", ""))
+            and _is_recent_update(r)
+        ]
+        if not carrier_rows or target_count <= 0:
+            return []
+
+        def _sort_key(row: dict):
+            dt = _parse_site_datetime(row.get("update_time", "")) or _parse_site_datetime(row.get("online_time", ""))
+            ts = dt.timestamp() if dt else 0.0
+            return (source_status_rank(row.get("status", "")), ts)
+
+        carrier_rows = sorted(carrier_rows, key=_sort_key, reverse=True)
+        previous_hosts = (previous_hosts_by_carrier or {}).get(carrier, set())
+        new_rows = [
+            row for row in carrier_rows
+            if normalize_source_host(row.get("host", "")) not in previous_hosts
+        ]
+        old_rows = [
+            row for row in carrier_rows
+            if normalize_source_host(row.get("host", "")) in previous_hosts
+        ]
+        # 新服务器整体优先；各组内部仍保持状态、更新时间优先级。
+        print(
+            f"[*] [{province}{carrier}] 候选新旧分组："
+            f"新地址 {len(new_rows)} 条，旧地址 {len(old_rows)} 条；新地址优先。"
+        )
+        # 测速前不能只截取目标数量，否则候选测速失败后无法向后补足。
+        # 每个运营商最多尝试目标数的4倍，兼顾成功率与Action运行时间。
+        candidate_limit = max(target_count, target_count * 4)
+        picked = []
+        seen = set()
+        # 新旧两组各保留足够候选，确保新地址全部失败后还能用旧地址补足。
+        for row in new_rows[:candidate_limit] + old_rows[:candidate_limit]:
+            token = row.get("p_token")
+            if not token or token in seen:
+                continue
+            seen.add(token)
+            picked.append(row)
+        return picked
+
+    selected_rows: list[tuple[str, dict]] = []
+    selected_tokens = set()
+    for carrier in carriers:
+        carrier_candidates = _pick_candidates(rows, carrier, max_per_carrier)
+        print(
+            f"[*] [{province}{carrier}] 找到 {len(carrier_candidates)} 条候选，"
+            f"目标获取 {max_per_carrier} 条可播放源。"
+        )
+        for row in carrier_candidates:
+            token = row.get("p_token")
+            if not token or token in selected_tokens:
+                continue
+            selected_rows.append((carrier, row))
+            selected_tokens.add(token)
+
+    if not selected_rows:
+        # 严格遵守调用方指定的运营商；没有匹配候选时不跨运营商兜底。
+        return [], "no_matching_carrier_source", province
+
+    # group_title -> list of sources, each source is list of "name,url" lines
+    group_to_sources: dict[str, list[list[str]]] = {}
+    selected_ops: list[str] = []
+    playable_counts = {carrier: 0 for carrier in carriers}
+
+    for carrier, picked in selected_rows:
+        if playable_counts.get(carrier, 0) >= max_per_carrier:
+            continue
+
+        print(
+            f"[*] [{province}] 正在提取源："
+            f"{picked.get('type', '')} {picked.get('host', '')}"
+        )
+
+        # 文件分组严格使用请求的运营商，避免站点详情中的异常标签串到其他运营商。
+        group_title = f"{province}{carrier}"
+        try:
+            detail_html = fetch_detail_html(picked.get("p_token", ""), session=session)
+        except Exception as e:
+            print(f"[-] [{province}] IP 详情获取失败: {e}")
+            continue
+        if not detail_html:
+            continue
+
+        s_token = parse_s_token(detail_html)
+        if not s_token:
+            print(f"[-] [{province}] 未找到频道列表 token: {picked.get('host', '')}")
+            continue
+
+        lines = fetch_channel_lines_by_s(s_token, session=session)
+        if not lines:
+            continue
+
+        source_label = f"{group_title} {picked.get('host', '')}".strip()
+        if not is_source_playable(
+            lines,
+            source_label=source_label,
+            min_speed_mb_s=min_stream_speed_mb_s,
+            sample_seconds=stream_test_seconds,
+            test_channels=test_channels_per_source,
+        ):
+            continue
+
+        selected_ops.append(group_title)
+        group_to_sources.setdefault(group_title, []).append(lines)
+        playable_counts[carrier] = playable_counts.get(carrier, 0) + 1
+        print(
+            f"[+] [{province}{carrier}] 已找到 "
+            f"{playable_counts[carrier]}/{max_per_carrier} 条可播放源。"
+        )
+
+    if not group_to_sources:
+        return [], "no_playable_source", province
+
+    for carrier in carriers:
+        found = playable_counts.get(carrier, 0)
+        if found < max_per_carrier:
+            print(
+                f"[!] [{province}{carrier}] 候选已测试完，"
+                f"仅找到 {found}/{max_per_carrier} 条可播放源。"
+            )
+
+    unique_ops = sorted(set(selected_ops))
+    playable_source_count = sum(len(sources) for sources in group_to_sources.values())
+    print(
+        f"[*] [{province}] 已通过测速源数量: {playable_source_count}"
+        f"（状态=新上线/存活1至10天，所选运营商各最多{max_per_carrier}条，"
+        f"更新时间<= {max_age_hours}小时），来源: {', '.join(unique_ops)}"
+    )
+    return group_to_sources, "ok", province
+
+
+def extract_test_targets(template_content, max_targets=5):
+    """从模板中提取最多 N 个组播测试目标。"""
+    matches = re.findall(
+        r'(?:https?://[^/,]+/)?(udp|rtp|igmp)(?:/|://)(\d+\.\d+\.\d+\.\d+:\d+)',
+        template_content,
+        flags=re.IGNORECASE,
+    )
+    targets = []
+    seen = set()
+    for protocol, target in matches:
+        protocol = protocol.lower()
+        key = f"{protocol}://{target}"
+        if key in seen:
+            continue
+        seen.add(key)
+        targets.append((protocol, target))
+        if len(targets) >= max_targets:
+            break
+    return targets
+
+
+# 匹配越靠前的规则，导出时的排序优先级越高。
+# 同一个元组中的关键词必须全部包含在频道名称中。
+PRIORITY_CHANNEL_RULES = [
+    ("凤凰", "中文"),
+    ("凤凰", "资讯"),
+    ("凤凰",),
+    ("CCTV4K",),
+    ("安徽经济",),
+    ("安徽影视",),
+    ("安徽公共",),
+    ("安徽综艺",),
+    ("安徽农业",),
+    ("安徽国际",),
+]
+
+
+def sort_priority_channels(channel_lines: list[str]) -> list[str]:
+    """将包含指定关键词的频道移到列表顶部。
+
+    同一优先级内及未命中关键词的频道都保持原有相对顺序。
+    """
+
+    def priority_key(line: str) -> int:
+        channel_name = line.split(",", 1)[0].strip().casefold()
+        for index, required_keywords in enumerate(PRIORITY_CHANNEL_RULES):
+            if all(
+                keyword.casefold() in channel_name
+                for keyword in required_keywords
+            ):
+                return index
+        return len(PRIORITY_CHANNEL_RULES)
+
+    return sorted(channel_lines, key=priority_key)
+
+def build_tvg_logo_url(channel_name: str) -> str:
+    safe_name = quote(channel_name.strip(), safe="")
+    return f"{TVG_LOGO_BASE_URL}{safe_name}.png"
+
+def txt_to_m3u_format(txt_content, group_title):
+    """智能转换 M3U 分组格式"""
+    m3u_lines = []
+    for line in txt_content.splitlines():
+        line = line.strip()
+        if not line: continue
+        if '#genre#' in line:
+            continue
+        elif ',' in line:
+            name, url = [p.strip() for p in line.split(',', 1)]
+            m3u_lines.append(
+                f'#EXTINF:-1 tvg-id="{name}" tvg-logo="{build_tvg_logo_url(name)}" group-title="{group_title}",{name}\n{url}'
+            )
+    return "\n".join(m3u_lines)
+
+
+def _build_readme_table_rows(repo_root: str, subdir: str, ext: str, updated_at: str) -> str:
+    target_dir = os.path.join(repo_root, subdir)
+    if not os.path.exists(target_dir):
+        return '<tr><td colspan="4">暂无文件</td></tr>'
+    names = sorted([n for n in os.listdir(target_dir) if n.endswith(ext)])
+    if not names:
+        return '<tr><td colspan="4">暂无文件</td></tr>'
+
+    rows = []
+    for name in names:
+        file_path = os.path.join(target_dir, name)
+        encoded_name = quote(name)
+        raw_url = f"{RAW_BASE_URL}/{subdir}/{encoded_name}"
+        proxy_url = f"{PROXY_PREFIX}{raw_url}"
+        rows.append(
+            "<tr>"
+            f'<td style="white-space:nowrap;">{name}</td>'
+            f'<td style="white-space:nowrap;"><a href="{proxy_url}">下载链接</a></td>'
+            f'<td style="white-space:nowrap;">{updated_at}</td>'
+            f'<td><code>{proxy_url}</code></td>'
+            "</tr>"
+        )
+    return "\n".join(rows)
+
+
+def _build_readme_section_table(repo_root: str, subdir: str, ext: str, updated_at: str) -> str:
+    rows = _build_readme_table_rows(repo_root, subdir, ext, updated_at)
+    return (
+        '<table style="width:100%; table-layout:auto;">\n'
+        "<colgroup>\n"
+        '<col style="width: 220px;" />\n'
+        '<col style="width: 120px;" />\n'
+        '<col style="width: 170px;" />\n'
+        "<col />\n"
+        "</colgroup>\n"
+        "<thead>\n"
+        "<tr>\n"
+        '<th style="white-space:nowrap;">文件名</th>\n'
+        '<th style="white-space:nowrap;">加速链接</th>\n'
+        '<th style="white-space:nowrap;">最近更新时间</th>\n'
+        '<th style="white-space:nowrap;">可复制直链</th>\n'
+        "</tr>\n"
+        "</thead>\n"
+        "<tbody>\n"
+        f"{rows}\n"
+        "</tbody>\n"
+        "</table>"
+    )
+
+
+def beijing_now() -> datetime:
+    """返回北京时间；Windows 无 tzdata 时回退到 UTC+8。"""
+    if ZoneInfo is not None:
+        try:
+            return datetime.now(ZoneInfo("Asia/Shanghai"))
+        except Exception:
+            pass
+    return datetime.now(timezone(timedelta(hours=8)))
+
+
+def update_readme_file_list(repo_root: str) -> None:
+    readme_path = os.path.join(repo_root, README_FILE)
+    if not os.path.exists(readme_path):
+        print("[-] README.md 不存在，跳过列表更新。")
+        return
+    with open(readme_path, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    # GitHub Actions runs in UTC by default; use Beijing time for display.
+    updated_at = beijing_now().strftime("%Y-%m-%d %H:%M:%S")
+    m3u_table = _build_readme_section_table(repo_root, "m3u", ".m3u", updated_at)
+    txt_table = _build_readme_section_table(repo_root, "txt", ".txt", updated_at)
+    m3u_block = f"## M3U 文件列表\n\n{m3u_table}\n"
+    txt_block = f"## TXT 文件列表\n\n{txt_table}\n"
+
+    content, m3u_count = re.subn(
+        r"## M3U 文件列表[\s\S]*?(?=\r?\n## TXT 文件列表)",
+        m3u_block.rstrip(),
+        content,
+        count=1,
+    )
+    if "## 免责声明" in content:
+        content, txt_count = re.subn(
+            r"## TXT 文件列表[\s\S]*?(?=\r?\n---\r?\n\r?\n## 免责声明)",
+            txt_block.rstrip(),
+            content,
+            count=1,
+        )
+    else:
+        content, txt_count = re.subn(
+            r"## TXT 文件列表[\s\S]*$",
+            txt_block.rstrip(),
+            content,
+            count=1,
+        )
+
+    if m3u_count == 0 or txt_count == 0:
+        print("[-] README 结构不匹配（未找到列表区块），跳过自动更新。")
+        return
+
+    with open(readme_path, "w", encoding="utf-8") as f:
+        f.write(content)
+    print("[+] README.md 文件列表已自动更新。")
+
+def process_province(
+    province,
+    txt_output_dir,
+    m3u_output_dir,
+    carriers=CARRIERS,
+    max_pages=30,
+    max_per_carrier=5,
+    max_age_hours=72,
+    min_stream_speed_mb_s=750.0 / 1024.0,
+    stream_test_seconds=3.0,
+    test_channels_per_source=2,
+):
+    """单一省份核心流水线"""
+    group_title = province
+    out_txt = os.path.join(txt_output_dir, f"{group_title}.txt")
+    out_m3u = os.path.join(m3u_output_dir, f"{group_title}.m3u")
+
+    # 1. 检测已有文件
+    if check_and_clear_existing(out_txt, out_m3u): return
+
+    # 2. 直接从频道列表提取 频道名+播放地址
+    previous_hosts_by_carrier = load_previous_source_hosts(
+        province, carriers, txt_output_dir
+    )
+    grouped_sources, status, _ = fetch_channel_lines_by_province(
+        province,
+        carriers=carriers,
+        max_pages=max_pages,
+        max_per_carrier=max_per_carrier,
+        max_age_hours=max_age_hours,
+        min_stream_speed_mb_s=min_stream_speed_mb_s,
+        stream_test_seconds=stream_test_seconds,
+        test_channels_per_source=test_channels_per_source,
+        previous_hosts_by_carrier=previous_hosts_by_carrier,
+    )
+    if not grouped_sources:
+        print(f"[-] [{province}] 频道提取失败: {status}")
+        return False
+
+    # 只有抓取成功后才清理，失败时继续保留仓库中的上一版可用列表。
+    clear_province_output_files(province, txt_output_dir, m3u_output_dir)
+
+    # 3. 按运营商分组、按源序号分别生成 txt/m3u
+    #    例：山东电信.m3u、山东电信1.m3u、山东电信2.m3u ...
+    total_channels = 0
+    exported_sources = 0
+    for group_title, sources in grouped_sources.items():
+        for idx, channel_lines in enumerate(sources):
+            if not channel_lines:
+                continue
+
+            channel_lines = sort_priority_channels(channel_lines)
+
+            suffix = "" if idx == 0 else str(idx)
+            file_stem = f"{group_title}{suffix}"
+            out_txt = os.path.join(txt_output_dir, f"{file_stem}.txt")
+            out_m3u = os.path.join(m3u_output_dir, f"{file_stem}.m3u")
+            txt_content = "\n".join(channel_lines)
+            with open(out_txt, 'w', encoding='utf-8') as f_txt, open(out_m3u, 'w', encoding='utf-8') as f_m3u:
+                f_txt.write(txt_content + "\n")
+                f_m3u.write(f'#EXTM3U x-tvg-url="{EPG_URL}"\n')
+                f_m3u.write(txt_to_m3u_format(txt_content, group_title) + "\n")
+            exported_sources += 1
+            total_channels += len(channel_lines)
+    if exported_sources == 0:
+        print(f"[-] [{province}] 频道提取失败: channel_lines_empty")
+        return False
+    print(f"[+] 完美！[{province}] 更新完成，导出 {total_channels} 条频道，生成 {exported_sources} 条源文件（每运营商多条）。")
+    return True
+
+def push_to_github(files, province=""):
+    """
+    将本次生成文件提交并推送到当前 GitHub 仓库。
+    依赖本机已配置好 git 远程与认证（SSH 或凭据管理器）。
+    """
+    print("\n[*] 正在同步到 GitHub 当前仓库...")
+    try:
+        # 使用 -A 同时提交新文件、修改和旧源文件删除。
+        add_cmd = ["git", "add", "-A", "--"] + files
+        add_run = subprocess.run(add_cmd, capture_output=True, text=True, encoding="utf-8", errors="ignore")
+        if add_run.returncode != 0:
+            raise RuntimeError(f"git add 失败:\n{add_run.stderr.strip()}")
+
+        check_run = subprocess.run(
+            ["git", "diff", "--cached", "--quiet"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="ignore",
+        )
+        if check_run.returncode == 0:
+            print("[*] 没有新增变更，无需提交。")
+            return True
+
+        target = f" {province}" if province else ""
+        commit_msg = f"{GITHUB_COMMIT_PREFIX}{target} multicast files at {time.strftime('%Y-%m-%d %H:%M:%S')}"
+        commit_run = subprocess.run(
+            ["git", "commit", "-m", commit_msg],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="ignore",
+        )
+        if commit_run.returncode != 0:
+            raise RuntimeError(f"git commit 失败:\n{commit_run.stderr.strip()}")
+        print("[+] git commit 成功。")
+
+        push_run = subprocess.run(
+            ["git", "push"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="ignore",
+        )
+        if push_run.returncode != 0:
+            raise RuntimeError(f"git push 失败:\n{push_run.stderr.strip()}")
+        print("[+] 已成功推送到 GitHub。")
+        return True
+    except Exception as e:
+        raise RuntimeError(f"GitHub 同步异常: {e}") from e
+
+def split_selection(value: str) -> list[str]:
+    """拆分英文/中文逗号或分号分隔的选择项，并保持原顺序去重。"""
+    result = []
+    for item in re.split(r"[,，;；]+", value or ""):
+        item = item.strip()
+        if item and item not in result:
+            result.append(item)
+    return result
+
+
+def parse_province_selection(value: str) -> list[str]:
+    items = split_selection(value)
+    if not items:
+        return list(PROVINCES)
+    if "全部" in items:
+        return list(PROVINCE_CODES)
+    unknown = [item for item in items if item not in PROVINCE_CODES]
+    if unknown:
+        raise ValueError(f"未知省份：{', '.join(unknown)}")
+    return items
+
+
+def parse_carrier_selection(value: str) -> tuple[str, ...]:
+    items = split_selection(value)
+    if not items or "全部" in items:
+        return CARRIERS
+    unknown = [item for item in items if item not in CARRIERS]
+    if unknown:
+        raise ValueError(f"未知运营商：{', '.join(unknown)}")
+    return tuple(items)
+
+
+def parse_exact_targets(value: str) -> dict[str, tuple[str, ...]]:
+    """解析“四川电信,浙江电信”或“四川:电信”格式的精确目标。"""
+    plan: dict[str, list[str]] = {}
+    for item in split_selection(value):
+        compact = re.sub(r"\s+", "", item).replace("：", ":")
+        matched = None
+        for carrier in CARRIERS:
+            if compact.endswith(carrier):
+                province = compact[:-len(carrier)].rstrip(":")
+                matched = (province, carrier)
+                break
+        if not matched or matched[0] not in PROVINCE_CODES:
+            raise ValueError(f"无法识别目标：{item}")
+        province, carrier = matched
+        plan.setdefault(province, [])
+        if carrier not in plan[province]:
+            plan[province].append(carrier)
+    return {province: tuple(carriers) for province, carriers in plan.items()}
+
+
+def parse_args():
+    ap = argparse.ArgumentParser(description="按省份抓取频道并生成 txt/m3u。")
+    ap.add_argument(
+        "--push",
+        action="store_true",
+        help="每个省份成功生成后立即更新 README 并执行 git add/commit/push（默认关闭）。",
+    )
+    ap.add_argument(
+        "--test-region",
+        default="",
+        help="仅测试提取某地区全部服务器，不生成文件。例如：--test-region 湖北",
+    )
+    ap.add_argument(
+        "--only-province",
+        default="",
+        help="仅处理指定省份。例如：--only-province 湖北",
+    )
+    ap.add_argument(
+        "--provinces",
+        default="",
+        help="处理一个、多个或全部省份，例如：安徽,湖北 或 全部。",
+    )
+    ap.add_argument(
+        "--carriers",
+        default="全部",
+        help="处理一个或多个运营商，例如：电信 或 电信,联通；默认全部。",
+    )
+    ap.add_argument(
+        "--targets",
+        default="",
+        help="精确的省份运营商目标，例如：四川电信,浙江电信,河北电信。",
+    )
+    ap.add_argument(
+        "--max-pages",
+        type=int,
+        default=30,
+        help="每个省份最多抓取分页数量（默认30）。",
+    )
+    ap.add_argument(
+        "--max-per-carrier",
+        type=int,
+        default=5,
+        help="每个运营商按省份状态规则最多选取的源数量（默认5）。",
+    )
+    ap.add_argument(
+        "--max-age-hours",
+        type=int,
+        default=72,
+        help="仅提取最近更新 N 小时内的源（默认72，约3天）。",
+    )
+    ap.add_argument(
+        "--min-stream-speed",
+        type=float,
+        default=750.0 / 1024.0,
+        help="直播源抽测最低平均下载速度，单位 MB/s（默认750 KB/s，即约0.8301 MB/s）。",
+    )
+    ap.add_argument(
+        "--stream-test-seconds",
+        type=float,
+        default=3.0,
+        help="每个抽测频道的测速时长，单位秒（默认3）。",
+    )
+    ap.add_argument(
+        "--test-channels-per-source",
+        type=int,
+        default=2,
+        help="每条服务器最多抽测的频道数量（默认2）。",
+    )
+    return ap.parse_args()
+
+
+def main():
+    args = parse_args()
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    repo_root = os.path.dirname(script_dir)
+    txt_output_dir = os.path.join(repo_root, "txt")
+    m3u_output_dir = os.path.join(repo_root, "m3u")
+
+    try:
+        selected_carriers = parse_carrier_selection(args.carriers)
+        if args.targets:
+            execution_plan = parse_exact_targets(args.targets)
+        elif args.only_province:
+            provinces = parse_province_selection(args.only_province)
+            if len(provinces) != 1:
+                raise ValueError("--only-province 只能指定一个省份")
+            execution_plan = {provinces[0]: selected_carriers}
+        else:
+            execution_plan = {
+                province: selected_carriers
+                for province in parse_province_selection(args.provinces)
+            }
+    except ValueError as exc:
+        raise SystemExit(f"参数错误：{exc}") from exc
+
+    if args.test_region:
+        grouped_sources, status, group_title = fetch_channel_lines_by_province(
+            args.test_region,
+            carriers=selected_carriers,
+            max_pages=args.max_pages,
+            max_per_carrier=args.max_per_carrier,
+            max_age_hours=args.max_age_hours,
+            min_stream_speed_mb_s=args.min_stream_speed,
+            stream_test_seconds=args.stream_test_seconds,
+            test_channels_per_source=args.test_channels_per_source,
+        )
+        total = (
+            sum(len(lines) for sources in grouped_sources.values() for lines in sources)
+            if grouped_sources
+            else 0
+        )
+        print(f"\n[*] 测试结果: 地区={args.test_region}，分组={group_title}，状态={status}，频道数={total}")
+        for k, sources in grouped_sources.items():
+            n_sources = len(sources)
+            n_lines = sum(len(x) for x in sources)
+            print(f"  - {k}: {n_sources} 条源，共 {n_lines} 条")
+        return
+
+    os.makedirs(txt_output_dir, exist_ok=True)
+    os.makedirs(m3u_output_dir, exist_ok=True)
+    # 只有明确选择“全部省份+全部运营商”时才清空全部输出。
+    full_manual_run = (
+        not args.targets
+        and not args.only_province
+        and "全部" in split_selection(args.provinces)
+        and selected_carriers == CARRIERS
+    )
+    # 增量发布时保留尚未轮到的省份，避免第一次推送就让其他省份暂时消失。
+    if full_manual_run and not args.push:
+        clear_output_files(txt_output_dir, m3u_output_dir)
+
+    print(
+        "[*] 本次执行计划："
+        + "；".join(
+            f"{province}({','.join(carriers)})"
+            for province, carriers in execution_plan.items()
+        )
+    )
+
+    for province, carriers in execution_plan.items():
+        print(f"\n" + "="*50)
+        print(f" 正在处理地区任务: {province}；运营商: {','.join(carriers)}")
+        print("="*50)
+        removed_unselected = clear_unselected_carrier_files(
+            province, carriers, txt_output_dir, m3u_output_dir
+        )
+        province_updated = process_province(
+            province,
+            txt_output_dir,
+            m3u_output_dir,
+            carriers=carriers,
+            max_pages=args.max_pages,
+            max_per_carrier=args.max_per_carrier,
+            max_age_hours=args.max_age_hours,
+            min_stream_speed_mb_s=args.min_stream_speed,
+            stream_test_seconds=args.stream_test_seconds,
+            test_channels_per_source=args.test_channels_per_source,
+        )
+
+        if province_updated or removed_unselected:
+            update_readme_file_list(repo_root)
+            if args.push:
+                action = "抓取完成" if province_updated else "已清理未选择运营商的旧文件"
+                print(f"\n[*] [{province}] {action}，立即更新 README 并推送到 GitHub...")
+                push_to_github(["txt", "m3u", README_FILE], province=province)
+                print(f"[+] [{province}] 已发布，继续处理下一个省份。")
+
+    generated_files = []
+    generated_files.extend(
+        [os.path.join("txt", f) for f in os.listdir(txt_output_dir) if f.endswith('.txt')]
+    )
+    generated_files.extend(
+        [os.path.join("m3u", f) for f in os.listdir(m3u_output_dir) if f.endswith('.m3u')]
+    )
+    if args.push:
+        print("\n[] 全部省份处理完毕；每个成功省份均已即时发布。")
+    else:
+        update_readme_file_list(repo_root)
+        generated_files.append(README_FILE)
+        print("\n[] 流水线本地文件生成完毕（未启用 --push，跳过 git 推送）。")
+        print(f"[] 本次生成文件数量: {len(generated_files)}")
+
+if __name__ == '__main__':
+    main()
