@@ -483,7 +483,7 @@ def measure_stream_speed(
 def is_source_playable(
     channel_lines: list[str],
     source_label: str,
-    min_speed_mb_s: float = 100.0 / 1024.0,
+    min_speed_mb_s: float = 850.0 / 1024.0,
     sample_seconds: float = 3.0,
     test_channels: int = 2,
 ) -> bool:
@@ -633,7 +633,7 @@ def fetch_channel_lines_by_province(
     max_per_carrier: int = 5,
     max_pages: int = 30,
     max_age_hours: int = 24,
-    min_stream_speed_mb_s: float = 100.0 / 1024.0,
+    min_stream_speed_mb_s: float = 850.0 / 1024.0,
     stream_test_seconds: float = 3.0,
     test_channels_per_source: int = 2,
     previous_hosts_by_carrier: dict[str, set[str]] | None = None,
@@ -981,7 +981,7 @@ def process_province(
     max_pages=30,
     max_per_carrier=5,
     max_age_hours=72,
-    min_stream_speed_mb_s=100.0 / 1024.0,
+    min_stream_speed_mb_s=850.0 / 1024.0,
     stream_test_seconds=3.0,
     test_channels_per_source=2,
 ):
@@ -1199,8 +1199,8 @@ def parse_args():
     ap.add_argument(
         "--min-stream-speed",
         type=float,
-        default=100.0 / 1024.0,
-        help="直播源抽测最低平均下载速度，单位 MB/s（默认100 KB/s，即0.0977 MB/s）。",
+        default=850.0 / 1024.0,
+        help="直播源抽测最低平均下载速度，单位 MB/s（默认850 KB/s，即约0.8301 MB/s）。",
     )
     ap.add_argument(
         "--stream-test-seconds",
