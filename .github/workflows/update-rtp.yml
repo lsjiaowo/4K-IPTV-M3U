@@ -140,15 +140,13 @@ on:
   # 可选外部整点触发入口。事件类型固定为 hourly_iptv_update。
   repository_dispatch:
     types: [hourly_iptv_update]
+
   schedule:
-    # 使用6条独立规则注册6个候选点，比单条逗号 Cron 更容易被调度器分别接收。
-    # 下方小时锁保证同一自然小时最多成功抓取一次。
     - cron: "6 * * * *"
-    - cron: "16 * * * *"
-    - cron: "26 * * * *"
-    - cron: "36 * * * *"
-    - cron: "46 * * * *"
-    - cron: "56 * * * *"
+
+
+
+
 
 concurrency:
   group: update-rtp-${{ github.ref }}
