@@ -886,14 +886,54 @@ def txt_to_m3u_format(txt_content, group_title):
     return "\n".join(m3u_lines)
 
 
+def load_readme_update_times(repo_root: str) -> dict[str, str]:
+    """读取当前 README 已显示的时间，用于首次启用独立时间记录时平滑迁移。"""
+    readme_path = os.path.join(repo_root, README_FILE)
+    try:
+        with open(readme_path, "r", encoding="utf-8") as file:
+            content = file.read()
+    except OSError:
+        return {}
+
+    result = {}
+    sections = (
+        ("m3u", r"## M3U 文件列表([\s\S]*?)(?=\r?\n## TXT 文件列表)"),
+        ("txt", r"## TXT 文件列表([\s\S]*?)(?=\r?\n---\r?\n\r?\n## 免责声明|\Z)"),
+    )
+    for subdir, pattern in sections:
+        section_match = re.search(pattern, content)
+        if not section_match:
+            continue
+        for row_html in re.findall(
+            r"<tr[^>]*>([\s\S]*?)</tr>", section_match.group(1), flags=re.IGNORECASE
+        ):
+            cells = re.findall(
+                r"<td[^>]*>([\s\S]*?)</td>", row_html, flags=re.IGNORECASE
+            )
+            if len(cells) < 3:
+                continue
+            name = _strip_html(cells[0])
+            displayed_time = _strip_html(cells[2])
+            if name and displayed_time:
+                result[f"{subdir}/{name}"] = displayed_time
+    return result
+
+
 def load_file_update_times(repo_root: str) -> dict[str, str]:
     path = os.path.join(repo_root, UPDATE_TIMES_FILE)
+    data = {}
     try:
         with open(path, "r", encoding="utf-8") as file:
-            data = json.load(file)
-        return data if isinstance(data, dict) else {}
+            loaded = json.load(file)
+        if isinstance(loaded, dict):
+            data = loaded
     except (OSError, json.JSONDecodeError):
-        return {}
+        pass
+
+    # JSON 中缺失的旧文件继承 README 当前显示值，禁止重新计算并改乱时间。
+    for key, value in load_readme_update_times(repo_root).items():
+        data.setdefault(key, value)
+    return data
 
 
 def save_file_update_times(repo_root: str, update_times: dict[str, str]) -> None:
