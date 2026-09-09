@@ -140,17 +140,14 @@ on:
   # 可选外部整点触发入口。事件类型固定为 hourly_iptv_update。
   repository_dispatch:
     types: [hourly_iptv_update]
-
   schedule:
-    - cron: "6 * * * *"
-
-
-
-
+    # 每小时6个候选时间点，使用一条Cron规则；小时锁保证最多完整抓取一次。
+    - cron: "6,16,26,36,46,56 * * * *"
 
 concurrency:
   group: update-rtp-${{ github.ref }}
   cancel-in-progress: false
+  queue: single
 
 permissions:
   contents: write
@@ -187,6 +184,20 @@ jobs:
       - name: Explain skipped duplicate
         if: (github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && steps.hourly-cache.outputs.cache-hit == 'true'
         run: echo "[*] 本小时已经成功更新过，跳过本次候选触发。"
+
+      - name: Create hourly running claim
+        if: (github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && steps.hourly-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          mkdir -p .github-hourly-run
+          date -u +'%Y-%m-%dT%H:%M:%SZ' > .github-hourly-run/claimed-at.txt
+
+      - name: Save hourly running claim
+        if: (github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && steps.hourly-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .github-hourly-run
+          key: ${{ steps.hourly-slot.outputs.cache_key }}
 
       - name: Set up Python
         if: github.event_name == 'workflow_dispatch' || steps.hourly-cache.outputs.cache-hit != 'true'
@@ -268,17 +279,3 @@ jobs:
               --max-per-carrier 2 \
               --push
           fi
-
-      - name: Create successful hourly marker
-        if: success() && (github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && steps.hourly-cache.outputs.cache-hit != 'true'
-        shell: bash
-        run: |
-          mkdir -p .github-hourly-run
-          date -u +'%Y-%m-%dT%H:%M:%SZ' > .github-hourly-run/completed-at.txt
-
-      - name: Save successful hourly marker
-        if: success() && (github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && steps.hourly-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: .github-hourly-run
-          key: ${{ steps.hourly-slot.outputs.cache_key }}
