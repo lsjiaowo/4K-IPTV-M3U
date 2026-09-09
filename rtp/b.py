@@ -226,6 +226,14 @@ REQUEST_DELAY_SEC = 0.8
 # 每次成功请求后的随机间隔，避免短时间内请求过于密集。
 REQUEST_DELAY_MIN_SEC = 1.0
 REQUEST_DELAY_MAX_SEC = 2.0
+
+# 省份服务器列表接口风控更严格，单独使用较长间隔。
+REGION_LIST_DELAY_MIN_SEC = 3.0
+REGION_LIST_DELAY_MAX_SEC = 5.0
+
+# 连续处理多个省份时，在进入下一个省份前增加随机冷却。
+PROVINCE_SWITCH_DELAY_MIN_SEC = 3.0
+PROVINCE_SWITCH_DELAY_MAX_SEC = 6.0
 REQUEST_MAX_RETRIES = 5
 
 
@@ -234,6 +242,17 @@ def signed_get(path_query: str, session: requests.Session | None = None) -> dict
     url = IPTV_BASE_URL + path_query.lstrip("/")
     sess = session or requests.Session()
     last_error = None
+    is_region_list = "province=" in path_query
+
+    def retry_wait_seconds(response, attempt_index: int) -> float:
+        """优先遵守服务端Retry-After，否则使用原有指数退避。"""
+        retry_after = (response.headers.get("Retry-After", "") or "").strip()
+        try:
+            if retry_after:
+                return min(60.0, max(0.0, float(retry_after)))
+        except ValueError:
+            pass
+        return min(30.0, REQUEST_DELAY_SEC * (2 ** attempt_index) * 3)
 
     for attempt in range(REQUEST_MAX_RETRIES):
         headers = {
@@ -244,22 +263,43 @@ def signed_get(path_query: str, session: requests.Session | None = None) -> dict
         try:
             resp = sess.get(url, headers=headers, timeout=30)
             if resp.status_code == 429:
-                wait = min(30, REQUEST_DELAY_SEC * (2 ** attempt) * 3)
+                last_error = requests.HTTPError(
+                    f"429 Too Many Requests: {url}", response=resp
+                )
+                if attempt + 1 >= REQUEST_MAX_RETRIES:
+                    print(
+                        f"[-] 请求仍被限流，已达到最大重试次数 "
+                        f"({REQUEST_MAX_RETRIES}/{REQUEST_MAX_RETRIES})，不再额外等待。"
+                    )
+                    break
+                wait = retry_wait_seconds(resp, attempt)
                 print(f"[!] 请求过于频繁，{wait:.1f}s 后重试 ({attempt + 1}/{REQUEST_MAX_RETRIES})...")
                 time.sleep(wait)
                 continue
             resp.raise_for_status()
+            if is_region_list:
+                delay_min = REGION_LIST_DELAY_MIN_SEC
+                delay_max = REGION_LIST_DELAY_MAX_SEC
+            else:
+                delay_min = REQUEST_DELAY_MIN_SEC
+                delay_max = REQUEST_DELAY_MAX_SEC
             time.sleep(
                 random.uniform(
-                    REQUEST_DELAY_MIN_SEC,
-                    REQUEST_DELAY_MAX_SEC,
+                    delay_min,
+                    delay_max,
                 )
             )
             return resp.json()
         except requests.HTTPError as e:
             last_error = e
             if e.response is not None and e.response.status_code in (429, 503):
-                wait = min(30, REQUEST_DELAY_SEC * (2 ** attempt) * 3)
+                if attempt + 1 >= REQUEST_MAX_RETRIES:
+                    print(
+                        f"[-] HTTP {e.response.status_code}，已达到最大重试次数 "
+                        f"({REQUEST_MAX_RETRIES}/{REQUEST_MAX_RETRIES})，不再额外等待。"
+                    )
+                    break
+                wait = retry_wait_seconds(e.response, attempt)
                 print(f"[!] HTTP {e.response.status_code}，{wait:.1f}s 后重试 ({attempt + 1}/{REQUEST_MAX_RETRIES})...")
                 time.sleep(wait)
                 continue
@@ -1496,7 +1536,17 @@ def main():
         )
     )
 
-    for province, carriers in execution_plan.items():
+    for province_index, (province, carriers) in enumerate(execution_plan.items()):
+        if province_index > 0:
+            switch_delay = random.uniform(
+                PROVINCE_SWITCH_DELAY_MIN_SEC,
+                PROVINCE_SWITCH_DELAY_MAX_SEC,
+            )
+            print(
+                f"\n[*] 切换到下一个省份前冷却 {switch_delay:.1f} 秒，"
+                "降低省份列表接口触发429的概率。"
+            )
+            time.sleep(switch_delay)
         print(f"\n" + "="*50)
         print(f" 正在处理地区任务: {province}；运营商: {','.join(carriers)}")
         print("="*50)
