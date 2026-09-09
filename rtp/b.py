@@ -980,19 +980,21 @@ def save_file_update_times(repo_root: str, update_times: dict[str, str]) -> None
         file.write("\n")
 
 
-def record_province_update_times(repo_root: str, province: str) -> None:
-    """仅在该省成功抓取并测速通过后，更新其实际生成文件的时间。"""
+def record_province_update_times(
+    repo_root: str,
+    province: str,
+    generated_relative_paths: list[str],
+) -> None:
+    """仅更新本次实际覆盖写入的列表时间，未补足的旧源保持原时间。"""
     update_times = load_file_update_times(repo_root)
     updated_at = beijing_now().strftime("%Y-%m-%d %H:%M:%S")
-    for subdir, ext in (("m3u", ".m3u"), ("txt", ".txt")):
-        target_dir = os.path.join(repo_root, subdir)
-        if not os.path.exists(target_dir):
-            continue
-        for name in os.listdir(target_dir):
-            if name.startswith(province) and name.endswith(ext):
-                update_times[f"{subdir}/{name}"] = updated_at
+    for relative_path in generated_relative_paths:
+        update_times[relative_path.replace("\\", "/")] = updated_at
     save_file_update_times(repo_root, update_times)
-    print(f"[+] [{province}] 已记录独立列表更新时间：{updated_at}")
+    print(
+        f"[+] [{province}] 已更新 {len(generated_relative_paths)} 个实际生成文件的时间："
+        f"{updated_at}；未补足的旧源时间保持不变。"
+    )
 
 
 def get_git_file_update_time(repo_root: str, relative_path: str) -> str:
@@ -1167,15 +1169,13 @@ def process_province(
     )
     if not grouped_sources:
         print(f"[-] [{province}] 频道提取失败: {status}")
-        return False
+        return []
 
-    # 只有抓取成功后才清理，失败时继续保留仓库中的上一版可用列表。
-    clear_province_output_files(province, txt_output_dir, m3u_output_dir)
-
-    # 3. 按运营商分组、按源序号分别生成 txt/m3u
+    # 3. 按运营商和源序号逐个覆盖；本次未补足的序号保留上一版文件。
     #    例：山东电信.m3u、山东电信1.m3u、山东电信2.m3u ...
     total_channels = 0
     exported_sources = 0
+    generated_relative_paths = []
     for group_title, sources in grouped_sources.items():
         for idx, channel_lines in enumerate(sources):
             if not channel_lines:
@@ -1192,13 +1192,17 @@ def process_province(
                 f_txt.write(txt_content + "\n")
                 f_m3u.write(f'#EXTM3U x-tvg-url="{EPG_URL}"\n')
                 f_m3u.write(txt_to_m3u_format(txt_content, group_title) + "\n")
+            generated_relative_paths.extend([
+                f"txt/{file_stem}.txt",
+                f"m3u/{file_stem}.m3u",
+            ])
             exported_sources += 1
             total_channels += len(channel_lines)
     if exported_sources == 0:
         print(f"[-] [{province}] 频道提取失败: channel_lines_empty")
-        return False
+        return []
     print(f"[+] 完美！[{province}] 更新完成，导出 {total_channels} 条频道，生成 {exported_sources} 条源文件（每运营商多条）。")
-    return True
+    return generated_relative_paths
 
 def push_to_github(files, province=""):
     """
@@ -1463,7 +1467,7 @@ def main():
             f"[*] [{province}] 本次测速通过门槛："
             f"> {province_min_speed * 1024:.0f} KB/s"
         )
-        province_updated = process_province(
+        generated_relative_paths = process_province(
             province,
             txt_output_dir,
             m3u_output_dir,
@@ -1476,12 +1480,14 @@ def main():
             test_channels_per_source=args.test_channels_per_source,
         )
 
-        if province_updated or removed_unselected:
-            if province_updated:
-                record_province_update_times(repo_root, province)
+        if generated_relative_paths or removed_unselected:
+            if generated_relative_paths:
+                record_province_update_times(
+                    repo_root, province, generated_relative_paths
+                )
             update_readme_file_list(repo_root)
             if args.push:
-                action = "抓取完成" if province_updated else "已清理未选择运营商的旧文件"
+                action = "抓取完成" if generated_relative_paths else "已清理未选择运营商的旧文件"
                 print(f"\n[*] [{province}] {action}，立即更新 README 并推送到 GitHub...")
                 publish_paths = ["txt", "m3u", README_FILE]
                 if os.path.exists(os.path.join(repo_root, UPDATE_TIMES_FILE)):
