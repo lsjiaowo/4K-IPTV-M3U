@@ -413,8 +413,39 @@ def fetch_detail_html(p_token: str, session: requests.Session | None = None) -> 
     return data.get("html", "") or ""
 
 
-def fetch_channel_lines_by_s(s_token: str, session: requests.Session | None = None, max_pages: int = 50) -> list[str]:
-    """分页抓取完整频道列表。"""
+def extract_speed_test_candidates(channel_lines: list[str]) -> list[tuple[str, str]]:
+    """提取CCTV1-CCTV15中不含标清/SD的HTTP测速频道，并按URL去重。"""
+    candidates: list[tuple[str, str]] = []
+    seen_urls: set[str] = set()
+    cctv_pattern = re.compile(
+        r"(?i)(?<![A-Z0-9])CCTV\s*[-_ ]?\s*(1[0-5]|[1-9])(?!\d|\+)"
+    )
+    for line in channel_lines:
+        if "," not in line:
+            continue
+        channel_name, play_url = line.split(",", 1)
+        channel_name = channel_name.strip()
+        play_url = play_url.strip()
+        if not cctv_pattern.search(channel_name):
+            continue
+        if "标清" in channel_name or "SD" in channel_name.upper():
+            continue
+        if not play_url.lower().startswith(("http://", "https://")):
+            continue
+        if play_url in seen_urls:
+            continue
+        seen_urls.add(play_url)
+        candidates.append((channel_name, play_url))
+    return candidates
+
+
+def fetch_channel_lines_by_s(
+    s_token: str,
+    session: requests.Session | None = None,
+    max_pages: int = 50,
+    stop_after_test_channels: int = 0,
+) -> list[str]:
+    """分页抓取频道；预抓取时找到足够CCTV测速频道即可提前停止。"""
     all_lines: list[str] = []
     seen: set[str] = set()
     empty_hits = 0
@@ -447,6 +478,15 @@ def fetch_channel_lines_by_s(s_token: str, session: requests.Session | None = No
             f"[*] 正在抓取频道列表：第{page_num}页，"
             f"本页{len(page_lines)}条，累计{len(all_lines)}条"
         )
+
+        if stop_after_test_channels > 0:
+            test_count = len(extract_speed_test_candidates(all_lines))
+            if test_count >= stop_after_test_channels:
+                print(
+                    f"[*] 已找到 {test_count} 个 CCTV1-CCTV15 非标清测速频道，"
+                    "暂停抓取完整列表并立即测速。"
+                )
+                break
 
         if "下一页" not in html and page_num > 1:
             break
@@ -505,29 +545,7 @@ def is_source_playable(
     test_channels: int = 2,
 ) -> bool:
     """从 CCTV1 至 CCTV15 中排除标清/SD后随机抽测，任意一个通过即有效。"""
-    candidates: list[tuple[str, str]] = []
-    seen_urls: set[str] = set()
-    cctv_pattern = re.compile(
-        r"(?i)(?<![A-Z0-9])CCTV\s*[-_ ]?\s*(1[0-5]|[1-9])(?!\d|\+)"
-    )
-
-    for line in channel_lines:
-        if "," not in line:
-            continue
-        channel_name, play_url = line.split(",", 1)
-        channel_name = channel_name.strip()
-        play_url = play_url.strip()
-        if not cctv_pattern.search(channel_name):
-            continue
-        # 只排除明确标记为“标清”或“SD”的频道；普通、高清、HD名称均可抽测。
-        if "标清" in channel_name or "SD" in channel_name.upper():
-            continue
-        if not play_url.lower().startswith(("http://", "https://")):
-            continue
-        if play_url in seen_urls:
-            continue
-        seen_urls.add(play_url)
-        candidates.append((channel_name, play_url))
+    candidates = extract_speed_test_candidates(channel_lines)
 
     required_count = max(1, test_channels)
     if len(candidates) < required_count:
@@ -768,18 +786,30 @@ def fetch_channel_lines_by_province(
             print(f"[-] [{province}] 未找到频道列表 token: {picked.get('host', '')}")
             continue
 
-        lines = fetch_channel_lines_by_s(s_token, session=session)
-        if not lines:
+        # 第一阶段：找到足够的CCTV测速频道便暂停翻页，立即进行测速。
+        test_lines = fetch_channel_lines_by_s(
+            s_token,
+            session=session,
+            stop_after_test_channels=max(1, test_channels_per_source),
+        )
+        if not test_lines:
             continue
 
         source_label = f"{group_title} {picked.get('host', '')}".strip()
         if not is_source_playable(
-            lines,
+            test_lines,
             source_label=source_label,
             min_speed_mb_s=min_stream_speed_mb_s,
             sample_seconds=stream_test_seconds,
             test_channels=test_channels_per_source,
         ):
+            continue
+
+        # 第二阶段：仅对测速通过的源抓取完整频道列表，用于最终导出。
+        print(f"[*] [{source_label}] 测速通过，开始抓取完整频道列表用于导出。")
+        lines = fetch_channel_lines_by_s(s_token, session=session)
+        if not lines:
+            print(f"[-] [{source_label}] 完整频道列表抓取失败，跳过该源。")
             continue
 
         selected_ops.append(group_title)
