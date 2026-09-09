@@ -8,6 +8,7 @@ import hmac
 import hashlib
 import random
 import string
+import json
 from datetime import datetime, timedelta, timezone
 from html import unescape
 from urllib.parse import quote, urlencode, urlparse
@@ -34,13 +35,29 @@ GITHUB_COMMIT_PREFIX = "Auto update"
 EPG_URL = "http://epg.51zmt.top:8000/e.xml.gz"
 TVG_LOGO_BASE_URL = "https://gcore.jsdelivr.net/gh/taksssss/tv/icon/"
 README_FILE = "README.md"
+UPDATE_TIMES_FILE = ".github/iptv-update-times.json"
 RAW_BASE_URL = "https://raw.githubusercontent.com/lsjiaowo/4K-IPTV-M3U/main"
 PROXY_PREFIX = "https://gh-proxy.org/"
+
+# 默认测速门槛；四川线路单独放宽。
+DEFAULT_MIN_STREAM_SPEED_MB_S = 750.0 / 1024.0
+PROVINCE_MIN_STREAM_SPEED_MB_S = {
+    "四川": 200.0 / 1024.0,
+}
 
 # 中国省份全称及简称对照表，用于智能嗅探
 # 未指定筛选参数时使用的兼容默认省份。
 PROVINCES = ["浙江", "安徽", "福建", "湖南", "广东", "四川", "山西", "湖北"]
 CARRIERS = ("电信", "联通", "移动")
+
+
+def resolve_min_stream_speed(province: str, cli_override: float | None = None) -> float:
+    """返回当前省份测速门槛；显式命令行参数优先。"""
+    if cli_override is not None:
+        return cli_override
+    return PROVINCE_MIN_STREAM_SPEED_MB_S.get(
+        province, DEFAULT_MIN_STREAM_SPEED_MB_S
+    )
 
 # 新站点省份筛选 code（与 iptv.cqshushu.com 下拉框一致）
 PROVINCE_CODES = {
@@ -483,7 +500,7 @@ def measure_stream_speed(
 def is_source_playable(
     channel_lines: list[str],
     source_label: str,
-    min_speed_mb_s: float = 750.0 / 1024.0,
+    min_speed_mb_s: float = DEFAULT_MIN_STREAM_SPEED_MB_S,
     sample_seconds: float = 3.0,
     test_channels: int = 2,
 ) -> bool:
@@ -633,7 +650,7 @@ def fetch_channel_lines_by_province(
     max_per_carrier: int = 5,
     max_pages: int = 30,
     max_age_hours: int = 24,
-    min_stream_speed_mb_s: float = 750.0 / 1024.0,
+    min_stream_speed_mb_s: float = DEFAULT_MIN_STREAM_SPEED_MB_S,
     stream_test_seconds: float = 3.0,
     test_channels_per_source: int = 2,
     previous_hosts_by_carrier: dict[str, set[str]] | None = None,
@@ -869,7 +886,70 @@ def txt_to_m3u_format(txt_content, group_title):
     return "\n".join(m3u_lines)
 
 
-def _build_readme_table_rows(repo_root: str, subdir: str, ext: str, updated_at: str) -> str:
+def load_file_update_times(repo_root: str) -> dict[str, str]:
+    path = os.path.join(repo_root, UPDATE_TIMES_FILE)
+    try:
+        with open(path, "r", encoding="utf-8") as file:
+            data = json.load(file)
+        return data if isinstance(data, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def save_file_update_times(repo_root: str, update_times: dict[str, str]) -> None:
+    path = os.path.join(repo_root, UPDATE_TIMES_FILE)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    # 自动移除已经不存在的列表记录。
+    cleaned = {
+        key: value
+        for key, value in update_times.items()
+        if os.path.exists(os.path.join(repo_root, *key.split("/")))
+    }
+    with open(path, "w", encoding="utf-8") as file:
+        json.dump(cleaned, file, ensure_ascii=False, indent=2, sort_keys=True)
+        file.write("\n")
+
+
+def record_province_update_times(repo_root: str, province: str) -> None:
+    """仅在该省成功抓取并测速通过后，更新其实际生成文件的时间。"""
+    update_times = load_file_update_times(repo_root)
+    updated_at = beijing_now().strftime("%Y-%m-%d %H:%M:%S")
+    for subdir, ext in (("m3u", ".m3u"), ("txt", ".txt")):
+        target_dir = os.path.join(repo_root, subdir)
+        if not os.path.exists(target_dir):
+            continue
+        for name in os.listdir(target_dir):
+            if name.startswith(province) and name.endswith(ext):
+                update_times[f"{subdir}/{name}"] = updated_at
+    save_file_update_times(repo_root, update_times)
+    print(f"[+] [{province}] 已记录独立列表更新时间：{updated_at}")
+
+
+def get_git_file_update_time(repo_root: str, relative_path: str) -> str:
+    """旧列表尚无时间记录时，使用该文件最后一次 Git 提交时间。"""
+    try:
+        result = subprocess.run(
+            ["git", "-C", repo_root, "log", "-1", "--format=%cI", "--", relative_path],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="ignore",
+        )
+        value = result.stdout.strip()
+        if result.returncode == 0 and value:
+            dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            return dt.astimezone(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S")
+    except (OSError, ValueError):
+        pass
+    return "历史时间未知"
+
+
+def _build_readme_table_rows(
+    repo_root: str,
+    subdir: str,
+    ext: str,
+    update_times: dict[str, str],
+) -> str:
     target_dir = os.path.join(repo_root, subdir)
     if not os.path.exists(target_dir):
         return '<tr><td colspan="4">暂无文件</td></tr>'
@@ -879,7 +959,10 @@ def _build_readme_table_rows(repo_root: str, subdir: str, ext: str, updated_at: 
 
     rows = []
     for name in names:
-        file_path = os.path.join(target_dir, name)
+        relative_path = f"{subdir}/{name}"
+        updated_at = update_times.get(relative_path) or get_git_file_update_time(
+            repo_root, relative_path
+        )
         encoded_name = quote(name)
         raw_url = f"{RAW_BASE_URL}/{subdir}/{encoded_name}"
         proxy_url = f"{PROXY_PREFIX}{raw_url}"
@@ -894,8 +977,13 @@ def _build_readme_table_rows(repo_root: str, subdir: str, ext: str, updated_at: 
     return "\n".join(rows)
 
 
-def _build_readme_section_table(repo_root: str, subdir: str, ext: str, updated_at: str) -> str:
-    rows = _build_readme_table_rows(repo_root, subdir, ext, updated_at)
+def _build_readme_section_table(
+    repo_root: str,
+    subdir: str,
+    ext: str,
+    update_times: dict[str, str],
+) -> str:
+    rows = _build_readme_table_rows(repo_root, subdir, ext, update_times)
     return (
         '<table style="width:100%; table-layout:auto;">\n'
         "<colgroup>\n"
@@ -937,10 +1025,9 @@ def update_readme_file_list(repo_root: str) -> None:
     with open(readme_path, "r", encoding="utf-8") as f:
         content = f.read()
 
-    # GitHub Actions runs in UTC by default; use Beijing time for display.
-    updated_at = beijing_now().strftime("%Y-%m-%d %H:%M:%S")
-    m3u_table = _build_readme_section_table(repo_root, "m3u", ".m3u", updated_at)
-    txt_table = _build_readme_section_table(repo_root, "txt", ".txt", updated_at)
+    update_times = load_file_update_times(repo_root)
+    m3u_table = _build_readme_section_table(repo_root, "m3u", ".m3u", update_times)
+    txt_table = _build_readme_section_table(repo_root, "txt", ".txt", update_times)
     m3u_block = f"## M3U 文件列表\n\n{m3u_table}\n"
     txt_block = f"## TXT 文件列表\n\n{txt_table}\n"
 
@@ -981,7 +1068,7 @@ def process_province(
     max_pages=30,
     max_per_carrier=5,
     max_age_hours=72,
-    min_stream_speed_mb_s=750.0 / 1024.0,
+    min_stream_speed_mb_s=DEFAULT_MIN_STREAM_SPEED_MB_S,
     stream_test_seconds=3.0,
     test_channels_per_source=2,
 ):
@@ -1199,8 +1286,8 @@ def parse_args():
     ap.add_argument(
         "--min-stream-speed",
         type=float,
-        default=750.0 / 1024.0,
-        help="直播源抽测最低平均下载速度，单位 MB/s（默认750 KB/s，即约0.8301 MB/s）。",
+        default=None,
+        help="显式覆盖所有省份的测速门槛，单位MB/s；不填写时四川200KB/s、其他省份750KB/s。",
     )
     ap.add_argument(
         "--stream-test-seconds",
@@ -1242,13 +1329,20 @@ def main():
         raise SystemExit(f"参数错误：{exc}") from exc
 
     if args.test_region:
+        test_min_speed = resolve_min_stream_speed(
+            args.test_region, args.min_stream_speed
+        )
+        print(
+            f"[*] [{args.test_region}] 测速通过门槛："
+            f"> {test_min_speed * 1024:.0f} KB/s"
+        )
         grouped_sources, status, group_title = fetch_channel_lines_by_province(
             args.test_region,
             carriers=selected_carriers,
             max_pages=args.max_pages,
             max_per_carrier=args.max_per_carrier,
             max_age_hours=args.max_age_hours,
-            min_stream_speed_mb_s=args.min_stream_speed,
+            min_stream_speed_mb_s=test_min_speed,
             stream_test_seconds=args.stream_test_seconds,
             test_channels_per_source=args.test_channels_per_source,
         )
@@ -1292,6 +1386,13 @@ def main():
         removed_unselected = clear_unselected_carrier_files(
             province, carriers, txt_output_dir, m3u_output_dir
         )
+        province_min_speed = resolve_min_stream_speed(
+            province, args.min_stream_speed
+        )
+        print(
+            f"[*] [{province}] 本次测速通过门槛："
+            f"> {province_min_speed * 1024:.0f} KB/s"
+        )
         province_updated = process_province(
             province,
             txt_output_dir,
@@ -1300,17 +1401,22 @@ def main():
             max_pages=args.max_pages,
             max_per_carrier=args.max_per_carrier,
             max_age_hours=args.max_age_hours,
-            min_stream_speed_mb_s=args.min_stream_speed,
+            min_stream_speed_mb_s=province_min_speed,
             stream_test_seconds=args.stream_test_seconds,
             test_channels_per_source=args.test_channels_per_source,
         )
 
         if province_updated or removed_unselected:
+            if province_updated:
+                record_province_update_times(repo_root, province)
             update_readme_file_list(repo_root)
             if args.push:
                 action = "抓取完成" if province_updated else "已清理未选择运营商的旧文件"
                 print(f"\n[*] [{province}] {action}，立即更新 README 并推送到 GitHub...")
-                push_to_github(["txt", "m3u", README_FILE], province=province)
+                publish_paths = ["txt", "m3u", README_FILE]
+                if os.path.exists(os.path.join(repo_root, UPDATE_TIMES_FILE)):
+                    publish_paths.append(UPDATE_TIMES_FILE)
+                push_to_github(publish_paths, province=province)
                 print(f"[+] [{province}] 已发布，继续处理下一个省份。")
 
     generated_files = []
