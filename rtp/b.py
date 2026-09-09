@@ -224,8 +224,8 @@ def generate_paer_token() -> str:
 REQUEST_DELAY_SEC = 0.8
 
 # 每次成功请求后的随机间隔，避免短时间内请求过于密集。
-REQUEST_DELAY_MIN_SEC = 2.0
-REQUEST_DELAY_MAX_SEC = 4.0
+REQUEST_DELAY_MIN_SEC = 1.0
+REQUEST_DELAY_MAX_SEC = 2.0
 REQUEST_MAX_RETRIES = 5
 
 
@@ -444,13 +444,16 @@ def fetch_channel_lines_by_s(
     session: requests.Session | None = None,
     max_pages: int = 50,
     stop_after_test_channels: int = 0,
+    initial_lines: list[str] | None = None,
+    start_page: int = 1,
+    page_state: dict | None = None,
 ) -> list[str]:
-    """分页抓取频道；预抓取时找到足够CCTV测速频道即可提前停止。"""
-    all_lines: list[str] = []
-    seen: set[str] = set()
+    """分页抓取频道；支持从测速阶段的结果和下一页继续抓取。"""
+    all_lines: list[str] = list(initial_lines or [])
+    seen: set[str] = set(all_lines)
     empty_hits = 0
 
-    for page_num in range(1, max_pages + 1):
+    for page_num in range(max(1, start_page), max_pages + 1):
         query = urlencode({"s": s_token, "t": "multicast", "page": page_num})
         path = f"{IPTV_INDEX}?{query}"
         try:
@@ -462,6 +465,9 @@ def fetch_channel_lines_by_s(
             break
         html = data.get("html", "")
         page_lines = parse_channel_lines(html)
+        if page_state is not None:
+            page_state["last_page"] = page_num
+            page_state["has_next"] = "下一页" in html
         if not page_lines:
             empty_hits += 1
             if empty_hits >= 2:
@@ -488,7 +494,7 @@ def fetch_channel_lines_by_s(
                 )
                 break
 
-        if "下一页" not in html and page_num > 1:
+        if "下一页" not in html:
             break
     return all_lines
 
@@ -581,6 +587,11 @@ def is_source_playable(
         if speed_mb_s > min_speed_mb_s:
             passed_count += 1
             print(f"[+] [{source_label}] {channel_name} 测速通过。")
+            print(
+                f"[+] [{source_label}] 已有1个抽测频道通过，"
+                "立即停止其余频道测速。"
+            )
+            return True
         else:
             print(f"[-] [{source_label}] {channel_name} 速度不足。")
 
@@ -725,12 +736,16 @@ def fetch_channel_lines_by_province(
             f"新地址 {len(new_rows)} 条，旧地址 {len(old_rows)} 条；新地址优先。"
         )
         # 测速前不能只截取目标数量，否则候选测速失败后无法向后补足。
-        # 每个运营商最多尝试目标数的4倍，兼顾成功率与Action运行时间。
+        # 新旧候选合计最多为目标数的4倍；目标2条时最多测试8条。
         candidate_limit = max(target_count, target_count * 4)
         picked = []
         seen = set()
-        # 新旧两组各保留足够候选，确保新地址全部失败后还能用旧地址补足。
-        for row in new_rows[:candidate_limit] + old_rows[:candidate_limit]:
+        # 总额度内为旧地址保留最多目标数量的兜底位置，其余位置优先新地址。
+        old_reserved = min(len(old_rows), target_count, candidate_limit)
+        new_quota = candidate_limit - old_reserved
+        new_picked = new_rows[:new_quota]
+        old_quota = max(0, candidate_limit - len(new_picked))
+        for row in new_picked + old_rows[:old_quota]:
             token = row.get("p_token")
             if not token or token in seen:
                 continue
@@ -766,59 +781,87 @@ def fetch_channel_lines_by_province(
         if playable_counts.get(carrier, 0) >= max_per_carrier:
             continue
 
+        candidate_started_at = datetime.now()
+        candidate_started_clock = time.monotonic()
+        candidate_host = picked.get("host", "")
         print(
-            f"[*] [{province}] 正在提取源："
-            f"{picked.get('type', '')} {picked.get('host', '')}"
+            f"[*] [{province}] 候选开始：{picked.get('type', '')} {candidate_host}；"
+            f"时间={candidate_started_at.strftime('%Y-%m-%d %H:%M:%S')}"
         )
 
-        # 文件分组严格使用请求的运营商，避免站点详情中的异常标签串到其他运营商。
-        group_title = f"{province}{carrier}"
         try:
-            detail_html = fetch_detail_html(picked.get("p_token", ""), session=session)
-        except Exception as e:
-            print(f"[-] [{province}] IP 详情获取失败: {e}")
-            continue
-        if not detail_html:
-            continue
+            # 文件分组严格使用请求的运营商，避免站点详情中的异常标签串到其他运营商。
+            group_title = f"{province}{carrier}"
+            try:
+                detail_html = fetch_detail_html(picked.get("p_token", ""), session=session)
+            except Exception as e:
+                print(f"[-] [{province}] IP 详情获取失败: {e}")
+                continue
+            if not detail_html:
+                print(f"[-] [{province}] IP 详情为空: {candidate_host}")
+                continue
 
-        s_token = parse_s_token(detail_html)
-        if not s_token:
-            print(f"[-] [{province}] 未找到频道列表 token: {picked.get('host', '')}")
-            continue
+            s_token = parse_s_token(detail_html)
+            if not s_token:
+                print(f"[-] [{province}] 未找到频道列表 token: {candidate_host}")
+                continue
 
-        # 第一阶段：找到足够的CCTV测速频道便暂停翻页，立即进行测速。
-        test_lines = fetch_channel_lines_by_s(
-            s_token,
-            session=session,
-            stop_after_test_channels=max(1, test_channels_per_source),
-        )
-        if not test_lines:
-            continue
+            # 第一阶段：找到足够的CCTV测速频道便暂停翻页，立即进行测速。
+            page_state: dict = {}
+            test_lines = fetch_channel_lines_by_s(
+                s_token,
+                session=session,
+                stop_after_test_channels=max(1, test_channels_per_source),
+                page_state=page_state,
+            )
+            if not test_lines:
+                continue
 
-        source_label = f"{group_title} {picked.get('host', '')}".strip()
-        if not is_source_playable(
-            test_lines,
-            source_label=source_label,
-            min_speed_mb_s=min_stream_speed_mb_s,
-            sample_seconds=stream_test_seconds,
-            test_channels=test_channels_per_source,
-        ):
-            continue
+            source_label = f"{group_title} {candidate_host}".strip()
+            if not is_source_playable(
+                test_lines,
+                source_label=source_label,
+                min_speed_mb_s=min_stream_speed_mb_s,
+                sample_seconds=stream_test_seconds,
+                test_channels=test_channels_per_source,
+            ):
+                continue
 
-        # 第二阶段：仅对测速通过的源抓取完整频道列表，用于最终导出。
-        print(f"[*] [{source_label}] 测速通过，开始抓取完整频道列表用于导出。")
-        lines = fetch_channel_lines_by_s(s_token, session=session)
-        if not lines:
-            print(f"[-] [{source_label}] 完整频道列表抓取失败，跳过该源。")
-            continue
+            # 第二阶段：复用测速阶段已抓取的页面，只从下一页继续抓完整列表。
+            last_page = int(page_state.get("last_page", 0))
+            has_next = bool(page_state.get("has_next", False))
+            print(
+                f"[*] [{source_label}] 测速通过，复用前{last_page}页的"
+                f" {len(test_lines)} 条频道，从第{last_page + 1}页继续完整抓取。"
+            )
+            if has_next:
+                lines = fetch_channel_lines_by_s(
+                    s_token,
+                    session=session,
+                    initial_lines=test_lines,
+                    start_page=last_page + 1,
+                )
+            else:
+                lines = test_lines
+            if not lines:
+                print(f"[-] [{source_label}] 完整频道列表抓取失败，跳过该源。")
+                continue
 
-        selected_ops.append(group_title)
-        group_to_sources.setdefault(group_title, []).append(lines)
-        playable_counts[carrier] = playable_counts.get(carrier, 0) + 1
-        print(
-            f"[+] [{province}{carrier}] 已找到 "
-            f"{playable_counts[carrier]}/{max_per_carrier} 条可播放源。"
-        )
+            selected_ops.append(group_title)
+            group_to_sources.setdefault(group_title, []).append(lines)
+            playable_counts[carrier] = playable_counts.get(carrier, 0) + 1
+            print(
+                f"[+] [{province}{carrier}] 已找到 "
+                f"{playable_counts[carrier]}/{max_per_carrier} 条可播放源。"
+            )
+        finally:
+            candidate_finished_at = datetime.now()
+            candidate_elapsed = time.monotonic() - candidate_started_clock
+            print(
+                f"[*] [{province}] 候选结束：{picked.get('type', '')} {candidate_host}；"
+                f"时间={candidate_finished_at.strftime('%Y-%m-%d %H:%M:%S')}；"
+                f"耗时={candidate_elapsed:.1f}秒"
+            )
 
     if not group_to_sources:
         return [], "no_playable_source", province
