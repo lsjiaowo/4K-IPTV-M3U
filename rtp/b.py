@@ -244,7 +244,7 @@ REGION_LIST_DEEP_PAGE_DELAY_MAX_SEC = 60.0
 # 第1～5页快速扫描后立即测试新IP；
 # 第6～10页逐页扫描、逐页测试新IP；
 # 到第10页仍不足目标时，才允许旧IP兜底；
-# 仍不足则继续逐页搜索到最多第20页。
+# 省份服务器列表最大只搜索到第10页。
 NEW_IP_SEARCH_DEPTH = 10
 
 # 连续处理多个省份时，在进入下一个省份前随机冷却 15～30 秒。
@@ -418,7 +418,7 @@ def fetch_region_page_by_ajax(
     return rows, True
 
 
-def fetch_region_rows_by_ajax(province, limit=20, max_pages=20, session=None):
+def fetch_region_rows_by_ajax(province, limit=20, max_pages=10, session=None):
     """兼容旧调用：按省份分页抓取服务器列表，最多抓到 max_pages 页。"""
     region_code = PROVINCE_CODES.get(province)
     if not region_code:
@@ -778,7 +778,7 @@ def fetch_channel_lines_by_province(
     province: str,
     carriers: tuple[str, ...] = CARRIERS,
     max_per_carrier: int = 20,
-    max_pages: int = 20,
+    max_pages: int = 10,
     max_age_hours: int = 24,
     min_stream_speed_mb_s: float = DEFAULT_MIN_STREAM_SPEED_MB_S,
     stream_test_seconds: float = 3.0,
@@ -793,11 +793,11 @@ def fetch_channel_lines_by_province(
     2. 只有当前可测试的新IP候选池耗尽且目标未完成，才进入第6～10页；
        每抓一页立即测试新增/尚未测试的新IP。
     3. 到第10页仍未达到目标，才允许使用旧IP兜底。
-    4. 若仍不足，则继续第11～20页；每页新增候选仍然新IP优先、旧IP兜底。
+    4. 到第10页仍不足目标时，允许旧IP兜底；省份服务器列表不再请求第11页及以后。
     5. 每个运营商找到 TARGET_PLAYABLE_SOURCES_PER_CARRIER 个可用播放列表后立即停止。
     """
     session = requests.Session()
-    max_pages = min(max(1, int(max_pages)), 20)
+    max_pages = min(max(1, int(max_pages)), 10)
     now_dt = datetime.now()
 
     region_code = PROVINCE_CODES.get(province)
@@ -1071,7 +1071,7 @@ def fetch_channel_lines_by_province(
     _test_available_candidates(allow_old=False)
 
     if _targets_complete():
-        print(f"[+] [{province}] 前5页已满足目标，后续第6～20页不再请求。")
+        print(f"[+] [{province}] 前5页已满足目标，后续第6～10页不再请求。")
 
     # ------------------------------------------------------------
     # 阶段B：第6～10页逐页扫描；每页后立即测试新IP。
@@ -1123,45 +1123,7 @@ def fetch_channel_lines_by_province(
             )
             _test_available_candidates(allow_old=True)
 
-    # ------------------------------------------------------------
-    # 阶段C：第11～20页继续按需逐页搜索。
-    # 每页后立即测试：新IP优先，旧IP仅兜底。
-    # ------------------------------------------------------------
-    if (
-        not _targets_complete()
-        and empty_page_hits < 2
-        and max_pages > NEW_IP_SEARCH_DEPTH
-    ):
-        start_deep_page = max(NEW_IP_SEARCH_DEPTH + 1, last_scanned_page + 1)
-
-        for page_num in range(start_deep_page, max_pages + 1):
-            page_rows, ok = fetch_region_page_by_ajax(
-                province,
-                page_num,
-                limit=20,
-                session=session,
-            )
-            if not ok:
-                break
-
-            last_scanned_page = page_num
-
-            if not page_rows:
-                empty_page_hits += 1
-                if empty_page_hits >= 2:
-                    print(f"[*] [{province}] 连续2个空页，提前结束服务器列表扫描。")
-                    break
-            else:
-                empty_page_hits = 0
-                _append_page_rows(page_num, page_rows)
-
-            _test_available_candidates(allow_old=True)
-            if _targets_complete():
-                print(
-                    f"[+] [{province}] 在第{page_num}页已满足目标，"
-                    f"第{page_num + 1}～{max_pages}页不再请求。"
-                )
-                break
+    # 省份服务器列表最大只到第10页；第10页后的旧IP兜底完成后不再继续翻页。
 
     if not group_to_sources:
         return [], "no_playable_source", province
@@ -1691,7 +1653,7 @@ def parse_args():
         "--max-pages",
         type=int,
         default=20,
-        help="每个省份组播服务器列表固定抓取前20页；当前参数保留用于兼容工作流。",
+        help="每个省份组播服务器列表固定最多抓取前10页；当前参数保留用于兼容工作流。",
     )
     ap.add_argument(
         "--max-per-carrier",
@@ -1729,15 +1691,14 @@ def parse_args():
 def main():
     args = parse_args()
 
-    # 省份组播服务器列表统一抓取前20页。
-    # 当前 GitHub Actions 仍可能传入 --max-pages 5；这里统一覆盖为20，
-    # 避免工作流参数把新版 b.py 再限制回5页。
-    if args.max_pages != 20:
+    # 省份组播服务器列表统一最多抓取前10页。
+    # 当前 GitHub Actions 仍可能传入其他 --max-pages 值；这里统一覆盖为10。
+    if args.max_pages != 10:
         print(
-            f"[*] 省份组播服务器列表分页上限固定为20页 "
+            f"[*] 省份组播服务器列表分页上限固定为10页 "
             f"（忽略 --max-pages {args.max_pages}）。"
         )
-        args.max_pages = 20
+        args.max_pages = 10
 
     # “目标2个可用源”和“最多测试20台候选”是两个独立概念。
     # 工作流旧参数可能仍传入 --max-per-carrier 2；这里强制恢复为20，
