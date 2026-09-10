@@ -85,74 +85,16 @@ def get_root_domain(domain):
     return domain
 
 def check_and_clear_existing(txt_file, m3u_file):
-    """不做测流，直接清空旧文件并重新导出。"""
-    if not os.path.exists(txt_file):
-        return False
-    print(f"[*] 不做测流，清空旧文件后重新导出...")
-    for file in [txt_file, m3u_file]:
-        with open(file, 'w', encoding='utf-8') as f: f.write("")
+    """检测历史文件但绝不预先清空；只有新列表成功生成后才覆盖对应文件。"""
+    if os.path.exists(txt_file) or os.path.exists(m3u_file):
+        print("[*] 检测到上一版列表；本次抓取成功后才覆盖对应文件，失败则原样保留。")
     return False
 
 
-def clear_output_files(txt_output_dir, m3u_output_dir):
-    """运行前清理历史产物，避免旧命名文件残留。"""
-    for out_dir, suffix in ((txt_output_dir, ".txt"), (m3u_output_dir, ".m3u")):
-        if not os.path.exists(out_dir):
-            continue
-        for name in os.listdir(out_dir):
-            if name.endswith(suffix):
-                try:
-                    os.remove(os.path.join(out_dir, name))
-                except OSError:
-                    pass
 
-
-def clear_province_output_files(province, txt_output_dir, m3u_output_dir):
-    """成功取得新结果后，清理该省全部旧源文件，避免遗留未选择的运营商。"""
-    carrier_pattern = "|".join(re.escape(carrier) for carrier in ("电信", "联通", "移动", "广电"))
-    stem_pattern = re.compile(
-        rf"^{re.escape(province)}(?:(?:{carrier_pattern})\d*)?$"
-    )
-    removed = []
-    for out_dir, suffix in ((txt_output_dir, ".txt"), (m3u_output_dir, ".m3u")):
-        if not os.path.exists(out_dir):
-            continue
-        for name in os.listdir(out_dir):
-            stem, ext = os.path.splitext(name)
-            if ext.lower() != suffix or not stem_pattern.fullmatch(stem):
-                continue
-            os.remove(os.path.join(out_dir, name))
-            removed.append(name)
-    if removed:
-        print(f"[*] [{province}] 已清理 {len(removed)} 个旧源文件（包括未选择运营商的遗留文件）。")
-    return removed
-
-
-def clear_unselected_carrier_files(province, carriers, txt_output_dir, m3u_output_dir):
-    """清除本省未选择运营商的历史文件，保留所选运营商的上一版结果。"""
-    allowed = set(carriers)
-    carrier_pattern = "|".join(re.escape(carrier) for carrier in ("电信", "联通", "移动", "广电"))
-    stem_pattern = re.compile(
-        rf"^{re.escape(province)}(?P<carrier>{carrier_pattern})\d*$"
-    )
-    removed = []
-    for out_dir, suffix in ((txt_output_dir, ".txt"), (m3u_output_dir, ".m3u")):
-        if not os.path.exists(out_dir):
-            continue
-        for name in os.listdir(out_dir):
-            stem, ext = os.path.splitext(name)
-            match = stem_pattern.fullmatch(stem)
-            if ext.lower() != suffix or not match or match.group("carrier") in allowed:
-                continue
-            os.remove(os.path.join(out_dir, name))
-            removed.append(name)
-    if removed:
-        print(
-            f"[*] [{province}] 已删除 {len(removed)} 个未选择运营商的历史文件；"
-            f"本次仅允许：{','.join(carriers)}。"
-        )
-    return removed
-
+# 历史列表保护策略：不提供“运行前清空/删除旧源”的函数。
+# 只有对应运营商本次成功生成新的有效列表后，才精确覆盖同名文件；
+# 未抓到新源、请求/测速失败、未选择的运营商及未补足的源序号均保留上一版文件和原更新时间。
 
 def normalize_source_host(value: str) -> str:
     """统一服务器地址为小写的 host:port，便于识别新旧源。"""
@@ -230,7 +172,7 @@ REQUEST_DELAY_SEC = 0.8
 CHANNEL_DELAY_MIN_SEC = 2.0
 CHANNEL_DELAY_MAX_SEC = 3.0
 
-# 省份服务器列表分页：每次成功请求后随机等待 4～7 秒。
+# 省份服务器列表第1～5页：每次成功请求后随机等待 5～10 秒。
 REGION_LIST_DELAY_MIN_SEC = 5.0
 REGION_LIST_DELAY_MAX_SEC = 10.0
 
@@ -1397,19 +1339,18 @@ def _build_readme_table_rows(
         updated_at = update_times.get(relative_path) or get_git_file_update_time(
             repo_root, relative_path
         )
-        # 下载链接的 href 继续使用 URL 编码后的文件名，保证 Markdown/浏览器兼容性；
-        # “可复制直链”则保留原始中文文件名，README 中直接显示 北京联通.m3u 等。
+        # “加速链接”的 href 继续使用 gh-proxy + URL 编码后的文件名，保证浏览器兼容性；
+        # “可复制直链”不经过 gh-proxy，并保留原始中文文件名，直接显示 raw.githubusercontent.com 直链。
         encoded_name = quote(name)
         raw_url = f"{RAW_BASE_URL}/{subdir}/{encoded_name}"
         proxy_url = f"{PROXY_PREFIX}{raw_url}"
         copy_raw_url = f"{RAW_BASE_URL}/{subdir}/{name}"
-        copy_proxy_url = f"{PROXY_PREFIX}{copy_raw_url}"
         rows.append(
             "<tr>"
             f'<td style="white-space:nowrap;">{name}</td>'
             f'<td style="white-space:nowrap;"><a href="{proxy_url}">下载链接</a></td>'
             f'<td style="white-space:nowrap;">{updated_at}</td>'
-            f'<td><code>{copy_proxy_url}</code></td>'
+            f'<td><code>{copy_raw_url}</code></td>'
             "</tr>"
         )
     return "\n".join(rows)
@@ -1512,9 +1453,8 @@ def process_province(
     group_title = province
     out_txt = os.path.join(txt_output_dir, f"{group_title}.txt")
     out_m3u = os.path.join(m3u_output_dir, f"{group_title}.m3u")
-    # 1. 检测已有文件
-    if check_and_clear_existing(out_txt, out_m3u):
-        return []
+    # 1. 检测历史文件。禁止在抓取前清空：本次失败时必须保留上一版列表及原更新时间。
+    check_and_clear_existing(out_txt, out_m3u)
     # 2. 直接从频道列表提取 频道名+播放地址
     previous_hosts_by_carrier = load_previous_source_hosts(
         province, carriers, txt_output_dir
@@ -1532,6 +1472,10 @@ def process_province(
     )
     if not grouped_sources:
         print(f"[-] [{province}] 频道提取失败: {status}")
+        print(
+            f"[*] [{province}] 本次未获取到新的可用直播源；"
+            "保留上一版成功列表及其原更新时间，不删除、不覆盖。"
+        )
         return []
     # 3. 按运营商和源序号逐个覆盖；本次未补足的序号保留上一版文件。
     #    例：山东电信.m3u、山东电信1.m3u、山东电信2.m3u ...
@@ -1561,6 +1505,10 @@ def process_province(
             total_channels += len(channel_lines)
     if exported_sources == 0:
         print(f"[-] [{province}] 频道提取失败: channel_lines_empty")
+        print(
+            f"[*] [{province}] 本次没有生成新的有效列表；"
+            "保留上一版成功列表及其原更新时间，不删除、不覆盖。"
+        )
         return []
     print(
         f"[+] 完美！[{province}] 更新完成，导出 {total_channels} 条频道，"
@@ -1821,16 +1769,9 @@ def main():
     os.makedirs(txt_output_dir, exist_ok=True)
     os.makedirs(m3u_output_dir, exist_ok=True)
 
-    # 只有明确选择“全部省份+全部运营商”时才清空全部输出。
-    full_manual_run = (
-        not args.targets
-        and not args.only_province
-        and "全部" in split_selection(args.provinces)
-        and selected_carriers == CARRIERS
-    )
-    # 增量发布时保留尚未轮到的省份，避免第一次推送就让其他省份暂时消失。
-    if full_manual_run and not args.push:
-        clear_output_files(txt_output_dir, m3u_output_dir)
+    # 历史成功列表采用增量保护策略：无论定时运行、手动运行还是全省份运行，
+    # 都不在抓取前清空输出目录。只有对应运营商本次成功生成新列表后才覆盖对应文件；
+    # 本次未抓到新源、请求失败、测速失败或未选择的运营商，均保留上一版文件及原更新时间。
 
     print(
         "[*] 本次执行计划："
@@ -1856,9 +1797,8 @@ def main():
         print(f" 正在处理地区任务: {province}；运营商: {','.join(carriers)}")
         print("=" * 50)
 
-        removed_unselected = clear_unselected_carrier_files(
-            province, carriers, txt_output_dir, m3u_output_dir
-        )
+        # 不再预先删除未选择运营商的历史文件。历史成功列表只有在对应运营商
+        # 本次成功生成新列表时才会被精确覆盖，避免抓取失败导致旧源丢失。
 
         province_min_speed = resolve_min_stream_speed(
             province, args.min_stream_speed
@@ -1881,20 +1821,15 @@ def main():
             test_channels_per_source=args.test_channels_per_source,
         )
 
-        if generated_relative_paths or removed_unselected:
-            if generated_relative_paths:
-                record_province_update_times(
-                    repo_root, province, generated_relative_paths
-                )
+        if generated_relative_paths:
+            # 只记录本次实际成功覆盖的文件时间；未生成的新源继续保留旧文件和旧时间。
+            record_province_update_times(
+                repo_root, province, generated_relative_paths
+            )
             update_readme_file_list(repo_root)
             if args.push:
-                action = (
-                    "抓取完成"
-                    if generated_relative_paths
-                    else "已清理未选择运营商的旧文件"
-                )
                 print(
-                    f"\n[*] [{province}] {action}，"
+                    f"\n[*] [{province}] 抓取完成，"
                     "立即更新 README 并推送到 GitHub..."
                 )
                 publish_paths = ["txt", "m3u", README_FILE]
@@ -1902,6 +1837,11 @@ def main():
                     publish_paths.append(UPDATE_TIMES_FILE)
                 push_to_github(publish_paths, province=province)
                 print(f"[+] [{province}] 已发布，继续处理下一个省份。")
+        else:
+            print(
+                f"[*] [{province}] 本次没有新的列表需要发布；"
+                "GitHub 中上一版成功列表和对应更新时间保持不变。"
+            )
 
     generated_files = []
     generated_files.extend(
