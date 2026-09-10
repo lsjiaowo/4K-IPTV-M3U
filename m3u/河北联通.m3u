@@ -1,4 +1,4 @@
-#EXTM3U x-tvg-url="http://epg.51zmt.top:8000/e.xml.gz"
+#EXTM3U x-tvg-url="https://epg.catvod.com/epg.xml"
 #EXTINF:-1 tvg-id="河北卫视高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%B2%B3%E5%8C%97%E5%8D%AB%E8%A7%86%E9%AB%98%E6%B8%85.png" group-title="河北联通",河北卫视高清
 http://101.17.164.185:8188/rtp/239.253.92.154:6011
 #EXTINF:-1 tvg-id="河北经济生活高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%B2%B3%E5%8C%97%E7%BB%8F%E6%B5%8E%E7%94%9F%E6%B4%BB%E9%AB%98%E6%B8%85.png" group-title="河北联通",河北经济生活高清
