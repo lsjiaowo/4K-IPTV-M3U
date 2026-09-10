@@ -231,10 +231,10 @@ CHANNEL_DELAY_MIN_SEC = 2.0
 CHANNEL_DELAY_MAX_SEC = 3.0
 
 # 省份服务器列表分页：每次成功请求后随机等待 4～7 秒。
-REGION_LIST_DELAY_MIN_SEC = 4.0
-REGION_LIST_DELAY_MAX_SEC = 7.0
+REGION_LIST_DELAY_MIN_SEC = 5.0
+REGION_LIST_DELAY_MAX_SEC = 10.0
 
-# 省份组播服务器列表：第1～5页保持正常4～7秒间隔；
+# 省份组播服务器列表：第1～5页保持正常5～10秒间隔；
 # 从准备请求第6页开始，每一页请求前额外随机等待50～60秒。
 REGION_LIST_DEEP_PAGE_START = 6
 REGION_LIST_DEEP_PAGE_DELAY_MIN_SEC = 50.0
@@ -264,7 +264,7 @@ def signed_get(
     """带签名的 GET 请求，返回 JSON（含 html 字段）。
 
     request_kind:
-      region  = 省份列表，成功后等待 4～7 秒
+      region  = 省份列表，成功后等待 5～10 秒
       detail  = IP详情，成功后不额外等待
       channel = 频道列表，每次成功请求后随机等待 2～3 秒；不设置专用限流长等待
 
