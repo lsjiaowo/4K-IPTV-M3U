@@ -220,40 +220,167 @@ def generate_paer_token() -> str:
     return f"{ts}|{rand}|{sig}"
 
 
-# 仅用于 429/503 等重试退避的基础时间。
+# 普通网络异常/非频道请求退避的基础时间。
 REQUEST_DELAY_SEC = 0.8
 
-# 每次成功请求后的随机间隔，避免短时间内请求过于密集。
-REQUEST_DELAY_MIN_SEC = 1.0
-REQUEST_DELAY_MAX_SEC = 2.0
+# IP详情页、频道列表：每次成功请求后随机等待 10～20 秒。
+REQUEST_DELAY_MIN_SEC = 10.0
+REQUEST_DELAY_MAX_SEC = 20.0
 
-# 省份服务器列表接口风控更严格，单独使用较长间隔。
-REGION_LIST_DELAY_MIN_SEC = 3.0
-REGION_LIST_DELAY_MAX_SEC = 5.0
+# 省份服务器列表分页：每次成功请求后随机等待 4～7 秒。
+REGION_LIST_DELAY_MIN_SEC = 4.0
+REGION_LIST_DELAY_MAX_SEC = 7.0
 
-# 连续处理多个省份时，在进入下一个省份前增加随机冷却。
-PROVINCE_SWITCH_DELAY_MIN_SEC = 3.0
-PROVINCE_SWITCH_DELAY_MAX_SEC = 6.0
+# 连续处理多个省份时，在进入下一个省份前随机冷却 30～40 秒。
+PROVINCE_SWITCH_DELAY_MIN_SEC = 30.0
+PROVINCE_SWITCH_DELAY_MAX_SEC = 40.0
+
 REQUEST_MAX_RETRIES = 5
 
+# 频道列表触发“请求频繁”后的专用随机等待。
+# 第1次：60～90秒；第2次：120～180秒；第3次：240～360秒。
+CHANNEL_RATE_LIMIT_WAIT_RANGES = (
+    (60.0, 90.0),
+    (120.0, 180.0),
+    (240.0, 360.0),
+)
+CHANNEL_RATE_LIMIT_MAX_WAITS = len(CHANNEL_RATE_LIMIT_WAIT_RANGES)
 
-def signed_get(path_query: str, session: requests.Session | None = None) -> dict:
-    """带签名的 GET 请求，返回 JSON（含 html 字段）。"""
+
+def signed_get(
+    path_query: str,
+    session: requests.Session | None = None,
+    request_kind: str = "default",
+) -> dict:
+    """带签名的 GET 请求，返回 JSON（含 html 字段）。
+
+    request_kind:
+      region  = 省份列表，成功后等待 4～7 秒
+      detail  = IP详情，成功后等待 10～20 秒
+      channel = 频道列表，成功后等待 10～20 秒；
+                请求频繁时按 60～90 / 120～180 / 240～360 秒退避
+    """
     url = IPTV_BASE_URL + path_query.lstrip("/")
     sess = session or requests.Session()
     last_error = None
-    is_region_list = "province=" in path_query
 
-    def retry_wait_seconds(response, attempt_index: int) -> float:
-        """优先遵守服务端Retry-After，否则使用原有指数退避。"""
+    if request_kind == "default":
+        if "province=" in path_query:
+            request_kind = "region"
+        elif re.search(r"(?:[?&])s=", path_query):
+            request_kind = "channel"
+        else:
+            request_kind = "detail"
+
+    is_region_list = request_kind == "region"
+    is_channel_request = request_kind == "channel"
+
+    def generic_retry_wait_seconds(response, attempt_index: int) -> float:
+        """普通429/503优先遵守Retry-After，否则使用原有指数退避。"""
         retry_after = (response.headers.get("Retry-After", "") or "").strip()
         try:
             if retry_after:
-                return min(60.0, max(0.0, float(retry_after)))
+                return min(300.0, max(0.0, float(retry_after)))
         except ValueError:
             pass
         return min(30.0, REQUEST_DELAY_SEC * (2 ** attempt_index) * 3)
 
+    def channel_wait_seconds(wait_index: int, response=None) -> float:
+        """频道请求频繁时按指定三档随机退避；Retry-After更长时优先遵守。"""
+        low, high = CHANNEL_RATE_LIMIT_WAIT_RANGES[wait_index]
+        wait = random.uniform(low, high)
+        if response is not None:
+            retry_after = (response.headers.get("Retry-After", "") or "").strip()
+            try:
+                if retry_after:
+                    wait = max(wait, min(600.0, max(0.0, float(retry_after))))
+            except ValueError:
+                pass
+        return wait
+
+    def is_rate_limit_payload(data: dict) -> bool:
+        if not isinstance(data, dict):
+            return False
+        message = str(data.get("message", "") or "")
+        status = str(data.get("status", "") or "").lower()
+        return status != "success" and ("频繁" in message or "too many" in message.lower())
+
+    # 频道列表单独处理：HTTP 429 和 HTTP 200 + JSON“请求频繁”都使用三档退避。
+    if is_channel_request:
+        rate_limit_wait_index = 0
+        network_attempt = 0
+
+        while True:
+            headers = {
+                "User-Agent": USER_AGENT,
+                "X-Requested-With": "XMLHttpRequest",
+                "X-CSRF-TOKEN": generate_paer_token(),
+            }
+            try:
+                resp = sess.get(url, headers=headers, timeout=30)
+
+                if resp.status_code == 429:
+                    last_error = requests.HTTPError(
+                        f"429 Too Many Requests: {url}", response=resp
+                    )
+                    if rate_limit_wait_index >= CHANNEL_RATE_LIMIT_MAX_WAITS:
+                        print(
+                            "[-] 频道列表请求仍被限流，3次退避重试均已完成，"
+                            "不再额外等待。"
+                        )
+                        raise last_error
+                    wait = channel_wait_seconds(rate_limit_wait_index, resp)
+                    print(
+                        f"[!] 频道列表请求过于频繁，第{rate_limit_wait_index + 1}/"
+                        f"{CHANNEL_RATE_LIMIT_MAX_WAITS}次退避："
+                        f"{wait:.1f}s 后重试..."
+                    )
+                    rate_limit_wait_index += 1
+                    time.sleep(wait)
+                    continue
+
+                resp.raise_for_status()
+                data = resp.json()
+
+                if is_rate_limit_payload(data):
+                    if rate_limit_wait_index >= CHANNEL_RATE_LIMIT_MAX_WAITS:
+                        message = str(data.get("message", "") or "请求频繁")
+                        raise RuntimeError(
+                            f"频道列表请求仍被限流，3次退避重试均已完成: {message}"
+                        )
+                    wait = channel_wait_seconds(rate_limit_wait_index)
+                    message = str(data.get("message", "") or "请求频繁")
+                    print(
+                        f"[!] 频道抓取请求频繁（{message}），"
+                        f"第{rate_limit_wait_index + 1}/"
+                        f"{CHANNEL_RATE_LIMIT_MAX_WAITS}次等待 "
+                        f"{wait:.1f}s 后重试..."
+                    )
+                    rate_limit_wait_index += 1
+                    time.sleep(wait)
+                    continue
+
+                time.sleep(random.uniform(
+                    REQUEST_DELAY_MIN_SEC,
+                    REQUEST_DELAY_MAX_SEC,
+                ))
+                return data
+
+            except requests.HTTPError:
+                raise
+            except requests.RequestException as e:
+                last_error = e
+                network_attempt += 1
+                if network_attempt >= REQUEST_MAX_RETRIES:
+                    raise
+                wait = REQUEST_DELAY_SEC * (2 ** (network_attempt - 1))
+                print(
+                    f"[!] 频道网络异常，{wait:.1f}s 后重试 "
+                    f"({network_attempt}/{REQUEST_MAX_RETRIES}): {e}"
+                )
+                time.sleep(wait)
+
+    # 省份列表 / IP详情沿用普通重试策略。
     for attempt in range(REQUEST_MAX_RETRIES):
         headers = {
             "User-Agent": USER_AGENT,
@@ -262,6 +389,7 @@ def signed_get(path_query: str, session: requests.Session | None = None) -> dict
         }
         try:
             resp = sess.get(url, headers=headers, timeout=30)
+
             if resp.status_code == 429:
                 last_error = requests.HTTPError(
                     f"429 Too Many Requests: {url}", response=resp
@@ -269,53 +397,57 @@ def signed_get(path_query: str, session: requests.Session | None = None) -> dict
                 if attempt + 1 >= REQUEST_MAX_RETRIES:
                     print(
                         f"[-] 请求仍被限流，已达到最大重试次数 "
-                        f"({REQUEST_MAX_RETRIES}/{REQUEST_MAX_RETRIES})，不再额外等待。"
+                        f"({REQUEST_MAX_RETRIES}/{REQUEST_MAX_RETRIES})。"
                     )
                     break
-                wait = retry_wait_seconds(resp, attempt)
-                print(f"[!] 请求过于频繁，{wait:.1f}s 后重试 ({attempt + 1}/{REQUEST_MAX_RETRIES})...")
+                wait = generic_retry_wait_seconds(resp, attempt)
+                print(
+                    f"[!] 请求过于频繁，{wait:.1f}s 后重试 "
+                    f"({attempt + 1}/{REQUEST_MAX_RETRIES})..."
+                )
                 time.sleep(wait)
                 continue
+
             resp.raise_for_status()
+
             if is_region_list:
                 delay_min = REGION_LIST_DELAY_MIN_SEC
                 delay_max = REGION_LIST_DELAY_MAX_SEC
             else:
                 delay_min = REQUEST_DELAY_MIN_SEC
                 delay_max = REQUEST_DELAY_MAX_SEC
-            time.sleep(
-                random.uniform(
-                    delay_min,
-                    delay_max,
-                )
-            )
+
+            time.sleep(random.uniform(delay_min, delay_max))
             return resp.json()
+
         except requests.HTTPError as e:
             last_error = e
             if e.response is not None and e.response.status_code in (429, 503):
                 if attempt + 1 >= REQUEST_MAX_RETRIES:
-                    print(
-                        f"[-] HTTP {e.response.status_code}，已达到最大重试次数 "
-                        f"({REQUEST_MAX_RETRIES}/{REQUEST_MAX_RETRIES})，不再额外等待。"
-                    )
                     break
-                wait = retry_wait_seconds(e.response, attempt)
-                print(f"[!] HTTP {e.response.status_code}，{wait:.1f}s 后重试 ({attempt + 1}/{REQUEST_MAX_RETRIES})...")
+                wait = generic_retry_wait_seconds(e.response, attempt)
+                print(
+                    f"[!] HTTP {e.response.status_code}，{wait:.1f}s 后重试 "
+                    f"({attempt + 1}/{REQUEST_MAX_RETRIES})..."
+                )
                 time.sleep(wait)
                 continue
             raise
+
         except requests.RequestException as e:
             last_error = e
             if attempt + 1 >= REQUEST_MAX_RETRIES:
                 raise
             wait = REQUEST_DELAY_SEC * (2 ** attempt)
-            print(f"[!] 网络异常，{wait:.1f}s 后重试 ({attempt + 1}/{REQUEST_MAX_RETRIES}): {e}")
+            print(
+                f"[!] 网络异常，{wait:.1f}s 后重试 "
+                f"({attempt + 1}/{REQUEST_MAX_RETRIES}): {e}"
+            )
             time.sleep(wait)
 
     if last_error:
         raise last_error
     raise RuntimeError(f"请求失败: {url}")
-
 
 def _parse_list_rows(html: str) -> list[dict]:
     """从 IP 列表页 HTML 解析组播行。"""
@@ -363,7 +495,7 @@ def fetch_region_rows_by_ajax(province, limit=20, max_pages=30, session=None):
         })
         path = f"{IPTV_INDEX}?{query}"
         try:
-            data = signed_get(path, session=session)
+            data = signed_get(path, session=session, request_kind="region")
         except Exception as e:
             print(f"[-] 请求省份 [{province}] 第{page_num}页失败: {e}")
             break
@@ -449,7 +581,7 @@ def parse_s_token(detail_html: str) -> str | None:
 def fetch_detail_html(p_token: str, session: requests.Session | None = None) -> str:
     query = urlencode({"p": p_token, "t": "multicast"})
     path = f"{IPTV_INDEX}?{query}"
-    data = signed_get(path, session=session)
+    data = signed_get(path, session=session, request_kind="detail")
     return data.get("html", "") or ""
 
 
@@ -492,16 +624,17 @@ def fetch_channel_lines_by_s(
     all_lines: list[str] = list(initial_lines or [])
     seen: set[str] = set(all_lines)
     empty_hits = 0
-
     for page_num in range(max(1, start_page), max_pages + 1):
         query = urlencode({"s": s_token, "t": "multicast", "page": page_num})
         path = f"{IPTV_INDEX}?{query}"
         try:
-            data = signed_get(path, session=session)
+            data = signed_get(path, session=session, request_kind="channel")
         except Exception as e:
             print(f"[-] 频道列表第{page_num}页失败: {e}")
             break
         if data.get("status") != "success":
+            msg = data.get("message", "unknown error")
+            print(f"[-] 频道列表第{page_num}页返回失败: {msg}")
             break
         html = data.get("html", "")
         page_lines = parse_channel_lines(html)
@@ -519,7 +652,6 @@ def fetch_channel_lines_by_s(
                 continue
             seen.add(line)
             all_lines.append(line)
-
         print(
             f"[*] 正在抓取频道列表：第{page_num}页，"
             f"本页{len(page_lines)}条，累计{len(all_lines)}条"
@@ -533,11 +665,9 @@ def fetch_channel_lines_by_s(
                     "暂停抓取完整列表并立即测速。"
                 )
                 break
-
         if "下一页" not in html:
             break
     return all_lines
-
 
 def measure_stream_speed(
     play_url: str,
@@ -592,7 +722,6 @@ def is_source_playable(
 ) -> bool:
     """从 CCTV1 至 CCTV15 中排除标清/SD后随机抽测，任意一个通过即有效。"""
     candidates = extract_speed_test_candidates(channel_lines)
-
     required_count = max(1, test_channels)
     if len(candidates) < required_count:
         print(
@@ -607,7 +736,6 @@ def is_source_playable(
         f"[*] [{source_label}] 从 {len(candidates)} 个 CCTV1-CCTV15 非标清频道中"
         f"随机抽测 {required_count} 个。"
     )
-
     for channel_name, play_url in sampled_channels:
         print(f"[*] [{source_label}] 测速频道：{channel_name} {play_url}")
         try:
@@ -618,7 +746,6 @@ def is_source_playable(
         except requests.RequestException as exc:
             print(f"[-] [{source_label}] 测速失败：{exc}")
             continue
-
         print(
             f"[*] [{source_label}] 下载 {total_bytes / (1024 * 1024):.2f} MB，"
             f"平均速度 {speed_mb_s * 1024:.0f} KB/s，"
@@ -647,7 +774,6 @@ def is_source_playable(
         "丢弃该服务器。"
     )
     return False
-
 
 def parse_channel_lines(channels_html: str) -> list[str]:
     lines = []
@@ -728,7 +854,6 @@ def fetch_channel_lines_by_province(
     rows = fetch_region_rows_by_ajax(province, limit=20, max_pages=max_pages, session=session)
     if not rows:
         return [], "list_empty", province
-
     now_dt = datetime.now()
 
     def _is_usable_status(status: str) -> bool:
@@ -807,7 +932,6 @@ def fetch_channel_lines_by_province(
                 continue
             selected_rows.append((carrier, row))
             selected_tokens.add(token)
-
     if not selected_rows:
         # 严格遵守调用方指定的运营商；没有匹配候选时不跨运营商兜底。
         return [], "no_matching_carrier_source", province
@@ -820,7 +944,6 @@ def fetch_channel_lines_by_province(
     for carrier, picked in selected_rows:
         if playable_counts.get(carrier, 0) >= max_per_carrier:
             continue
-
         candidate_started_at = datetime.now()
         candidate_started_clock = time.monotonic()
         candidate_host = picked.get("host", "")
@@ -828,7 +951,6 @@ def fetch_channel_lines_by_province(
             f"[*] [{province}] 候选开始：{picked.get('type', '')} {candidate_host}；"
             f"时间={candidate_started_at.strftime('%Y-%m-%d %H:%M:%S')}"
         )
-
         try:
             # 文件分组严格使用请求的运营商，避免站点详情中的异常标签串到其他运营商。
             group_title = f"{province}{carrier}"
@@ -840,7 +962,6 @@ def fetch_channel_lines_by_province(
             if not detail_html:
                 print(f"[-] [{province}] IP 详情为空: {candidate_host}")
                 continue
-
             s_token = parse_s_token(detail_html)
             if not s_token:
                 print(f"[-] [{province}] 未找到频道列表 token: {candidate_host}")
@@ -856,7 +977,6 @@ def fetch_channel_lines_by_province(
             )
             if not test_lines:
                 continue
-
             source_label = f"{group_title} {candidate_host}".strip()
             if not is_source_playable(
                 test_lines,
@@ -922,7 +1042,6 @@ def fetch_channel_lines_by_province(
         f"更新时间<= {max_age_hours}小时），来源: {', '.join(unique_ops)}"
     )
     return group_to_sources, "ok", province
-
 
 def extract_test_targets(template_content, max_targets=5):
     """从模板中提取最多 N 个组播测试目标。"""
@@ -1007,7 +1126,6 @@ def load_readme_update_times(repo_root: str) -> dict[str, str]:
             content = file.read()
     except OSError:
         return {}
-
     result = {}
     sections = (
         ("m3u", r"## M3U 文件列表([\s\S]*?)(?=\r?\n## TXT 文件列表)"),
@@ -1042,7 +1160,6 @@ def load_file_update_times(repo_root: str) -> dict[str, str]:
             data = loaded
     except (OSError, json.JSONDecodeError):
         pass
-
     # JSON 中缺失的旧文件继承 README 当前显示值，禁止重新计算并改乱时间。
     for key, value in load_readme_update_times(repo_root).items():
         data.setdefault(key, value)
@@ -1111,7 +1228,6 @@ def _build_readme_table_rows(
     names = sorted([n for n in os.listdir(target_dir) if n.endswith(ext)])
     if not names:
         return '<tr><td colspan="4">暂无文件</td></tr>'
-
     rows = []
     for name in names:
         relative_path = f"{subdir}/{name}"
@@ -1179,13 +1295,11 @@ def update_readme_file_list(repo_root: str) -> None:
         return
     with open(readme_path, "r", encoding="utf-8") as f:
         content = f.read()
-
     update_times = load_file_update_times(repo_root)
     m3u_table = _build_readme_section_table(repo_root, "m3u", ".m3u", update_times)
     txt_table = _build_readme_section_table(repo_root, "txt", ".txt", update_times)
     m3u_block = f"## M3U 文件列表\n\n{m3u_table}\n"
     txt_block = f"## TXT 文件列表\n\n{txt_table}\n"
-
     content, m3u_count = re.subn(
         r"## M3U 文件列表[\s\S]*?(?=\r?\n## TXT 文件列表)",
         m3u_block.rstrip(),
@@ -1206,7 +1320,6 @@ def update_readme_file_list(repo_root: str) -> None:
             content,
             count=1,
         )
-
     if m3u_count == 0 or txt_count == 0:
         print("[-] README 结构不匹配（未找到列表区块），跳过自动更新。")
         return
@@ -1214,6 +1327,7 @@ def update_readme_file_list(repo_root: str) -> None:
     with open(readme_path, "w", encoding="utf-8") as f:
         f.write(content)
     print("[+] README.md 文件列表已自动更新。")
+
 
 def process_province(
     province,
@@ -1231,10 +1345,9 @@ def process_province(
     group_title = province
     out_txt = os.path.join(txt_output_dir, f"{group_title}.txt")
     out_m3u = os.path.join(m3u_output_dir, f"{group_title}.m3u")
-
     # 1. 检测已有文件
-    if check_and_clear_existing(out_txt, out_m3u): return
-
+    if check_and_clear_existing(out_txt, out_m3u):
+        return []
     # 2. 直接从频道列表提取 频道名+播放地址
     previous_hosts_by_carrier = load_previous_source_hosts(
         province, carriers, txt_output_dir
@@ -1253,7 +1366,6 @@ def process_province(
     if not grouped_sources:
         print(f"[-] [{province}] 频道提取失败: {status}")
         return []
-
     # 3. 按运营商和源序号逐个覆盖；本次未补足的序号保留上一版文件。
     #    例：山东电信.m3u、山东电信1.m3u、山东电信2.m3u ...
     total_channels = 0
@@ -1265,7 +1377,6 @@ def process_province(
                 continue
 
             channel_lines = sort_priority_channels(channel_lines)
-
             suffix = "" if idx == 0 else str(idx)
             file_stem = f"{group_title}{suffix}"
             out_txt = os.path.join(txt_output_dir, f"{file_stem}.txt")
@@ -1284,7 +1395,10 @@ def process_province(
     if exported_sources == 0:
         print(f"[-] [{province}] 频道提取失败: channel_lines_empty")
         return []
-    print(f"[+] 完美！[{province}] 更新完成，导出 {total_channels} 条频道，生成 {exported_sources} 条源文件（每运营商多条）。")
+    print(
+        f"[+] 完美！[{province}] 更新完成，导出 {total_channels} 条频道，"
+        f"生成 {exported_sources} 条源文件（每运营商多条）。"
+    )
     return generated_relative_paths
 
 def push_to_github(files, province=""):
@@ -1467,7 +1581,6 @@ def main():
     repo_root = os.path.dirname(script_dir)
     txt_output_dir = os.path.join(repo_root, "txt")
     m3u_output_dir = os.path.join(repo_root, "m3u")
-
     try:
         selected_carriers = parse_carrier_selection(args.carriers)
         if args.targets:
@@ -1508,7 +1621,10 @@ def main():
             if grouped_sources
             else 0
         )
-        print(f"\n[*] 测试结果: 地区={args.test_region}，分组={group_title}，状态={status}，频道数={total}")
+        print(
+            f"\n[*] 测试结果: 地区={args.test_region}，分组={group_title}，"
+            f"状态={status}，频道数={total}"
+        )
         for k, sources in grouped_sources.items():
             n_sources = len(sources)
             n_lines = sum(len(x) for x in sources)
@@ -1517,6 +1633,7 @@ def main():
 
     os.makedirs(txt_output_dir, exist_ok=True)
     os.makedirs(m3u_output_dir, exist_ok=True)
+
     # 只有明确选择“全部省份+全部运营商”时才清空全部输出。
     full_manual_run = (
         not args.targets
@@ -1547,12 +1664,15 @@ def main():
                 "降低省份列表接口触发429的概率。"
             )
             time.sleep(switch_delay)
-        print(f"\n" + "="*50)
+
+        print(f"\n" + "=" * 50)
         print(f" 正在处理地区任务: {province}；运营商: {','.join(carriers)}")
-        print("="*50)
+        print("=" * 50)
+
         removed_unselected = clear_unselected_carrier_files(
             province, carriers, txt_output_dir, m3u_output_dir
         )
+
         province_min_speed = resolve_min_stream_speed(
             province, args.min_stream_speed
         )
@@ -1560,6 +1680,7 @@ def main():
             f"[*] [{province}] 本次测速通过门槛："
             f"> {province_min_speed * 1024:.0f} KB/s"
         )
+
         generated_relative_paths = process_province(
             province,
             txt_output_dir,
@@ -1580,8 +1701,15 @@ def main():
                 )
             update_readme_file_list(repo_root)
             if args.push:
-                action = "抓取完成" if generated_relative_paths else "已清理未选择运营商的旧文件"
-                print(f"\n[*] [{province}] {action}，立即更新 README 并推送到 GitHub...")
+                action = (
+                    "抓取完成"
+                    if generated_relative_paths
+                    else "已清理未选择运营商的旧文件"
+                )
+                print(
+                    f"\n[*] [{province}] {action}，"
+                    "立即更新 README 并推送到 GitHub..."
+                )
                 publish_paths = ["txt", "m3u", README_FILE]
                 if os.path.exists(os.path.join(repo_root, UPDATE_TIMES_FILE)):
                     publish_paths.append(UPDATE_TIMES_FILE)
@@ -1590,11 +1718,20 @@ def main():
 
     generated_files = []
     generated_files.extend(
-        [os.path.join("txt", f) for f in os.listdir(txt_output_dir) if f.endswith('.txt')]
+        [
+            os.path.join("txt", f)
+            for f in os.listdir(txt_output_dir)
+            if f.endswith(".txt")
+        ]
     )
     generated_files.extend(
-        [os.path.join("m3u", f) for f in os.listdir(m3u_output_dir) if f.endswith('.m3u')]
+        [
+            os.path.join("m3u", f)
+            for f in os.listdir(m3u_output_dir)
+            if f.endswith(".m3u")
+        ]
     )
+
     if args.push:
         print("\n[] 全部省份处理完毕；每个成功省份均已即时发布。")
     else:
@@ -1603,5 +1740,6 @@ def main():
         print("\n[] 流水线本地文件生成完毕（未启用 --push，跳过 git 推送）。")
         print(f"[] 本次生成文件数量: {len(generated_files)}")
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()
