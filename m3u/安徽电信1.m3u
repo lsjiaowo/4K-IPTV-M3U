@@ -1,4 +1,4 @@
-#EXTM3U x-tvg-url="http://epg.51zmt.top:8000/e.xml.gz"
+#EXTM3U x-tvg-url="https://epg.catvod.com/epg.xml"
 #EXTINF:-1 tvg-id="安徽经济生活HD" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%AE%89%E5%BE%BD%E7%BB%8F%E6%B5%8E%E7%94%9F%E6%B4%BBHD.png" group-title="安徽电信",安徽经济生活HD
 http://183.166.116.145:9000/rtp/238.1.79.44:4464
 #EXTINF:-1 tvg-id="安徽影视频道HD" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%AE%89%E5%BE%BD%E5%BD%B1%E8%A7%86%E9%A2%91%E9%81%93HD.png" group-title="安徽电信",安徽影视频道HD
