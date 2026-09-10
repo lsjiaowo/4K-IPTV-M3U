@@ -234,6 +234,12 @@ REQUEST_DELAY_MAX_SEC = 20.0
 REGION_LIST_DELAY_MIN_SEC = 4.0
 REGION_LIST_DELAY_MAX_SEC = 7.0
 
+# 省份组播服务器列表：第1～5页保持正常4～7秒间隔；
+# 从准备请求第6页开始，每一页请求前额外随机等待70～90秒。
+REGION_LIST_DEEP_PAGE_START = 6
+REGION_LIST_DEEP_PAGE_DELAY_MIN_SEC = 70.0
+REGION_LIST_DEEP_PAGE_DELAY_MAX_SEC = 90.0
+
 # 连续处理多个省份时，在进入下一个省份前随机冷却 30～40 秒。
 PROVINCE_SWITCH_DELAY_MIN_SEC = 30.0
 PROVINCE_SWITCH_DELAY_MAX_SEC = 40.0
@@ -497,6 +503,21 @@ def fetch_region_rows_by_ajax(province, limit=20, max_pages=20, session=None):
             "page": page_num,
         })
         path = f"{IPTV_INDEX}?{query}"
+
+        # 实测第6页开始更容易触发站点请求频繁：
+        # 第1～5页沿用 signed_get() 的4～7秒正常间隔；
+        # 从第6页起，每次请求下一页前额外等待70～90秒。
+        if page_num >= REGION_LIST_DEEP_PAGE_START:
+            deep_page_wait = random.uniform(
+                REGION_LIST_DEEP_PAGE_DELAY_MIN_SEC,
+                REGION_LIST_DEEP_PAGE_DELAY_MAX_SEC,
+            )
+            print(
+                f"[*] [{province}] 准备请求第{page_num}页，"
+                f"深分页保护随机等待 {deep_page_wait:.1f} 秒。"
+            )
+            time.sleep(deep_page_wait)
+
         try:
             data = signed_get(path, session=session, request_kind="region")
         except Exception as e:
