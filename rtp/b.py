@@ -889,6 +889,7 @@ def fetch_channel_lines_by_province(
         candidate_started_at = datetime.now()
         candidate_started_clock = time.monotonic()
         candidate_host = picked.get("host", "")
+        candidate_status = str(picked.get("status", "") or "").strip() or "状态未知"
         group_title = f"{province}{carrier}"
 
         print(
@@ -898,20 +899,29 @@ def fetch_channel_lines_by_province(
         )
 
         try:
+            print(f"[*] [{group_title} {candidate_host}] 开始获取IP详情页【{candidate_status}】。")
             try:
                 detail_html = fetch_detail_html(token, session=session)
             except Exception as exc:
-                print(f"[-] [{province}] IP 详情获取失败: {exc}")
+                print(f"[-] [{group_title} {candidate_host}] IP详情获取失败，未进入测速阶段: {exc}")
                 return False
 
             if not detail_html:
-                print(f"[-] [{province}] IP 详情为空: {candidate_host}")
+                print(f"[-] [{group_title} {candidate_host}] IP详情为空，未进入测速阶段。")
                 return False
 
+            print(f"[+] [{group_title} {candidate_host}] IP详情页获取成功，HTML长度={len(detail_html)}。")
             s_token = parse_s_token(detail_html)
             if not s_token:
-                print(f"[-] [{province}] 未找到频道列表 token: {candidate_host}")
+                print(
+                    f"[-] [{group_title} {candidate_host}] IP详情页中未找到频道列表 s_token，"
+                    "未进入测速阶段。"
+                )
                 return False
+
+            token_preview = s_token if len(s_token) <= 16 else s_token[:8] + "..." + s_token[-4:]
+            print(f"[+] [{group_title} {candidate_host}] s_token解析成功：{token_preview}")
+            print(f"[*] [{group_title} {candidate_host}] 开始抓取测速频道。")
 
             # 第一阶段：只抓到足够测速的 CCTV 频道，立即测速。
             page_state: dict = {}
@@ -922,7 +932,19 @@ def fetch_channel_lines_by_province(
                 page_state=page_state,
             )
             if not test_lines:
+                print(
+                    f"[-] [{group_title} {candidate_host}] 频道列表未解析到任何频道，"
+                    "未进入测速阶段。"
+                )
                 return False
+
+            speed_candidates = extract_speed_test_candidates(test_lines)
+            if len(speed_candidates) < max(1, test_channels_per_source):
+                print(
+                    f"[-] [{group_title} {candidate_host}] 已解析 {len(test_lines)} 条频道，"
+                    f"但仅找到 {len(speed_candidates)} 个 CCTV1-CCTV15 非标清HTTP测速频道，"
+                    f"少于要求的 {max(1, test_channels_per_source)} 个，无法进入有效测速。"
+                )
 
             source_label = f"{group_title} {candidate_host}".strip()
             if not is_source_playable(
@@ -938,8 +960,9 @@ def fetch_channel_lines_by_province(
             last_page = int(page_state.get("last_page", 0))
             has_next = bool(page_state.get("has_next", False))
             print(
-                f"[*] [{source_label}] 测速通过，复用前{last_page}页的 "
-                f"{len(test_lines)} 条频道，从第{last_page + 1}页继续完整抓取。"
+                f"[+] [{source_label}] 测速通过【{candidate_status}】，"
+                f"复用前{last_page}页的 {len(test_lines)} 条频道，"
+                f"从第{last_page + 1}页继续完整抓取。"
             )
 
             if has_next:
@@ -961,8 +984,8 @@ def fetch_channel_lines_by_province(
             playable_counts[carrier] = playable_counts.get(carrier, 0) + 1
 
             print(
-                f"[+] [{province}{carrier}] 已获得 "
-                f"{playable_counts[carrier]}/{TARGET_PLAYABLE_SOURCES_PER_CARRIER} "
+                f"[+] [{province}{carrier}] 可用源：{candidate_host}【{candidate_status}】；"
+                f"已获得 {playable_counts[carrier]}/{TARGET_PLAYABLE_SOURCES_PER_CARRIER} "
                 f"个可用播放列表（已测试 {tested_counts[carrier]}/{max_per_carrier} 台）。"
             )
             return True
