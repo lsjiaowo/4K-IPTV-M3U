@@ -477,7 +477,7 @@ def _parse_list_rows(html: str) -> list[dict]:
     return rows
 
 
-def fetch_region_rows_by_ajax(province, limit=20, max_pages=30, session=None):
+def fetch_region_rows_by_ajax(province, limit=20, max_pages=20, session=None):
     """按省份+组播类型分页抓取 IP 列表。"""
     region_code = PROVINCE_CODES.get(province)
     if not region_code:
@@ -906,19 +906,13 @@ def fetch_channel_lines_by_province(
         )
 
         # 每个运营商最多测试 candidate_limit 台候选服务器。
-        # 为上一版可用服务器保留少量兜底位置，其余额度优先测试新服务器。
+        # 严格执行“新服务器优先、旧服务器仅兜底”：
+        # 先依次加入全部新服务器；只有新服务器不足 candidate_limit 时，
+        # 才继续使用上一版旧服务器补足候选数量。
         candidate_limit = max(0, candidate_limit)
         picked = []
         seen = set()
-        old_reserved = min(
-            len(old_rows),
-            TARGET_PLAYABLE_SOURCES_PER_CARRIER,
-            candidate_limit,
-        )
-        new_quota = max(0, candidate_limit - old_reserved)
-        new_picked = new_rows[:new_quota]
-        old_quota = max(0, candidate_limit - len(new_picked))
-        for row in new_picked + old_rows[:old_quota]:
+        for row in new_rows + old_rows:
             token = row.get("p_token")
             if not token or token in seen:
                 continue
@@ -1367,7 +1361,7 @@ def process_province(
     txt_output_dir,
     m3u_output_dir,
     carriers=CARRIERS,
-    max_pages=30,
+    max_pages=20,
     max_per_carrier=20,
     max_age_hours=72,
     min_stream_speed_mb_s=DEFAULT_MIN_STREAM_SPEED_MB_S,
@@ -1572,8 +1566,8 @@ def parse_args():
     ap.add_argument(
         "--max-pages",
         type=int,
-        default=30,
-        help="每个省份最多抓取分页数量（默认30）。",
+        default=20,
+        help="每个省份组播服务器列表固定抓取前20页；当前参数保留用于兼容工作流。",
     )
     ap.add_argument(
         "--max-per-carrier",
@@ -1610,6 +1604,16 @@ def parse_args():
 
 def main():
     args = parse_args()
+
+    # 省份组播服务器列表统一抓取前20页。
+    # 当前 GitHub Actions 仍可能传入 --max-pages 5；这里统一覆盖为20，
+    # 避免工作流参数把新版 b.py 再限制回5页。
+    if args.max_pages != 20:
+        print(
+            f"[*] 省份组播服务器列表分页上限固定为20页 "
+            f"（忽略 --max-pages {args.max_pages}）。"
+        )
+        args.max_pages = 20
     script_dir = os.path.dirname(os.path.abspath(__file__))
     repo_root = os.path.dirname(script_dir)
     txt_output_dir = os.path.join(repo_root, "txt")
