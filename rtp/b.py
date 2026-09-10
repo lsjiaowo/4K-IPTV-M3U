@@ -226,9 +226,9 @@ def generate_paer_token() -> str:
 # 普通网络异常/非频道请求退避的基础时间。
 REQUEST_DELAY_SEC = 0.8
 
-# IP详情页、频道列表：成功后不做额外等待。
-REQUEST_DELAY_MIN_SEC = 0.0
-REQUEST_DELAY_MAX_SEC = 0.0
+# 频道列表：每次成功请求后随机等待 2～3 秒；IP详情页成功后不额外等待。
+CHANNEL_DELAY_MIN_SEC = 2.0
+CHANNEL_DELAY_MAX_SEC = 3.0
 
 # 省份服务器列表分页：每次成功请求后随机等待 4～7 秒。
 REGION_LIST_DELAY_MIN_SEC = 4.0
@@ -266,7 +266,7 @@ def signed_get(
     request_kind:
       region  = 省份列表，成功后等待 4～7 秒
       detail  = IP详情，成功后不额外等待
-      channel = 频道列表，成功后不额外等待；不设置专用限流长等待
+      channel = 频道列表，每次成功请求后随机等待 2～3 秒；不设置专用限流长等待
 
     普通网络异常仍按 0.8 / 1.6 / 3.2 / 6.4 秒指数退避，最多5次请求。
     HTTP 请求自身 timeout 保持30秒。
@@ -307,6 +307,11 @@ def signed_get(
                 time.sleep(random.uniform(
                     REGION_LIST_DELAY_MIN_SEC,
                     REGION_LIST_DELAY_MAX_SEC,
+                ))
+            elif request_kind == "channel":
+                time.sleep(random.uniform(
+                    CHANNEL_DELAY_MIN_SEC,
+                    CHANNEL_DELAY_MAX_SEC,
                 ))
             return data
 
