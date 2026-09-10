@@ -180,6 +180,11 @@ REGION_LIST_DELAY_MAX_SEC = 10.0
 REGION_LIST_TIMEOUT_COOLDOWN_MIN_SEC = 60.0
 REGION_LIST_TIMEOUT_COOLDOWN_MAX_SEC = 70.0
 
+# 省份服务器列表第1～5页：若触发 HTTP 429，优先遵守服务端 Retry-After；
+# 若没有有效 Retry-After，则随机冷却60～70秒后重试当前页。
+REGION_LIST_429_COOLDOWN_MIN_SEC = 60.0
+REGION_LIST_429_COOLDOWN_MAX_SEC = 70.0
+
 # 省份组播服务器列表固定只抓取前5页；每次成功请求后随机等待5～10秒。
 # 第1～5页若发生连接/读取超时，仍按上面的60～70秒冷却策略重试当前页。
 REGION_LIST_MAX_PAGES = 5
@@ -206,7 +211,8 @@ def signed_get(
       channel = 频道列表，每次成功请求后随机等待 2～3 秒；不设置专用限流长等待
 
     省份列表第1～5页若发生连接/读取超时：随机冷却60～70秒后重试同一页。
-    其他普通网络异常仍按 0.8 / 1.6 / 3.2 / 6.4 秒指数退避，最多5次请求。
+    省份列表第1～5页若触发 HTTP 429：优先遵守 Retry-After；否则随机冷却60～70秒后重试同一页。
+    其他普通网络异常以及非省份列表的 HTTP 429/503 仍按 0.8 / 1.6 / 3.2 / 6.4 秒指数退避，最多5次请求。
     HTTP 请求自身 timeout 保持30秒。
     """
     url = IPTV_BASE_URL + path_query.lstrip("/")
@@ -255,13 +261,59 @@ def signed_get(
 
         except requests.HTTPError as e:
             last_error = e
-            # HTTP 429/503 不再设置额外长等待；按普通异常指数退避。
-            if e.response is not None and e.response.status_code in (429, 503):
+            status_code = e.response.status_code if e.response is not None else None
+            region_page_match = re.search(r"(?:[?&])page=(\d+)", path_query)
+            region_page_num = int(region_page_match.group(1)) if region_page_match else 0
+
+            # 省份服务器列表第1～5页若触发 HTTP 429，不再进行0.8/1.6/3.2/6.4秒短重试。
+            # 优先遵守服务端 Retry-After；没有有效值时随机冷却60～70秒，然后重试当前页。
+            if status_code == 429 and is_region_list and 1 <= region_page_num <= REGION_LIST_MAX_PAGES:
+                if attempt + 1 >= REQUEST_MAX_RETRIES:
+                    raise
+
+                retry_after_raw = (e.response.headers.get("Retry-After", "") or "").strip()
+                retry_after_seconds = None
+                if retry_after_raw:
+                    try:
+                        retry_after_seconds = max(0.0, float(retry_after_raw))
+                    except ValueError:
+                        try:
+                            from email.utils import parsedate_to_datetime
+                            retry_dt = parsedate_to_datetime(retry_after_raw)
+                            if retry_dt.tzinfo is None:
+                                retry_dt = retry_dt.replace(tzinfo=timezone.utc)
+                            retry_after_seconds = max(
+                                0.0,
+                                (retry_dt - datetime.now(timezone.utc)).total_seconds(),
+                            )
+                        except Exception:
+                            retry_after_seconds = None
+
+                if retry_after_seconds is not None:
+                    wait = retry_after_seconds
+                    wait_source = f"按服务器 Retry-After={retry_after_raw}"
+                else:
+                    wait = random.uniform(
+                        REGION_LIST_429_COOLDOWN_MIN_SEC,
+                        REGION_LIST_429_COOLDOWN_MAX_SEC,
+                    )
+                    wait_source = "未提供有效 Retry-After，随机长冷却"
+
+                print(
+                    f"[!] 省份服务器列表第{region_page_num}页触发 HTTP 429，"
+                    f"{wait_source} {wait:.1f} 秒后重新抓取当前页 "
+                    f"({attempt + 1}/{REQUEST_MAX_RETRIES})。"
+                )
+                time.sleep(wait)
+                continue
+
+            # 非省份列表的 HTTP 429/503 仍沿用普通短指数退避，避免改变频道/详情请求策略。
+            if status_code in (429, 503):
                 if attempt + 1 >= REQUEST_MAX_RETRIES:
                     raise
                 wait = REQUEST_DELAY_SEC * (2 ** attempt)
                 print(
-                    f"[!] HTTP {e.response.status_code}，{wait:.1f}s 后重试 "
+                    f"[!] HTTP {status_code}，{wait:.1f}s 后重试 "
                     f"({attempt + 1}/{REQUEST_MAX_RETRIES})..."
                 )
                 time.sleep(wait)
@@ -350,8 +402,9 @@ def fetch_region_page_by_ajax(
     })
     path = f"{IPTV_INDEX}?{query}"
 
-    # 省份服务器列表只允许请求第1～5页；正常成功间隔为5～10秒，
-    # 连接/读取超时由 signed_get 随机冷却60～70秒后重试当前页。
+    # 省份服务器列表只允许请求第1～5页；正常成功间隔为5～10秒。
+    # 连接/读取超时会随机冷却60～70秒后重试当前页；HTTP 429优先遵守
+    # Retry-After，没有有效 Retry-After 时同样随机冷却60～70秒后重试当前页。
     try:
         data = signed_get(path, session=session, request_kind="region")
     except Exception as exc:
@@ -1044,12 +1097,15 @@ def fetch_channel_lines_by_province(
 
     if not _targets_complete():
         print(
-            f"[*] [{province}] 前{last_scanned_page}页新IP未满足目标，"
-            "现在仅使用已扫描前5页中的旧IP兜底；新IP仍保持最高优先级。"
+            f"[*] [{province}] 已成功扫描的前{last_scanned_page}页中，新IP未满足目标，"
+            f"现在仅使用这{last_scanned_page}页中的旧IP兜底；新IP仍保持最高优先级。"
         )
         _test_available_candidates(allow_old=True)
     else:
-        print(f"[+] [{province}] 前5页已满足目标，省份服务器列表扫描结束。")
+        print(
+            f"[+] [{province}] 已成功扫描前{last_scanned_page}页并满足目标，"
+            "省份服务器列表扫描结束。"
+        )
 
     if not group_to_sources:
         return [], "no_playable_source", province
