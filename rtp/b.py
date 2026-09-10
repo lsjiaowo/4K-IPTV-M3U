@@ -50,6 +50,9 @@ PROVINCE_MIN_STREAM_SPEED_MB_S = {
 PROVINCES = ["浙江", "安徽", "福建", "湖南", "广东", "四川", "山西", "湖北"]
 CARRIERS = ("电信", "联通", "移动")
 
+# 每个运营商最多保留的完整可用播放列表数量。
+TARGET_PLAYABLE_SOURCES_PER_CARRIER = 2
+
 
 def resolve_min_stream_speed(province: str, cli_override: float | None = None) -> float:
     """返回当前省份测速门槛；显式命令行参数优先。"""
@@ -539,7 +542,7 @@ def source_status_rank(status: str) -> int:
 
 
 def get_region_assets(province, rows=None):
-    """按统一状态优先级提取服务器，最多返回前5条。"""
+    """按统一状态优先级提取服务器，最多返回前20条。"""
     rows = rows if rows is not None else fetch_region_rows_by_ajax(province)
     region_all = [r for r in rows if province in r.get("type", "")]
     if not region_all:
@@ -554,7 +557,7 @@ def get_region_assets(province, rows=None):
         ],
         key=lambda r: source_status_rank(r.get("status", "")),
         reverse=True,
-    )[:5]
+    )[:20]
     if not preferred:
         print(f"[-] [{province}] 当前没有新上线或存活1至10天的服务器，本次不提取。")
         return region_all, []
@@ -614,7 +617,7 @@ def extract_speed_test_candidates(channel_lines: list[str]) -> list[tuple[str, s
 def fetch_channel_lines_by_s(
     s_token: str,
     session: requests.Session | None = None,
-    max_pages: int = 50,
+    max_pages: int = 20,
     stop_after_test_channels: int = 0,
     initial_lines: list[str] | None = None,
     start_page: int = 1,
@@ -842,7 +845,7 @@ def parse_operator_name(detail_html: str, province: str) -> str:
 def fetch_channel_lines_by_province(
     province: str,
     carriers: tuple[str, ...] = CARRIERS,
-    max_per_carrier: int = 5,
+    max_per_carrier: int = 20,
     max_pages: int = 30,
     max_age_hours: int = 24,
     min_stream_speed_mb_s: float = DEFAULT_MIN_STREAM_SPEED_MB_S,
@@ -869,7 +872,8 @@ def fetch_channel_lines_by_province(
         age_hours = (now_dt - dt).total_seconds() / 3600
         return age_hours <= max_age_hours
 
-    def _pick_candidates(rows_pool, carrier: str, target_count: int):
+    def _pick_candidates(rows_pool, carrier: str, candidate_limit: int):
+        """每个运营商最多选取 candidate_limit 台候选服务器用于后续测速。"""
         carrier_rows = [
             r
             for r in rows_pool
@@ -877,7 +881,7 @@ def fetch_channel_lines_by_province(
             and _is_usable_status(r.get("status", ""))
             and _is_recent_update(r)
         ]
-        if not carrier_rows or target_count <= 0:
+        if not carrier_rows or candidate_limit <= 0:
             return []
 
         def _sort_key(row: dict):
@@ -900,14 +904,18 @@ def fetch_channel_lines_by_province(
             f"[*] [{province}{carrier}] 候选新旧分组："
             f"新地址 {len(new_rows)} 条，旧地址 {len(old_rows)} 条；新地址优先。"
         )
-        # 测速前不能只截取目标数量，否则候选测速失败后无法向后补足。
-        # 新旧候选合计最多为目标数的4倍；目标2条时最多测试8条。
-        candidate_limit = max(target_count, target_count * 4)
+
+        # 每个运营商最多测试 candidate_limit 台候选服务器。
+        # 为上一版可用服务器保留少量兜底位置，其余额度优先测试新服务器。
+        candidate_limit = max(0, candidate_limit)
         picked = []
         seen = set()
-        # 总额度内为旧地址保留最多目标数量的兜底位置，其余位置优先新地址。
-        old_reserved = min(len(old_rows), target_count, candidate_limit)
-        new_quota = candidate_limit - old_reserved
+        old_reserved = min(
+            len(old_rows),
+            TARGET_PLAYABLE_SOURCES_PER_CARRIER,
+            candidate_limit,
+        )
+        new_quota = max(0, candidate_limit - old_reserved)
         new_picked = new_rows[:new_quota]
         old_quota = max(0, candidate_limit - len(new_picked))
         for row in new_picked + old_rows[:old_quota]:
@@ -916,6 +924,8 @@ def fetch_channel_lines_by_province(
                 continue
             seen.add(token)
             picked.append(row)
+            if len(picked) >= candidate_limit:
+                break
         return picked
 
     selected_rows: list[tuple[str, dict]] = []
@@ -923,8 +933,9 @@ def fetch_channel_lines_by_province(
     for carrier in carriers:
         carrier_candidates = _pick_candidates(rows, carrier, max_per_carrier)
         print(
-            f"[*] [{province}{carrier}] 找到 {len(carrier_candidates)} 条候选，"
-            f"目标获取 {max_per_carrier} 条可播放源。"
+            f"[*] [{province}{carrier}] 选取 {len(carrier_candidates)} 条候选服务器，"
+            f"最多测试 {max_per_carrier} 条；获取 "
+            f"{TARGET_PLAYABLE_SOURCES_PER_CARRIER} 个可用播放列表后立即停止。"
         )
         for row in carrier_candidates:
             token = row.get("p_token")
@@ -941,9 +952,14 @@ def fetch_channel_lines_by_province(
     selected_ops: list[str] = []
     playable_counts = {carrier: 0 for carrier in carriers}
 
+    tested_counts = {carrier: 0 for carrier in carriers}
+
     for carrier, picked in selected_rows:
-        if playable_counts.get(carrier, 0) >= max_per_carrier:
+        if playable_counts.get(carrier, 0) >= TARGET_PLAYABLE_SOURCES_PER_CARRIER:
             continue
+        if tested_counts.get(carrier, 0) >= max_per_carrier:
+            continue
+        tested_counts[carrier] = tested_counts.get(carrier, 0) + 1
         candidate_started_at = datetime.now()
         candidate_started_clock = time.monotonic()
         candidate_host = picked.get("host", "")
@@ -1011,9 +1027,16 @@ def fetch_channel_lines_by_province(
             group_to_sources.setdefault(group_title, []).append(lines)
             playable_counts[carrier] = playable_counts.get(carrier, 0) + 1
             print(
-                f"[+] [{province}{carrier}] 已找到 "
-                f"{playable_counts[carrier]}/{max_per_carrier} 条可播放源。"
+                f"[+] [{province}{carrier}] 已获得 "
+                f"{playable_counts[carrier]}/{TARGET_PLAYABLE_SOURCES_PER_CARRIER} "
+                f"个可用播放列表（已测试 {tested_counts[carrier]}/{max_per_carrier} 台候选服务器）。"
             )
+            if playable_counts[carrier] >= TARGET_PLAYABLE_SOURCES_PER_CARRIER:
+                print(
+                    f"[+] [{province}{carrier}] 已获得 "
+                    f"{TARGET_PLAYABLE_SOURCES_PER_CARRIER} 个可用播放列表，"
+                    "停止测试该运营商剩余候选服务器。"
+                )
         finally:
             candidate_finished_at = datetime.now()
             candidate_elapsed = time.monotonic() - candidate_started_clock
@@ -1028,18 +1051,28 @@ def fetch_channel_lines_by_province(
 
     for carrier in carriers:
         found = playable_counts.get(carrier, 0)
-        if found < max_per_carrier:
+        tested = tested_counts.get(carrier, 0)
+        if found >= TARGET_PLAYABLE_SOURCES_PER_CARRIER:
             print(
-                f"[!] [{province}{carrier}] 候选已测试完，"
-                f"仅找到 {found}/{max_per_carrier} 条可播放源。"
+                f"[+] [{province}{carrier}] 已达到目标："
+                f"{found}/{TARGET_PLAYABLE_SOURCES_PER_CARRIER} 个可用播放列表；"
+                f"共测试 {tested}/{max_per_carrier} 台候选服务器。"
+            )
+        else:
+            print(
+                f"[!] [{province}{carrier}] 候选测试结束："
+                f"仅获得 {found}/{TARGET_PLAYABLE_SOURCES_PER_CARRIER} 个可用播放列表；"
+                f"共测试 {tested}/{max_per_carrier} 台候选服务器。"
             )
 
     unique_ops = sorted(set(selected_ops))
     playable_source_count = sum(len(sources) for sources in group_to_sources.values())
     print(
-        f"[*] [{province}] 已通过测速源数量: {playable_source_count}"
-        f"（状态=新上线/存活1至10天，所选运营商各最多{max_per_carrier}条，"
-        f"更新时间<= {max_age_hours}小时），来源: {', '.join(unique_ops)}"
+        f"[*] [{province}] 已获得可用播放列表数量: {playable_source_count}"
+        f"（每个运营商最多测试{max_per_carrier}台候选服务器，"
+        f"最多保留{TARGET_PLAYABLE_SOURCES_PER_CARRIER}个可用播放列表，"
+        f"状态=新上线/存活1至10天，更新时间<= {max_age_hours}小时），"
+        f"来源: {', '.join(unique_ops)}"
     )
     return group_to_sources, "ok", province
 
@@ -1335,7 +1368,7 @@ def process_province(
     m3u_output_dir,
     carriers=CARRIERS,
     max_pages=30,
-    max_per_carrier=5,
+    max_per_carrier=20,
     max_age_hours=72,
     min_stream_speed_mb_s=DEFAULT_MIN_STREAM_SPEED_MB_S,
     stream_test_seconds=3.0,
@@ -1545,8 +1578,8 @@ def parse_args():
     ap.add_argument(
         "--max-per-carrier",
         type=int,
-        default=5,
-        help="每个运营商按省份状态规则最多选取的源数量（默认5）。",
+        default=20,
+        help="每个运营商最多测试的候选服务器数量（默认20）；获得2个可用播放列表后提前停止。",
     )
     ap.add_argument(
         "--max-age-hours",
