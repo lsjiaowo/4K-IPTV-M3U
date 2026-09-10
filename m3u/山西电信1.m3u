@@ -1,4 +1,4 @@
-#EXTM3U x-tvg-url="http://epg.51zmt.top:8000/e.xml.gz"
+#EXTM3U x-tvg-url="https://epg.catvod.com/epg.xml"
 #EXTINF:-1 tvg-id="凤凰资讯高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%87%A4%E5%87%B0%E8%B5%84%E8%AE%AF%E9%AB%98%E6%B8%85.png" group-title="山西电信",凤凰资讯高清
 http://223.8.181.210:8066/rtp/239.1.1.127:8127
 #EXTINF:-1 tvg-id="凤凰卫视高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%87%A4%E5%87%B0%E5%8D%AB%E8%A7%86%E9%AB%98%E6%B8%85.png" group-title="山西电信",凤凰卫视高清
