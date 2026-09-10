@@ -32,7 +32,9 @@ USER_AGENT = (
 # 提交说明前缀；为空时使用默认文案
 GITHUB_COMMIT_PREFIX = "Auto update"
 # ============================================
-EPG_URL = "http://epg.51zmt.top:8000/e.xml.gz"
+# 成功抓取并通过测速后生成的 M3U 文件统一使用此 XMLTV EPG 节目单。
+# 每个 M3U 仅在文件首行写入一次 x-tvg-url；TXT 文件不添加 EPG 头。
+EPG_URL = "https://epg.catvod.com/epg.xml"
 TVG_LOGO_BASE_URL = "https://gcore.jsdelivr.net/gh/taksssss/tv/icon/"
 README_FILE = "README.md"
 UPDATE_TIMES_FILE = ".github/iptv-update-times.json"
