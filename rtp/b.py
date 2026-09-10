@@ -226,19 +226,19 @@ def generate_paer_token() -> str:
 # 普通网络异常/非频道请求退避的基础时间。
 REQUEST_DELAY_SEC = 0.8
 
-# IP详情页、频道列表：每次成功请求后随机等待 10～20 秒。
-REQUEST_DELAY_MIN_SEC = 10.0
-REQUEST_DELAY_MAX_SEC = 20.0
+# IP详情页、频道列表：成功后不做额外等待。
+REQUEST_DELAY_MIN_SEC = 0.0
+REQUEST_DELAY_MAX_SEC = 0.0
 
 # 省份服务器列表分页：每次成功请求后随机等待 4～7 秒。
 REGION_LIST_DELAY_MIN_SEC = 4.0
 REGION_LIST_DELAY_MAX_SEC = 7.0
 
 # 省份组播服务器列表：第1～5页保持正常4～7秒间隔；
-# 从准备请求第6页开始，每一页请求前额外随机等待70～90秒。
+# 从准备请求第6页开始，每一页请求前额外随机等待50～60秒。
 REGION_LIST_DEEP_PAGE_START = 6
-REGION_LIST_DEEP_PAGE_DELAY_MIN_SEC = 70.0
-REGION_LIST_DEEP_PAGE_DELAY_MAX_SEC = 90.0
+REGION_LIST_DEEP_PAGE_DELAY_MIN_SEC = 50.0
+REGION_LIST_DEEP_PAGE_DELAY_MAX_SEC = 60.0
 
 # 动态搜索策略：
 # 第1～5页快速扫描后立即测试新IP；
@@ -247,20 +247,13 @@ REGION_LIST_DEEP_PAGE_DELAY_MAX_SEC = 90.0
 # 仍不足则继续逐页搜索到最多第20页。
 NEW_IP_SEARCH_DEPTH = 10
 
-# 连续处理多个省份时，在进入下一个省份前随机冷却 30～40 秒。
-PROVINCE_SWITCH_DELAY_MIN_SEC = 30.0
-PROVINCE_SWITCH_DELAY_MAX_SEC = 40.0
+# 连续处理多个省份时，在进入下一个省份前随机冷却 15～30 秒。
+PROVINCE_SWITCH_DELAY_MIN_SEC = 15.0
+PROVINCE_SWITCH_DELAY_MAX_SEC = 30.0
 
 REQUEST_MAX_RETRIES = 5
 
-# 频道列表触发“请求频繁”后的专用随机等待。
-# 第1次：60～90秒；第2次：120～180秒；第3次：240～360秒。
-CHANNEL_RATE_LIMIT_WAIT_RANGES = (
-    (60.0, 90.0),
-    (120.0, 180.0),
-    (240.0, 360.0),
-)
-CHANNEL_RATE_LIMIT_MAX_WAITS = len(CHANNEL_RATE_LIMIT_WAIT_RANGES)
+# 频道列表不设置专用“请求频繁”等待；仅保留普通网络异常重试。
 
 
 def signed_get(
@@ -272,9 +265,11 @@ def signed_get(
 
     request_kind:
       region  = 省份列表，成功后等待 4～7 秒
-      detail  = IP详情，成功后等待 10～20 秒
-      channel = 频道列表，成功后等待 10～20 秒；
-                请求频繁时按 60～90 / 120～180 / 240～360 秒退避
+      detail  = IP详情，成功后不额外等待
+      channel = 频道列表，成功后不额外等待；不设置专用限流长等待
+
+    普通网络异常仍按 0.8 / 1.6 / 3.2 / 6.4 秒指数退避，最多5次请求。
+    HTTP 请求自身 timeout 保持30秒。
     """
     url = IPTV_BASE_URL + path_query.lstrip("/")
     sess = session or requests.Session()
@@ -289,114 +284,7 @@ def signed_get(
             request_kind = "detail"
 
     is_region_list = request_kind == "region"
-    is_channel_request = request_kind == "channel"
 
-    def generic_retry_wait_seconds(response, attempt_index: int) -> float:
-        """普通429/503优先遵守Retry-After，否则使用原有指数退避。"""
-        retry_after = (response.headers.get("Retry-After", "") or "").strip()
-        try:
-            if retry_after:
-                return min(300.0, max(0.0, float(retry_after)))
-        except ValueError:
-            pass
-        return min(30.0, REQUEST_DELAY_SEC * (2 ** attempt_index) * 3)
-
-    def channel_wait_seconds(wait_index: int, response=None) -> float:
-        """频道请求频繁时按指定三档随机退避；Retry-After更长时优先遵守。"""
-        low, high = CHANNEL_RATE_LIMIT_WAIT_RANGES[wait_index]
-        wait = random.uniform(low, high)
-        if response is not None:
-            retry_after = (response.headers.get("Retry-After", "") or "").strip()
-            try:
-                if retry_after:
-                    wait = max(wait, min(600.0, max(0.0, float(retry_after))))
-            except ValueError:
-                pass
-        return wait
-
-    def is_rate_limit_payload(data: dict) -> bool:
-        if not isinstance(data, dict):
-            return False
-        message = str(data.get("message", "") or "")
-        status = str(data.get("status", "") or "").lower()
-        return status != "success" and ("频繁" in message or "too many" in message.lower())
-
-    # 频道列表单独处理：HTTP 429 和 HTTP 200 + JSON“请求频繁”都使用三档退避。
-    if is_channel_request:
-        rate_limit_wait_index = 0
-        network_attempt = 0
-
-        while True:
-            headers = {
-                "User-Agent": USER_AGENT,
-                "X-Requested-With": "XMLHttpRequest",
-                "X-CSRF-TOKEN": generate_paer_token(),
-            }
-            try:
-                resp = sess.get(url, headers=headers, timeout=30)
-
-                if resp.status_code == 429:
-                    last_error = requests.HTTPError(
-                        f"429 Too Many Requests: {url}", response=resp
-                    )
-                    if rate_limit_wait_index >= CHANNEL_RATE_LIMIT_MAX_WAITS:
-                        print(
-                            "[-] 频道列表请求仍被限流，3次退避重试均已完成，"
-                            "不再额外等待。"
-                        )
-                        raise last_error
-                    wait = channel_wait_seconds(rate_limit_wait_index, resp)
-                    print(
-                        f"[!] 频道列表请求过于频繁，第{rate_limit_wait_index + 1}/"
-                        f"{CHANNEL_RATE_LIMIT_MAX_WAITS}次退避："
-                        f"{wait:.1f}s 后重试..."
-                    )
-                    rate_limit_wait_index += 1
-                    time.sleep(wait)
-                    continue
-
-                resp.raise_for_status()
-                data = resp.json()
-
-                if is_rate_limit_payload(data):
-                    if rate_limit_wait_index >= CHANNEL_RATE_LIMIT_MAX_WAITS:
-                        message = str(data.get("message", "") or "请求频繁")
-                        raise RuntimeError(
-                            f"频道列表请求仍被限流，3次退避重试均已完成: {message}"
-                        )
-                    wait = channel_wait_seconds(rate_limit_wait_index)
-                    message = str(data.get("message", "") or "请求频繁")
-                    print(
-                        f"[!] 频道抓取请求频繁（{message}），"
-                        f"第{rate_limit_wait_index + 1}/"
-                        f"{CHANNEL_RATE_LIMIT_MAX_WAITS}次等待 "
-                        f"{wait:.1f}s 后重试..."
-                    )
-                    rate_limit_wait_index += 1
-                    time.sleep(wait)
-                    continue
-
-                time.sleep(random.uniform(
-                    REQUEST_DELAY_MIN_SEC,
-                    REQUEST_DELAY_MAX_SEC,
-                ))
-                return data
-
-            except requests.HTTPError:
-                raise
-            except requests.RequestException as e:
-                last_error = e
-                network_attempt += 1
-                if network_attempt >= REQUEST_MAX_RETRIES:
-                    raise
-                wait = REQUEST_DELAY_SEC * (2 ** (network_attempt - 1))
-                print(
-                    f"[!] 频道网络异常，{wait:.1f}s 后重试 "
-                    f"({network_attempt}/{REQUEST_MAX_RETRIES}): {e}"
-                )
-                time.sleep(wait)
-
-    # 省份列表 / IP详情沿用普通重试策略。
     for attempt in range(REQUEST_MAX_RETRIES):
         headers = {
             "User-Agent": USER_AGENT,
@@ -405,43 +293,30 @@ def signed_get(
         }
         try:
             resp = sess.get(url, headers=headers, timeout=30)
-
-            if resp.status_code == 429:
-                last_error = requests.HTTPError(
-                    f"429 Too Many Requests: {url}", response=resp
-                )
-                if attempt + 1 >= REQUEST_MAX_RETRIES:
-                    print(
-                        f"[-] 请求仍被限流，已达到最大重试次数 "
-                        f"({REQUEST_MAX_RETRIES}/{REQUEST_MAX_RETRIES})。"
-                    )
-                    break
-                wait = generic_retry_wait_seconds(resp, attempt)
-                print(
-                    f"[!] 请求过于频繁，{wait:.1f}s 后重试 "
-                    f"({attempt + 1}/{REQUEST_MAX_RETRIES})..."
-                )
-                time.sleep(wait)
-                continue
-
             resp.raise_for_status()
+            data = resp.json()
+
+            # 频道接口若直接返回“请求频繁”，不做60～360秒专用等待，直接结束本次请求。
+            if request_kind == "channel":
+                message = str(data.get("message", "") or "")
+                status = str(data.get("status", "") or "").lower()
+                if status != "success" and ("频繁" in message or "too many" in message.lower()):
+                    raise RuntimeError(f"频道列表请求频繁: {message or '请求频繁'}")
 
             if is_region_list:
-                delay_min = REGION_LIST_DELAY_MIN_SEC
-                delay_max = REGION_LIST_DELAY_MAX_SEC
-            else:
-                delay_min = REQUEST_DELAY_MIN_SEC
-                delay_max = REQUEST_DELAY_MAX_SEC
-
-            time.sleep(random.uniform(delay_min, delay_max))
-            return resp.json()
+                time.sleep(random.uniform(
+                    REGION_LIST_DELAY_MIN_SEC,
+                    REGION_LIST_DELAY_MAX_SEC,
+                ))
+            return data
 
         except requests.HTTPError as e:
             last_error = e
+            # HTTP 429/503 不再设置额外长等待；按普通异常指数退避。
             if e.response is not None and e.response.status_code in (429, 503):
                 if attempt + 1 >= REQUEST_MAX_RETRIES:
-                    break
-                wait = generic_retry_wait_seconds(e.response, attempt)
+                    raise
+                wait = REQUEST_DELAY_SEC * (2 ** attempt)
                 print(
                     f"[!] HTTP {e.response.status_code}，{wait:.1f}s 后重试 "
                     f"({attempt + 1}/{REQUEST_MAX_RETRIES})..."
@@ -908,8 +783,10 @@ def fetch_channel_lines_by_province(
     """
     动态分页 + 提前测速：
 
-    1. 快速抓第1～5页，然后立即筛选并测试“新IP”。
-    2. 若目标未完成，第6～10页逐页抓取；每抓一页立即测试新增/尚未测试的新IP。
+    1. 快速抓第1～5页，然后立即筛选并持续测试“新IP”，直到达到2个可用源、
+       当前新IP候选池耗尽，或达到每运营商20台候选测试上限。
+    2. 只有当前可测试的新IP候选池耗尽且目标未完成，才进入第6～10页；
+       每抓一页立即测试新增/尚未测试的新IP。
     3. 到第10页仍未达到目标，才允许使用旧IP兜底。
     4. 若仍不足，则继续第11～20页；每页新增候选仍然新IP优先、旧IP兜底。
     5. 每个运营商找到 TARGET_PLAYABLE_SOURCES_PER_CARRIER 个可用播放列表后立即停止。
@@ -1113,6 +990,17 @@ def fetch_channel_lines_by_province(
                 row for row in old_rows
                 if row.get("p_token") not in tested_tokens_by_carrier[carrier]
             ]
+
+            # 完整打印当前筛选后的候选池，便于Action日志直接核对新/旧IP。
+            new_hosts = [row.get("host", "") for row in untested_new if row.get("host", "")]
+            old_hosts = [row.get("host", "") for row in untested_old if row.get("host", "")]
+            print(
+                f"[*] [{province}{carrier}] 新IP候选：["
+                + ", ".join(new_hosts)
+                + "] / 旧IP候选：["
+                + ", ".join(old_hosts)
+                + "]"
+            )
 
             print(
                 f"[*] [{province}{carrier}] 当前候选："
@@ -1845,6 +1733,17 @@ def main():
             f"（忽略 --max-pages {args.max_pages}）。"
         )
         args.max_pages = 20
+
+    # “目标2个可用源”和“最多测试20台候选”是两个独立概念。
+    # 工作流旧参数可能仍传入 --max-per-carrier 2；这里强制恢复为20，
+    # 避免出现测试2台后即使只成功1台也无法继续测试第3台的逻辑错误。
+    if args.max_per_carrier != 20:
+        print(
+            f"[*] 每运营商候选服务器测速上限固定为20台 "
+            f"（忽略 --max-per-carrier {args.max_per_carrier}）；"
+            f"目标仍为{TARGET_PLAYABLE_SOURCES_PER_CARRIER}个可用源。"
+        )
+        args.max_per_carrier = 20
     script_dir = os.path.dirname(os.path.abspath(__file__))
     repo_root = os.path.dirname(script_dir)
     txt_output_dir = os.path.join(repo_root, "txt")
