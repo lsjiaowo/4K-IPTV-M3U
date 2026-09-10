@@ -240,6 +240,13 @@ REGION_LIST_DEEP_PAGE_START = 6
 REGION_LIST_DEEP_PAGE_DELAY_MIN_SEC = 70.0
 REGION_LIST_DEEP_PAGE_DELAY_MAX_SEC = 90.0
 
+# 动态搜索策略：
+# 第1～5页快速扫描后立即测试新IP；
+# 第6～10页逐页扫描、逐页测试新IP；
+# 到第10页仍不足目标时，才允许旧IP兜底；
+# 仍不足则继续逐页搜索到最多第20页。
+NEW_IP_SEARCH_DEPTH = 10
+
 # 连续处理多个省份时，在进入下一个省份前随机冷却 30～40 秒。
 PROVINCE_SWITCH_DELAY_MIN_SEC = 30.0
 PROVINCE_SWITCH_DELAY_MAX_SEC = 40.0
@@ -483,52 +490,76 @@ def _parse_list_rows(html: str) -> list[dict]:
     return rows
 
 
+def fetch_region_page_by_ajax(
+    province: str,
+    page_num: int,
+    limit: int = 20,
+    session: requests.Session | None = None,
+) -> tuple[list[dict], bool]:
+    """只抓取省份组播服务器列表的指定一页；返回(行列表, 请求是否成功)。"""
+    region_code = PROVINCE_CODES.get(province)
+    if not region_code:
+        print(f"[-] 未找到省份 [{province}] 的 region code，跳过。")
+        return [], False
+
+    query = urlencode({
+        "t": "multicast",
+        "province": region_code,
+        "limit": limit,
+        "page": page_num,
+    })
+    path = f"{IPTV_INDEX}?{query}"
+
+    # 第1～5页保持正常4～7秒请求间隔；
+    # 从准备请求第6页开始，每一页请求前额外随机等待70～90秒。
+    if page_num >= REGION_LIST_DEEP_PAGE_START:
+        deep_page_wait = random.uniform(
+            REGION_LIST_DEEP_PAGE_DELAY_MIN_SEC,
+            REGION_LIST_DEEP_PAGE_DELAY_MAX_SEC,
+        )
+        print(
+            f"[*] [{province}] 准备请求第{page_num}页，"
+            f"深分页保护随机等待 {deep_page_wait:.1f} 秒。"
+        )
+        time.sleep(deep_page_wait)
+
+    try:
+        data = signed_get(path, session=session, request_kind="region")
+    except Exception as exc:
+        print(f"[-] 请求省份 [{province}] 第{page_num}页失败: {exc}")
+        return [], False
+
+    if data.get("status") != "success":
+        msg = data.get("message", "unknown error")
+        print(f"[-] [{province}] 第{page_num}页返回失败: {msg}")
+        return [], False
+
+    rows = _parse_list_rows(data.get("html", ""))
+    return rows, True
+
+
 def fetch_region_rows_by_ajax(province, limit=20, max_pages=20, session=None):
-    """按省份+组播类型分页抓取 IP 列表。"""
+    """兼容旧调用：按省份分页抓取服务器列表，最多抓到 max_pages 页。"""
     region_code = PROVINCE_CODES.get(province)
     if not region_code:
         print(f"[-] 未找到省份 [{province}] 的 region code，跳过。")
         return []
 
     print(f"[*] 正在抓取组播源: {IPTV_BASE_URL}{IPTV_INDEX}?t=multicast&province={region_code}")
-    all_rows = []
-    seen_tokens = set()
+    all_rows: list[dict] = []
+    seen_tokens: set[str] = set()
     empty_page_hits = 0
 
     for page_num in range(1, max_pages + 1):
-        query = urlencode({
-            "t": "multicast",
-            "province": region_code,
-            "limit": limit,
-            "page": page_num,
-        })
-        path = f"{IPTV_INDEX}?{query}"
-
-        # 实测第6页开始更容易触发站点请求频繁：
-        # 第1～5页沿用 signed_get() 的4～7秒正常间隔；
-        # 从第6页起，每次请求下一页前额外等待70～90秒。
-        if page_num >= REGION_LIST_DEEP_PAGE_START:
-            deep_page_wait = random.uniform(
-                REGION_LIST_DEEP_PAGE_DELAY_MIN_SEC,
-                REGION_LIST_DEEP_PAGE_DELAY_MAX_SEC,
-            )
-            print(
-                f"[*] [{province}] 准备请求第{page_num}页，"
-                f"深分页保护随机等待 {deep_page_wait:.1f} 秒。"
-            )
-            time.sleep(deep_page_wait)
-
-        try:
-            data = signed_get(path, session=session, request_kind="region")
-        except Exception as e:
-            print(f"[-] 请求省份 [{province}] 第{page_num}页失败: {e}")
-            break
-        if data.get("status") != "success":
-            msg = data.get("message", "unknown error")
-            print(f"[-] 第{page_num}页返回失败: {msg}")
+        rows, ok = fetch_region_page_by_ajax(
+            province,
+            page_num,
+            limit=limit,
+            session=session,
+        )
+        if not ok:
             break
 
-        rows = _parse_list_rows(data.get("html", ""))
         if not rows:
             empty_page_hits += 1
             if empty_page_hits >= 2:
@@ -544,11 +575,11 @@ def fetch_region_rows_by_ajax(province, limit=20, max_pages=20, session=None):
             seen_tokens.add(token)
             all_rows.append(row)
             added += 1
+
         print(f"[*] [{province}] 第{page_num}页 {len(rows)} 条，新增 {added} 条。")
 
     print(f"[*] [{province}] 全分页合计 {len(all_rows)} 条服务器。")
     return all_rows
-
 
 def source_status_rank(status: str) -> int:
     """返回状态优先级：新上线 > 存活1天 > ... > 存活10天。"""
@@ -867,18 +898,46 @@ def fetch_channel_lines_by_province(
     province: str,
     carriers: tuple[str, ...] = CARRIERS,
     max_per_carrier: int = 20,
-    max_pages: int = 30,
+    max_pages: int = 20,
     max_age_hours: int = 24,
     min_stream_speed_mb_s: float = DEFAULT_MIN_STREAM_SPEED_MB_S,
     stream_test_seconds: float = 3.0,
     test_channels_per_source: int = 2,
     previous_hosts_by_carrier: dict[str, set[str]] | None = None,
 ):
+    """
+    动态分页 + 提前测速：
+
+    1. 快速抓第1～5页，然后立即筛选并测试“新IP”。
+    2. 若目标未完成，第6～10页逐页抓取；每抓一页立即测试新增/尚未测试的新IP。
+    3. 到第10页仍未达到目标，才允许使用旧IP兜底。
+    4. 若仍不足，则继续第11～20页；每页新增候选仍然新IP优先、旧IP兜底。
+    5. 每个运营商找到 TARGET_PLAYABLE_SOURCES_PER_CARRIER 个可用播放列表后立即停止。
+    """
     session = requests.Session()
-    rows = fetch_region_rows_by_ajax(province, limit=20, max_pages=max_pages, session=session)
-    if not rows:
-        return [], "list_empty", province
+    max_pages = min(max(1, int(max_pages)), 20)
     now_dt = datetime.now()
+
+    region_code = PROVINCE_CODES.get(province)
+    if not region_code:
+        print(f"[-] 未找到省份 [{province}] 的 region code，跳过。")
+        return [], "list_empty", province
+
+    print(
+        f"[*] [{province}] 启用动态分页：前5页快速扫描；"
+        f"新IP搜索深度={min(NEW_IP_SEARCH_DEPTH, max_pages)}页；"
+        f"最大搜索={max_pages}页。"
+    )
+
+    all_rows: list[dict] = []
+    seen_region_tokens: set[str] = set()
+    empty_page_hits = 0
+
+    group_to_sources: dict[str, list[list[str]]] = {}
+    selected_ops: list[str] = []
+    playable_counts = {carrier: 0 for carrier in carriers}
+    tested_counts = {carrier: 0 for carrier in carriers}
+    tested_tokens_by_carrier = {carrier: set() for carrier in carriers}
 
     def _is_usable_status(status: str) -> bool:
         return source_status_rank(status) > 0
@@ -886,119 +945,93 @@ def fetch_channel_lines_by_province(
     def _is_recent_update(row: dict) -> bool:
         dt = _parse_site_datetime(row.get("update_time", ""))
         if not dt:
-            # 更新时间缺失时降级看上线时间；都缺失则判定为不新鲜
             dt = _parse_site_datetime(row.get("online_time", ""))
         if not dt:
             return False
         age_hours = (now_dt - dt).total_seconds() / 3600
         return age_hours <= max_age_hours
 
-    def _pick_candidates(rows_pool, carrier: str, candidate_limit: int):
-        """每个运营商最多选取 candidate_limit 台候选服务器用于后续测速。"""
+    def _sort_key(row: dict):
+        dt = (
+            _parse_site_datetime(row.get("update_time", ""))
+            or _parse_site_datetime(row.get("online_time", ""))
+        )
+        ts = dt.timestamp() if dt else 0.0
+        return (source_status_rank(row.get("status", "")), ts)
+
+    def _candidate_groups(carrier: str) -> tuple[list[dict], list[dict]]:
+        """返回当前已扫描页面中的(新IP候选, 旧IP候选)，组内按状态和时间排序。"""
         carrier_rows = [
-            r
-            for r in rows_pool
-            if carrier in r.get("type", "")
-            and _is_usable_status(r.get("status", ""))
-            and _is_recent_update(r)
+            row
+            for row in all_rows
+            if carrier in row.get("type", "")
+            and _is_usable_status(row.get("status", ""))
+            and _is_recent_update(row)
         ]
-        if not carrier_rows or candidate_limit <= 0:
-            return []
+        carrier_rows.sort(key=_sort_key, reverse=True)
 
-        def _sort_key(row: dict):
-            dt = _parse_site_datetime(row.get("update_time", "")) or _parse_site_datetime(row.get("online_time", ""))
-            ts = dt.timestamp() if dt else 0.0
-            return (source_status_rank(row.get("status", "")), ts)
-
-        carrier_rows = sorted(carrier_rows, key=_sort_key, reverse=True)
         previous_hosts = (previous_hosts_by_carrier or {}).get(carrier, set())
         new_rows = [
-            row for row in carrier_rows
+            row
+            for row in carrier_rows
             if normalize_source_host(row.get("host", "")) not in previous_hosts
         ]
         old_rows = [
-            row for row in carrier_rows
+            row
+            for row in carrier_rows
             if normalize_source_host(row.get("host", "")) in previous_hosts
         ]
-        # 新服务器整体优先；各组内部仍保持状态、更新时间优先级。
-        print(
-            f"[*] [{province}{carrier}] 候选新旧分组："
-            f"新地址 {len(new_rows)} 条，旧地址 {len(old_rows)} 条；新地址优先。"
+        return new_rows, old_rows
+
+    def _targets_complete() -> bool:
+        return all(
+            playable_counts.get(carrier, 0) >= TARGET_PLAYABLE_SOURCES_PER_CARRIER
+            for carrier in carriers
         )
 
-        # 每个运营商最多测试 candidate_limit 台候选服务器。
-        # 严格执行“新服务器优先、旧服务器仅兜底”：
-        # 先依次加入全部新服务器；只有新服务器不足 candidate_limit 时，
-        # 才继续使用上一版旧服务器补足候选数量。
-        candidate_limit = max(0, candidate_limit)
-        picked = []
-        seen = set()
-        for row in new_rows + old_rows:
-            token = row.get("p_token")
-            if not token or token in seen:
-                continue
-            seen.add(token)
-            picked.append(row)
-            if len(picked) >= candidate_limit:
-                break
-        return picked
-
-    selected_rows: list[tuple[str, dict]] = []
-    selected_tokens = set()
-    for carrier in carriers:
-        carrier_candidates = _pick_candidates(rows, carrier, max_per_carrier)
-        print(
-            f"[*] [{province}{carrier}] 选取 {len(carrier_candidates)} 条候选服务器，"
-            f"最多测试 {max_per_carrier} 条；获取 "
-            f"{TARGET_PLAYABLE_SOURCES_PER_CARRIER} 个可用播放列表后立即停止。"
-        )
-        for row in carrier_candidates:
-            token = row.get("p_token")
-            if not token or token in selected_tokens:
-                continue
-            selected_rows.append((carrier, row))
-            selected_tokens.add(token)
-    if not selected_rows:
-        # 严格遵守调用方指定的运营商；没有匹配候选时不跨运营商兜底。
-        return [], "no_matching_carrier_source", province
-
-    # group_title -> list of sources, each source is list of "name,url" lines
-    group_to_sources: dict[str, list[list[str]]] = {}
-    selected_ops: list[str] = []
-    playable_counts = {carrier: 0 for carrier in carriers}
-
-    tested_counts = {carrier: 0 for carrier in carriers}
-
-    for carrier, picked in selected_rows:
-        if playable_counts.get(carrier, 0) >= TARGET_PLAYABLE_SOURCES_PER_CARRIER:
-            continue
+    def _test_one_candidate(carrier: str, picked: dict) -> bool:
+        """测试一个候选；成功写入 group_to_sources。返回是否通过。"""
+        token = picked.get("p_token")
+        if not token:
+            return False
+        if token in tested_tokens_by_carrier[carrier]:
+            return False
         if tested_counts.get(carrier, 0) >= max_per_carrier:
-            continue
+            return False
+        if playable_counts.get(carrier, 0) >= TARGET_PLAYABLE_SOURCES_PER_CARRIER:
+            return False
+
+        tested_tokens_by_carrier[carrier].add(token)
         tested_counts[carrier] = tested_counts.get(carrier, 0) + 1
+
         candidate_started_at = datetime.now()
         candidate_started_clock = time.monotonic()
         candidate_host = picked.get("host", "")
+        group_title = f"{province}{carrier}"
+
         print(
             f"[*] [{province}] 候选开始：{picked.get('type', '')} {candidate_host}；"
-            f"时间={candidate_started_at.strftime('%Y-%m-%d %H:%M:%S')}"
+            f"时间={candidate_started_at.strftime('%Y-%m-%d %H:%M:%S')}；"
+            f"测试序号={tested_counts[carrier]}/{max_per_carrier}"
         )
+
         try:
-            # 文件分组严格使用请求的运营商，避免站点详情中的异常标签串到其他运营商。
-            group_title = f"{province}{carrier}"
             try:
-                detail_html = fetch_detail_html(picked.get("p_token", ""), session=session)
-            except Exception as e:
-                print(f"[-] [{province}] IP 详情获取失败: {e}")
-                continue
+                detail_html = fetch_detail_html(token, session=session)
+            except Exception as exc:
+                print(f"[-] [{province}] IP 详情获取失败: {exc}")
+                return False
+
             if not detail_html:
                 print(f"[-] [{province}] IP 详情为空: {candidate_host}")
-                continue
+                return False
+
             s_token = parse_s_token(detail_html)
             if not s_token:
                 print(f"[-] [{province}] 未找到频道列表 token: {candidate_host}")
-                continue
+                return False
 
-            # 第一阶段：找到足够的CCTV测速频道便暂停翻页，立即进行测速。
+            # 第一阶段：只抓到足够测速的 CCTV 频道，立即测速。
             page_state: dict = {}
             test_lines = fetch_channel_lines_by_s(
                 s_token,
@@ -1007,7 +1040,8 @@ def fetch_channel_lines_by_province(
                 page_state=page_state,
             )
             if not test_lines:
-                continue
+                return False
+
             source_label = f"{group_title} {candidate_host}".strip()
             if not is_source_playable(
                 test_lines,
@@ -1016,15 +1050,16 @@ def fetch_channel_lines_by_province(
                 sample_seconds=stream_test_seconds,
                 test_channels=test_channels_per_source,
             ):
-                continue
+                return False
 
-            # 第二阶段：复用测速阶段已抓取的页面，只从下一页继续抓完整列表。
+            # 第二阶段：测速通过后才继续抓完整频道列表。
             last_page = int(page_state.get("last_page", 0))
             has_next = bool(page_state.get("has_next", False))
             print(
-                f"[*] [{source_label}] 测速通过，复用前{last_page}页的"
-                f" {len(test_lines)} 条频道，从第{last_page + 1}页继续完整抓取。"
+                f"[*] [{source_label}] 测速通过，复用前{last_page}页的 "
+                f"{len(test_lines)} 条频道，从第{last_page + 1}页继续完整抓取。"
             )
+
             if has_next:
                 lines = fetch_channel_lines_by_s(
                     s_token,
@@ -1034,24 +1069,21 @@ def fetch_channel_lines_by_province(
                 )
             else:
                 lines = test_lines
+
             if not lines:
                 print(f"[-] [{source_label}] 完整频道列表抓取失败，跳过该源。")
-                continue
+                return False
 
             selected_ops.append(group_title)
             group_to_sources.setdefault(group_title, []).append(lines)
             playable_counts[carrier] = playable_counts.get(carrier, 0) + 1
+
             print(
                 f"[+] [{province}{carrier}] 已获得 "
                 f"{playable_counts[carrier]}/{TARGET_PLAYABLE_SOURCES_PER_CARRIER} "
-                f"个可用播放列表（已测试 {tested_counts[carrier]}/{max_per_carrier} 台候选服务器）。"
+                f"个可用播放列表（已测试 {tested_counts[carrier]}/{max_per_carrier} 台）。"
             )
-            if playable_counts[carrier] >= TARGET_PLAYABLE_SOURCES_PER_CARRIER:
-                print(
-                    f"[+] [{province}{carrier}] 已获得 "
-                    f"{TARGET_PLAYABLE_SOURCES_PER_CARRIER} 个可用播放列表，"
-                    "停止测试该运营商剩余候选服务器。"
-                )
+            return True
         finally:
             candidate_finished_at = datetime.now()
             candidate_elapsed = time.monotonic() - candidate_started_clock
@@ -1060,6 +1092,183 @@ def fetch_channel_lines_by_province(
                 f"时间={candidate_finished_at.strftime('%Y-%m-%d %H:%M:%S')}；"
                 f"耗时={candidate_elapsed:.1f}秒"
             )
+
+    def _test_available_candidates(allow_old: bool) -> None:
+        """
+        测试当前已扫描页面中的未测试候选。
+        新IP永远排在旧IP之前；allow_old=False 时完全不碰旧IP。
+        """
+        for carrier in carriers:
+            if playable_counts.get(carrier, 0) >= TARGET_PLAYABLE_SOURCES_PER_CARRIER:
+                continue
+            if tested_counts.get(carrier, 0) >= max_per_carrier:
+                continue
+
+            new_rows, old_rows = _candidate_groups(carrier)
+            untested_new = [
+                row for row in new_rows
+                if row.get("p_token") not in tested_tokens_by_carrier[carrier]
+            ]
+            untested_old = [
+                row for row in old_rows
+                if row.get("p_token") not in tested_tokens_by_carrier[carrier]
+            ]
+
+            print(
+                f"[*] [{province}{carrier}] 当前候选："
+                f"新IP未测试 {len(untested_new)} 条，"
+                f"旧IP未测试 {len(untested_old)} 条；"
+                f"{'允许旧IP兜底' if allow_old else '仅测试新IP'}。"
+            )
+
+            candidates = untested_new + (untested_old if allow_old else [])
+            for picked in candidates:
+                if playable_counts.get(carrier, 0) >= TARGET_PLAYABLE_SOURCES_PER_CARRIER:
+                    break
+                if tested_counts.get(carrier, 0) >= max_per_carrier:
+                    break
+                _test_one_candidate(carrier, picked)
+
+    def _append_page_rows(page_num: int, page_rows: list[dict]) -> int:
+        added = 0
+        for row in page_rows:
+            token = row.get("p_token")
+            if not token or token in seen_region_tokens:
+                continue
+            seen_region_tokens.add(token)
+            all_rows.append(row)
+            added += 1
+        print(
+            f"[*] [{province}] 第{page_num}页 {len(page_rows)} 条，"
+            f"新增 {added} 条；当前累计 {len(all_rows)} 条服务器。"
+        )
+        return added
+
+    # ------------------------------------------------------------
+    # 阶段A：第1～5页快速扫描完，再立即测试新IP。
+    # ------------------------------------------------------------
+    initial_end = min(5, max_pages)
+    for page_num in range(1, initial_end + 1):
+        page_rows, ok = fetch_region_page_by_ajax(
+            province,
+            page_num,
+            limit=20,
+            session=session,
+        )
+        if not ok:
+            break
+
+        if not page_rows:
+            empty_page_hits += 1
+            if empty_page_hits >= 2:
+                print(f"[*] [{province}] 连续2个空页，提前结束服务器列表扫描。")
+                break
+            continue
+
+        empty_page_hits = 0
+        _append_page_rows(page_num, page_rows)
+
+    if not all_rows:
+        return [], "list_empty", province
+
+    print(
+        f"[*] [{province}] 前{initial_end}页扫描完成，"
+        "不等待第6页，立即筛选并测速新IP。"
+    )
+    _test_available_candidates(allow_old=False)
+
+    if _targets_complete():
+        print(f"[+] [{province}] 前5页已满足目标，后续第6～20页不再请求。")
+
+    # ------------------------------------------------------------
+    # 阶段B：第6～10页逐页扫描；每页后立即测试新IP。
+    # 到第10页仍不足时，开启旧IP兜底。
+    # ------------------------------------------------------------
+    last_scanned_page = initial_end
+    if not _targets_complete() and empty_page_hits < 2:
+        search_depth = min(NEW_IP_SEARCH_DEPTH, max_pages)
+
+        for page_num in range(initial_end + 1, search_depth + 1):
+            page_rows, ok = fetch_region_page_by_ajax(
+                province,
+                page_num,
+                limit=20,
+                session=session,
+            )
+            if not ok:
+                break
+
+            last_scanned_page = page_num
+
+            if not page_rows:
+                empty_page_hits += 1
+                if empty_page_hits >= 2:
+                    print(f"[*] [{province}] 连续2个空页，提前结束服务器列表扫描。")
+                    break
+            else:
+                empty_page_hits = 0
+                _append_page_rows(page_num, page_rows)
+
+            # 深分页每完成一页就立即测试当前所有尚未测试的新IP。
+            _test_available_candidates(allow_old=False)
+            if _targets_complete():
+                print(
+                    f"[+] [{province}] 在第{page_num}页已满足目标，"
+                    f"第{page_num + 1}～{max_pages}页不再请求。"
+                )
+                break
+
+        # 到新IP搜索深度仍不足，才测试旧IP。
+        if (
+            not _targets_complete()
+            and empty_page_hits < 2
+            and last_scanned_page >= search_depth
+        ):
+            print(
+                f"[*] [{province}] 已搜索到第{search_depth}页仍未满足目标，"
+                "现在开启旧IP兜底；新IP仍保持最高优先级。"
+            )
+            _test_available_candidates(allow_old=True)
+
+    # ------------------------------------------------------------
+    # 阶段C：第11～20页继续按需逐页搜索。
+    # 每页后立即测试：新IP优先，旧IP仅兜底。
+    # ------------------------------------------------------------
+    if (
+        not _targets_complete()
+        and empty_page_hits < 2
+        and max_pages > NEW_IP_SEARCH_DEPTH
+    ):
+        start_deep_page = max(NEW_IP_SEARCH_DEPTH + 1, last_scanned_page + 1)
+
+        for page_num in range(start_deep_page, max_pages + 1):
+            page_rows, ok = fetch_region_page_by_ajax(
+                province,
+                page_num,
+                limit=20,
+                session=session,
+            )
+            if not ok:
+                break
+
+            last_scanned_page = page_num
+
+            if not page_rows:
+                empty_page_hits += 1
+                if empty_page_hits >= 2:
+                    print(f"[*] [{province}] 连续2个空页，提前结束服务器列表扫描。")
+                    break
+            else:
+                empty_page_hits = 0
+                _append_page_rows(page_num, page_rows)
+
+            _test_available_candidates(allow_old=True)
+            if _targets_complete():
+                print(
+                    f"[+] [{province}] 在第{page_num}页已满足目标，"
+                    f"第{page_num + 1}～{max_pages}页不再请求。"
+                )
+                break
 
     if not group_to_sources:
         return [], "no_playable_source", province
@@ -1075,18 +1284,19 @@ def fetch_channel_lines_by_province(
             )
         else:
             print(
-                f"[!] [{province}{carrier}] 候选测试结束："
+                f"[!] [{province}{carrier}] 搜索结束："
                 f"仅获得 {found}/{TARGET_PLAYABLE_SOURCES_PER_CARRIER} 个可用播放列表；"
                 f"共测试 {tested}/{max_per_carrier} 台候选服务器。"
             )
 
     unique_ops = sorted(set(selected_ops))
-    playable_source_count = sum(len(sources) for sources in group_to_sources.values())
+    playable_source_count = sum(
+        len(sources) for sources in group_to_sources.values()
+    )
     print(
-        f"[*] [{province}] 已获得可用播放列表数量: {playable_source_count}"
-        f"（每个运营商最多测试{max_per_carrier}台候选服务器，"
-        f"最多保留{TARGET_PLAYABLE_SOURCES_PER_CARRIER}个可用播放列表，"
-        f"状态=新上线/存活1至10天，更新时间<= {max_age_hours}小时），"
+        f"[*] [{province}] 动态分页结束：实际扫描到第{last_scanned_page}页；"
+        f"获得可用播放列表 {playable_source_count} 个；"
+        f"状态=新上线/存活1至10天，更新时间<= {max_age_hours}小时；"
         f"来源: {', '.join(unique_ops)}"
     )
     return group_to_sources, "ok", province
