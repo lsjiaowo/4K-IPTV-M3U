@@ -234,6 +234,10 @@ CHANNEL_DELAY_MAX_SEC = 3.0
 REGION_LIST_DELAY_MIN_SEC = 5.0
 REGION_LIST_DELAY_MAX_SEC = 10.0
 
+# 省份服务器列表第1～5页：若请求发生连接/读取超时，随机冷却60～70秒后重试当前页。
+REGION_LIST_TIMEOUT_COOLDOWN_MIN_SEC = 60.0
+REGION_LIST_TIMEOUT_COOLDOWN_MAX_SEC = 70.0
+
 # 省份组播服务器列表：第1～5页保持正常5～10秒间隔；
 # 从准备请求第6页开始，每一页请求前额外随机等待50～60秒。
 REGION_LIST_DEEP_PAGE_START = 6
@@ -268,7 +272,8 @@ def signed_get(
       detail  = IP详情，成功后不额外等待
       channel = 频道列表，每次成功请求后随机等待 2～3 秒；不设置专用限流长等待
 
-    普通网络异常仍按 0.8 / 1.6 / 3.2 / 6.4 秒指数退避，最多5次请求。
+    省份列表第1～5页若发生连接/读取超时：随机冷却60～70秒后重试同一页。
+    其他普通网络异常仍按 0.8 / 1.6 / 3.2 / 6.4 秒指数退避，最多5次请求。
     HTTP 请求自身 timeout 保持30秒。
     """
     url = IPTV_BASE_URL + path_query.lstrip("/")
@@ -334,6 +339,28 @@ def signed_get(
             last_error = e
             if attempt + 1 >= REQUEST_MAX_RETRIES:
                 raise
+
+            # 省份服务器列表第1～5页如果发生连接/读取超时，不使用0.8秒短退避；
+            # 随机冷却60～70秒后重新请求当前页。页码从请求参数中识别。
+            region_page_match = re.search(r"(?:[?&])page=(\d+)", path_query)
+            region_page_num = int(region_page_match.group(1)) if region_page_match else 0
+            if (
+                is_region_list
+                and 1 <= region_page_num <= 5
+                and isinstance(e, requests.Timeout)
+            ):
+                wait = random.uniform(
+                    REGION_LIST_TIMEOUT_COOLDOWN_MIN_SEC,
+                    REGION_LIST_TIMEOUT_COOLDOWN_MAX_SEC,
+                )
+                print(
+                    f"[!] 省份服务器列表第{region_page_num}页请求超时，"
+                    f"随机冷却 {wait:.1f} 秒后重新抓取当前页 "
+                    f"({attempt + 1}/{REQUEST_MAX_RETRIES}): {e}"
+                )
+                time.sleep(wait)
+                continue
+
             wait = REQUEST_DELAY_SEC * (2 ** attempt)
             print(
                 f"[!] 网络异常，{wait:.1f}s 后重试 "
@@ -390,8 +417,8 @@ def fetch_region_page_by_ajax(
     })
     path = f"{IPTV_INDEX}?{query}"
 
-    # 第1～5页保持正常4～7秒请求间隔；
-    # 从准备请求第6页开始，每一页请求前额外随机等待70～90秒。
+    # 第1～5页保持正常5～10秒请求间隔；超时则由 signed_get 冷却60～70秒后重试当前页；
+    # 从准备请求第6页开始，每一页请求前额外随机等待50～60秒。
     if page_num >= REGION_LIST_DEEP_PAGE_START:
         deep_page_wait = random.uniform(
             REGION_LIST_DEEP_PAGE_DELAY_MIN_SEC,
@@ -1370,15 +1397,19 @@ def _build_readme_table_rows(
         updated_at = update_times.get(relative_path) or get_git_file_update_time(
             repo_root, relative_path
         )
+        # 下载链接的 href 继续使用 URL 编码后的文件名，保证 Markdown/浏览器兼容性；
+        # “可复制直链”则保留原始中文文件名，README 中直接显示 北京联通.m3u 等。
         encoded_name = quote(name)
         raw_url = f"{RAW_BASE_URL}/{subdir}/{encoded_name}"
         proxy_url = f"{PROXY_PREFIX}{raw_url}"
+        copy_raw_url = f"{RAW_BASE_URL}/{subdir}/{name}"
+        copy_proxy_url = f"{PROXY_PREFIX}{copy_raw_url}"
         rows.append(
             "<tr>"
             f'<td style="white-space:nowrap;">{name}</td>'
             f'<td style="white-space:nowrap;"><a href="{proxy_url}">下载链接</a></td>'
             f'<td style="white-space:nowrap;">{updated_at}</td>'
-            f'<td><code>{proxy_url}</code></td>'
+            f'<td><code>{copy_proxy_url}</code></td>'
             "</tr>"
         )
     return "\n".join(rows)
