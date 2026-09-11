@@ -143,12 +143,12 @@ on:
     types: [hourly_iptv_telecom_update]
 
   schedule:
-    # 每小时6个候选时间点；小时锁保证本工作流每小时最多执行一次完整抓取。
-    - cron: "6,16,26,36,46,56 * * * *"
+    # 电信候选窗口放在每小时前半小时（01～26分）；小时锁保证本工作流每小时最多执行一次完整抓取。
+    - cron: "1,6,11,16,21,26 * * * *"
 
-# 两个运营商工作流共用同一个并发组：任何时刻只允许一个抓取任务真正运行。
+# 两个运营商工作流共用固定并发组：任何时刻只允许一个电信/联通抓取任务真正运行；后到任务只排队、不取消。
 concurrency:
-  group: iptv-source-update-${{ github.ref }}
+  group: iptv-source-update
   cancel-in-progress: false
 
 permissions:
@@ -167,6 +167,15 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          # 明确在任务真正获得并发锁、开始执行时检出最新 main，避免排队期间 GITHUB_SHA 变旧。
+          ref: main
+
+      - name: Sync latest main after concurrency wait
+        shell: bash
+        run: |
+          git fetch origin main
+          git checkout -B main origin/main
+          echo "[*] 已同步到任务实际开始时的最新 origin/main，避免并发排队导致旧基线。"
 
       - name: Build hourly lock key
         id: hourly-slot
