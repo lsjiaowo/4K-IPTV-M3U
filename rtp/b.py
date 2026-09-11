@@ -178,22 +178,27 @@ CHANNEL_DELAY_MAX_SEC = 3.0
 REGION_LIST_DELAY_MIN_SEC = 5.0
 REGION_LIST_DELAY_MAX_SEC = 10.0
 
-# 省份服务器列表第1～5页：若请求发生连接/读取超时，随机冷却60～70秒后重试当前页。
+# 省份服务器列表第1～10页：若请求发生连接/读取超时，随机冷却60～70秒后重试当前页。
 REGION_LIST_TIMEOUT_COOLDOWN_MIN_SEC = 60.0
 REGION_LIST_TIMEOUT_COOLDOWN_MAX_SEC = 70.0
 
-# 省份服务器列表第1～5页：若触发 HTTP 429，优先遵守服务端 Retry-After；
+# 省份服务器列表第1～10页：若触发 HTTP 429，优先遵守服务端 Retry-After；
 # 若没有有效 Retry-After，则随机冷却60～70秒后重试当前页。
 REGION_LIST_429_COOLDOWN_MIN_SEC = 60.0
 REGION_LIST_429_COOLDOWN_MAX_SEC = 70.0
 
-# 省份组播服务器列表固定只抓取前5页；每次成功请求后随机等待5～10秒。
-# 第1～5页若发生连接/读取超时，仍按上面的60～70秒冷却策略重试当前页。
-REGION_LIST_MAX_PAGES = 5
+# 省份组播服务器列表动态搜索最大10页。
+# 第1～5页每次成功请求后随机等待5～10秒；前5页结束后立即筛选并测速新IP。
+# 若目标仍未满足，第6～10页在每次请求前额外随机等待50～60秒，并在每页抓取后立即筛选/测速新增候选。
+# 第1～10页若发生连接/读取超时，按上面的60～70秒冷却策略重试当前页。
+REGION_LIST_MAX_PAGES = 10
+REGION_LIST_DEEP_PAGE_START = 6
+REGION_LIST_DEEP_PAGE_DELAY_MIN_SEC = 50.0
+REGION_LIST_DEEP_PAGE_DELAY_MAX_SEC = 60.0
 
-# 连续处理多个省份时，在进入下一个省份前随机冷却 10～15 秒。
-PROVINCE_SWITCH_DELAY_MIN_SEC = 10.0
-PROVINCE_SWITCH_DELAY_MAX_SEC = 15.0
+# 连续处理多个省份时，在进入下一个省份前随机冷却 5～10 秒。
+PROVINCE_SWITCH_DELAY_MIN_SEC = 5.0
+PROVINCE_SWITCH_DELAY_MAX_SEC = 10.0
 
 REQUEST_MAX_RETRIES = 5
 
@@ -212,8 +217,8 @@ def signed_get(
       detail  = IP详情，成功后不额外等待
       channel = 频道列表，每次成功请求后随机等待 2～3 秒；不设置专用限流长等待
 
-    省份列表第1～5页若发生连接/读取超时：随机冷却60～70秒后重试同一页。
-    省份列表第1～5页若触发 HTTP 429：优先遵守 Retry-After；否则随机冷却60～70秒后重试同一页。
+    省份列表第1～10页若发生连接/读取超时：随机冷却60～70秒后重试同一页。
+    省份列表第1～10页若触发 HTTP 429：优先遵守 Retry-After；否则随机冷却60～70秒后重试同一页。
     其他普通网络异常以及非省份列表的 HTTP 429/503 仍按 0.8 / 1.6 / 3.2 / 6.4 秒指数退避，最多5次请求。
     HTTP 请求自身 timeout 保持30秒。
     """
@@ -267,7 +272,7 @@ def signed_get(
             region_page_match = re.search(r"(?:[?&])page=(\d+)", path_query)
             region_page_num = int(region_page_match.group(1)) if region_page_match else 0
 
-            # 省份服务器列表第1～5页若触发 HTTP 429，不再进行0.8/1.6/3.2/6.4秒短重试。
+            # 省份服务器列表第1～10页若触发 HTTP 429，不再进行0.8/1.6/3.2/6.4秒短重试。
             # 优先遵守服务端 Retry-After；没有有效值时随机冷却60～70秒，然后重试当前页。
             if status_code == 429 and is_region_list and 1 <= region_page_num <= REGION_LIST_MAX_PAGES:
                 if attempt + 1 >= REQUEST_MAX_RETRIES:
@@ -327,13 +332,13 @@ def signed_get(
             if attempt + 1 >= REQUEST_MAX_RETRIES:
                 raise
 
-            # 省份服务器列表第1～5页如果发生连接/读取超时，不使用0.8秒短退避；
+            # 省份服务器列表第1～10页如果发生连接/读取超时，不使用0.8秒短退避；
             # 随机冷却60～70秒后重新请求当前页。页码从请求参数中识别。
             region_page_match = re.search(r"(?:[?&])page=(\d+)", path_query)
             region_page_num = int(region_page_match.group(1)) if region_page_match else 0
             if (
                 is_region_list
-                and 1 <= region_page_num <= 5
+                and 1 <= region_page_num <= REGION_LIST_MAX_PAGES
                 and isinstance(e, requests.Timeout)
             ):
                 wait = random.uniform(
@@ -790,13 +795,14 @@ def fetch_channel_lines_by_province(
     previous_hosts_by_carrier: dict[str, set[str]] | None = None,
 ):
     """
-    前5页扫描 + 提前测速：
+    最大10页动态扫描 + 提前测速：
 
-    1. 省份组播服务器列表固定只抓取第1～5页。
-    2. 前5页扫描完成后，优先测试新IP，直到达到2个可用源、候选池耗尽，
-       或达到每运营商20台候选测试上限。
-    3. 前5页的新IP仍不足目标时，直接使用这5页中的旧IP兜底；不再请求第6页及以后。
-    4. 每个运营商找到 TARGET_PLAYABLE_SOURCES_PER_CARRIER 个可用播放列表后立即停止。
+    1. 先扫描省份组播服务器列表第1～5页，每页成功后随机等待5～10秒。
+    2. 前5页扫描完成后立即优先测试新IP；达到2个可用源则立即结束，不请求第6～10页。
+    3. 若仍不足目标，则继续第6～10页；每页请求前额外随机等待50～60秒，
+       每抓取一页就立即筛选并测试新增的新IP，达到目标后立即停止后续分页。
+    4. 搜索到第10页仍不足目标时，才允许已扫描页面中的旧IP兜底；新IP始终最高优先级。
+    5. 每个运营商最多测试 max_per_carrier 台候选，找到 TARGET_PLAYABLE_SOURCES_PER_CARRIER 个可用源后停止。
     """
     session = requests.Session()
     max_pages = min(max(1, int(max_pages)), REGION_LIST_MAX_PAGES)
@@ -808,8 +814,8 @@ def fetch_channel_lines_by_province(
         return [], "list_empty", province
 
     print(
-        f"[*] [{province}] 省份服务器列表固定只扫描前{max_pages}页；"
-        "扫描完成后优先测试新IP，不足目标时仅使用前5页旧IP兜底。"
+        f"[*] [{province}] 启用动态分页：前5页正常扫描；"
+        f"新IP搜索深度={max_pages}页；最大搜索={REGION_LIST_MAX_PAGES}页。"
     )
 
     all_rows: list[dict] = []
@@ -1062,21 +1068,20 @@ def fetch_channel_lines_by_province(
         return added
 
     # ------------------------------------------------------------
-    # 省份服务器列表固定只扫描第1～5页。
-    # 扫描结束后先测试新IP；若仍不足目标，再仅使用这5页中的旧IP兜底。
-    # 不请求第6页及以后。
+    # 第一阶段：扫描第1～5页。前5页完成后立即测试新IP。
+    # 第二阶段：若目标未满足，再逐页扫描第6～10页；每页请求前额外等待50～60秒，
+    #           每抓取一页就立即测试新出现且尚未测试的新IP。
+    # 第三阶段：到第10页仍未满足目标时，才允许旧IP兜底。
     # ------------------------------------------------------------
     last_scanned_page = 0
-    for page_num in range(1, max_pages + 1):
+    initial_end = min(5, max_pages)
+
+    for page_num in range(1, initial_end + 1):
         page_rows, ok = fetch_region_page_by_ajax(
-            province,
-            page_num,
-            limit=20,
-            session=session,
+            province, page_num, limit=20, session=session,
         )
         if not ok:
             break
-
         last_scanned_page = page_num
         if not page_rows:
             empty_page_hits += 1
@@ -1084,7 +1089,6 @@ def fetch_channel_lines_by_province(
                 print(f"[*] [{province}] 连续2个空页，提前结束服务器列表扫描。")
                 break
             continue
-
         empty_page_hits = 0
         _append_page_rows(page_num, page_rows)
 
@@ -1092,22 +1096,61 @@ def fetch_channel_lines_by_province(
         return [], "list_empty", province
 
     print(
-        f"[*] [{province}] 前{last_scanned_page}页扫描完成，"
-        "立即筛选并测速新IP；省份服务器列表不再请求第6页及以后。"
+        f"[*] [{province}] 前{last_scanned_page}页扫描完成，不等待第6页，立即筛选并测速新IP。"
     )
     _test_available_candidates(allow_old=False)
 
-    if not _targets_complete():
+    if _targets_complete():
         print(
-            f"[*] [{province}] 已成功扫描的前{last_scanned_page}页中，新IP未满足目标，"
-            f"现在仅使用这{last_scanned_page}页中的旧IP兜底；新IP仍保持最高优先级。"
+            f"[+] [{province}] 前{last_scanned_page}页已满足目标，"
+            "后续第6～10页不再请求。"
         )
-        _test_available_candidates(allow_old=True)
     else:
-        print(
-            f"[+] [{province}] 已成功扫描前{last_scanned_page}页并满足目标，"
-            "省份服务器列表扫描结束。"
-        )
+        # 只有前5页完整扫描到位后才进入6～10页；若前5页因请求失败提前中断，
+        # 不跳过失败页继续向后请求，避免在源站异常/限流时继续增加请求压力。
+        if last_scanned_page >= initial_end and max_pages > initial_end:
+            for page_num in range(initial_end + 1, max_pages + 1):
+                if _targets_complete():
+                    break
+                deep_delay = random.uniform(
+                    REGION_LIST_DEEP_PAGE_DELAY_MIN_SEC,
+                    REGION_LIST_DEEP_PAGE_DELAY_MAX_SEC,
+                )
+                print(
+                    f"[*] [{province}] 准备请求第{page_num}页，"
+                    f"深分页保护随机等待 {deep_delay:.1f} 秒。"
+                )
+                time.sleep(deep_delay)
+
+                page_rows, ok = fetch_region_page_by_ajax(
+                    province, page_num, limit=20, session=session,
+                )
+                if not ok:
+                    break
+                last_scanned_page = page_num
+                if not page_rows:
+                    empty_page_hits += 1
+                    if empty_page_hits >= 2:
+                        print(f"[*] [{province}] 连续2个空页，提前结束服务器列表扫描。")
+                        break
+                    continue
+                empty_page_hits = 0
+                _append_page_rows(page_num, page_rows)
+                _test_available_candidates(allow_old=False)
+
+                if _targets_complete():
+                    print(
+                        f"[+] [{province}] 扫描到第{page_num}页后已满足目标，"
+                        "停止后续省份服务器列表请求。"
+                    )
+                    break
+
+        if not _targets_complete():
+            print(
+                f"[*] [{province}] 已搜索到第{last_scanned_page}页仍未满足目标，"
+                "现在开启旧IP兜底；新IP仍保持最高优先级。"
+            )
+            _test_available_candidates(allow_old=True)
 
     if not group_to_sources:
         return [], "no_playable_source", province
@@ -1647,7 +1690,7 @@ def parse_args():
         "--max-pages",
         type=int,
         default=20,
-        help="每个省份组播服务器列表固定只抓取前5页；当前参数保留用于兼容工作流。",
+        help="每个省份组播服务器列表动态搜索最大10页；前5页后先测速，不足目标再进入第6～10页。",
     )
     ap.add_argument(
         "--max-per-carrier",
@@ -1685,8 +1728,8 @@ def parse_args():
 def main():
     args = parse_args()
 
-    # 省份组播服务器列表统一固定只抓取前5页。
-    # 当前 GitHub Actions 仍可能传入其他 --max-pages 值；这里统一覆盖为5。
+    # 省份组播服务器列表统一采用最大10页动态搜索。
+    # 当前 GitHub Actions 仍可能传入旧的 --max-pages 值；这里统一覆盖为10。
     if args.max_pages != REGION_LIST_MAX_PAGES:
         print(
             f"[*] 省份组播服务器列表分页上限固定为{REGION_LIST_MAX_PAGES}页 "
