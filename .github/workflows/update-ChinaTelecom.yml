@@ -1,4 +1,4 @@
-name: Update RTP Sources
+name: Update China Telecom RTP Sources
 
 on:
   workflow_dispatch:
@@ -137,17 +137,19 @@ on:
           - "电信,联通"
           - "电信,移动"
           - "联通,移动"
-  # 可选外部整点触发入口。事件类型固定为 hourly_iptv_update。
+
+  # 可选外部整点触发入口；电信工作流使用独立事件类型，避免两个工作流被同一个 dispatch 同时触发。
   repository_dispatch:
-    types: [hourly_iptv_update]
+    types: [hourly_iptv_telecom_update]
+
   schedule:
-    # 每小时6个候选时间点，使用一条Cron规则；小时锁保证最多完整抓取一次。
+    # 每小时6个候选时间点；小时锁保证本工作流每小时最多执行一次完整抓取。
     - cron: "6,16,26,36,46,56 * * * *"
 
+# 两个运营商工作流共用同一个并发组：任何时刻只允许一个抓取任务真正运行。
 concurrency:
-  group: update-rtp-${{ github.ref }}
+  group: iptv-source-update-${{ github.ref }}
   cancel-in-progress: false
-  queue: single
 
 permissions:
   contents: write
@@ -157,7 +159,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
-      # 定时抓取目标：直接在此处增加或删除“省份+运营商”。
+      # 电信定时抓取目标：直接在此处增加、删除或调整“省份+运营商”。
       AUTO_TARGETS: "四川电信,浙江电信,湖北电信,安徽电信,山西电信,广东电信,福建电信"
 
     steps:
@@ -170,33 +172,33 @@ jobs:
         id: hourly-slot
         shell: bash
         run: |
-          echo "cache_key=update-rtp-hour-$(date -u +'%Y%m%d%H')" >> "$GITHUB_OUTPUT"
+          echo "cache_key=update-chinatelecom-hour-$(date -u +'%Y%m%d%H')" >> "$GITHUB_OUTPUT"
 
       - name: Check whether this hour has already run
         id: hourly-cache
         if: github.event_name == 'schedule' || github.event_name == 'repository_dispatch'
         uses: actions/cache/restore@v4
         with:
-          path: .github-hourly-run
+          path: .github-hourly-run-telecom
           key: ${{ steps.hourly-slot.outputs.cache_key }}
           lookup-only: true
 
       - name: Explain skipped duplicate
         if: (github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && steps.hourly-cache.outputs.cache-hit == 'true'
-        run: echo "[*] 本小时已经成功更新过，跳过本次候选触发。"
+        run: echo "[*] 电信工作流本小时已经领取过运行时段，跳过本次候选触发。"
 
       - name: Create hourly running claim
         if: (github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && steps.hourly-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
-          mkdir -p .github-hourly-run
-          date -u +'%Y-%m-%dT%H:%M:%SZ' > .github-hourly-run/claimed-at.txt
+          mkdir -p .github-hourly-run-telecom
+          date -u +'%Y-%m-%dT%H:%M:%SZ' > .github-hourly-run-telecom/claimed-at.txt
 
       - name: Save hourly running claim
         if: (github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && steps.hourly-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
-          path: .github-hourly-run
+          path: .github-hourly-run-telecom
           key: ${{ steps.hourly-slot.outputs.cache_key }}
 
       - name: Set up Python
@@ -243,8 +245,8 @@ jobs:
               echo "[*] 手动运行（定时默认组合）：目标=$AUTO_TARGETS"
               python -u rtp/b.py \
                 --targets "$AUTO_TARGETS" \
-                --max-pages 5 \
-                --max-per-carrier 2 \
+                --max-pages 10 \
+                --max-per-carrier 20 \
                 --push
             elif [ "$PROVINCE_1" = "全部" ]; then
               SELECTED_PROVINCES="全部"
@@ -252,8 +254,8 @@ jobs:
               python -u rtp/b.py \
                 --provinces "$SELECTED_PROVINCES" \
                 --carriers "$SELECTED_CARRIERS" \
-                --max-pages 5 \
-                --max-per-carrier 2 \
+                --max-pages 10 \
+                --max-per-carrier 20 \
                 --push
             else
               SELECTED_PROVINCES="$PROVINCE_1"
@@ -267,15 +269,15 @@ jobs:
               python -u rtp/b.py \
                 --provinces "$SELECTED_PROVINCES" \
                 --carriers "$SELECTED_CARRIERS" \
-                --max-pages 5 \
-                --max-per-carrier 2 \
+                --max-pages 10 \
+                --max-per-carrier 20 \
                 --push
             fi
           else
             echo "[*] 定时运行：目标=$AUTO_TARGETS"
             python -u rtp/b.py \
               --targets "$AUTO_TARGETS" \
-              --max-pages 5 \
-              --max-per-carrier 2 \
+              --max-pages 10 \
+              --max-per-carrier 20 \
               --push
           fi
