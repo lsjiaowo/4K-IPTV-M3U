@@ -1207,6 +1207,12 @@ def sort_priority_channels(channel_lines: list[str]) -> list[str]:
     def priority_key(line: str) -> int:
         channel_name = line.split(",", 1)[0].strip().casefold()
         for index, required_keywords in enumerate(PRIORITY_CHANNEL_RULES):
+            # CCTV4K 只提升真正的高清/超高清频道；名称含 SD 或“标清”的
+            # CCTV4KSD、CCTV4K SD、CCTV4K标清等频道保持原始位置。
+            if required_keywords == ("CCTV4K",) and (
+                "sd" in channel_name or "标清" in channel_name
+            ):
+                continue
             if all(
                 keyword.casefold() in channel_name
                 for keyword in required_keywords
@@ -1575,52 +1581,79 @@ def process_province(
 
 def push_to_github(files, province=""):
     """
-    将本次生成文件提交并推送到当前 GitHub 仓库。
-    依赖本机已配置好 git 远程与认证（SSH 或凭据管理器）。
+    将本次生成文件提交并安全推送到当前 GitHub 仓库。
+
+    若远程 main 在本次抓取期间被其他 Action 或人工提交更新，普通 git push
+    可能出现 non-fast-forward。此处不使用 force push，而是在推送前先 fetch +
+    rebase origin/main；若推送竞态仍导致 non-fast-forward，则最多自动重试3次。
     """
     print("\n[*] 正在同步到 GitHub 当前仓库...")
-    try:
-        # 使用 -A 同时提交新文件、修改和旧源文件删除。
-        add_cmd = ["git", "add", "-A", "--"] + files
-        add_run = subprocess.run(add_cmd, capture_output=True, text=True, encoding="utf-8", errors="ignore")
-        if add_run.returncode != 0:
-            raise RuntimeError(f"git add 失败:\n{add_run.stderr.strip()}")
 
-        check_run = subprocess.run(
-            ["git", "diff", "--cached", "--quiet"],
+    def run_git(args):
+        return subprocess.run(
+            ["git"] + args,
             capture_output=True,
             text=True,
             encoding="utf-8",
             errors="ignore",
         )
+
+    try:
+        # 只暂存本次明确需要发布的文件；历史成功列表不会因本次失败被删除。
+        add_run = run_git(["add", "-A", "--"] + files)
+        if add_run.returncode != 0:
+            raise RuntimeError(f"git add 失败:\n{add_run.stderr.strip()}")
+
+        check_run = run_git(["diff", "--cached", "--quiet"])
         if check_run.returncode == 0:
             print("[*] 没有新增变更，无需提交。")
             return True
 
         target = f" {province}" if province else ""
         commit_msg = f"{GITHUB_COMMIT_PREFIX}{target} multicast files at {time.strftime('%Y-%m-%d %H:%M:%S')}"
-        commit_run = subprocess.run(
-            ["git", "commit", "-m", commit_msg],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="ignore",
-        )
+        commit_run = run_git(["commit", "-m", commit_msg])
         if commit_run.returncode != 0:
             raise RuntimeError(f"git commit 失败:\n{commit_run.stderr.strip()}")
         print("[+] git commit 成功。")
 
-        push_run = subprocess.run(
-            ["git", "push"],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="ignore",
-        )
-        if push_run.returncode != 0:
-            raise RuntimeError(f"git push 失败:\n{push_run.stderr.strip()}")
-        print("[+] 已成功推送到 GitHub。")
-        return True
+        max_push_attempts = 3
+        for attempt in range(1, max_push_attempts + 1):
+            # 每次 push 前同步远程，避免覆盖其他 Action/人工提交。
+            fetch_run = run_git(["fetch", "origin", "main"])
+            if fetch_run.returncode != 0:
+                raise RuntimeError(f"git fetch origin main 失败:\n{fetch_run.stderr.strip()}")
+
+            rebase_run = run_git(["rebase", "origin/main"])
+            if rebase_run.returncode != 0:
+                # 冲突时立即终止 rebase，保持仓库处于可诊断状态；绝不 force push。
+                run_git(["rebase", "--abort"])
+                raise RuntimeError(
+                    "git rebase origin/main 失败，可能存在远程并发修改冲突：\n"
+                    f"{rebase_run.stderr.strip()}"
+                )
+
+            push_run = run_git(["push", "origin", "HEAD:main"])
+            if push_run.returncode == 0:
+                print(f"[+] 已成功推送到 GitHub（第 {attempt}/{max_push_attempts} 次尝试）。")
+                return True
+
+            push_error = (push_run.stderr or "").strip()
+            is_non_fast_forward = (
+                "non-fast-forward" in push_error.lower()
+                or "fetch first" in push_error.lower()
+                or "rejected" in push_error.lower()
+            )
+            if is_non_fast_forward and attempt < max_push_attempts:
+                print(
+                    f"[!] git push 第 {attempt}/{max_push_attempts} 次遇到远程并发更新，"
+                    "重新 fetch + rebase 后再推送。"
+                )
+                time.sleep(random.uniform(2.0, 5.0))
+                continue
+
+            raise RuntimeError(f"git push 失败:\n{push_error}")
+
+        raise RuntimeError("git push 重试次数已耗尽。")
     except Exception as e:
         raise RuntimeError(f"GitHub 同步异常: {e}") from e
 
