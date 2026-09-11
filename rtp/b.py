@@ -516,11 +516,11 @@ def fetch_detail_html(p_token: str, session: requests.Session | None = None) -> 
 
 
 def extract_speed_test_candidates(channel_lines: list[str]) -> list[tuple[str, str]]:
-    """提取CCTV1-CCTV15中不含标清/SD的HTTP测速频道，并按URL去重。"""
+    """提取CCTV1-CCTV17中不含标清/SD/4K字样的HTTP测速频道，并按URL去重。"""
     candidates: list[tuple[str, str]] = []
     seen_urls: set[str] = set()
     cctv_pattern = re.compile(
-        r"(?i)(?<![A-Z0-9])CCTV\s*[-_ ]?\s*(1[0-5]|[1-9])(?!\d|\+)"
+        r"(?i)(?<![A-Z0-9])CCTV\s*[-_ ]?\s*(5\+|1[0-7]|[1-9])(?!\d)"
     )
     for line in channel_lines:
         if "," not in line:
@@ -530,7 +530,9 @@ def extract_speed_test_candidates(channel_lines: list[str]) -> list[tuple[str, s
         play_url = play_url.strip()
         if not cctv_pattern.search(channel_name):
             continue
-        if "标清" in channel_name or "SD" in channel_name.upper():
+        # 测速使用 CCTV1-CCTV17，并额外允许 CCTV5+；剔除标清/SD以及频道名中包含4K字样的频道。
+        channel_name_upper = channel_name.upper()
+        if "标清" in channel_name or "SD" in channel_name_upper or "4K" in channel_name_upper:
             continue
         if not play_url.lower().startswith(("http://", "https://")):
             continue
@@ -591,7 +593,7 @@ def fetch_channel_lines_by_s(
             test_count = len(extract_speed_test_candidates(all_lines))
             if test_count >= stop_after_test_channels:
                 print(
-                    f"[*] 已找到 {test_count} 个 CCTV1-CCTV15 非标清测速频道，"
+                    f"[*] 已找到 {test_count} 个 CCTV1-CCTV17 非标清/非4K测速频道，"
                     "暂停抓取完整列表并立即测速。"
                 )
                 break
@@ -650,12 +652,12 @@ def is_source_playable(
     sample_seconds: float = 3.0,
     test_channels: int = 2,
 ) -> bool:
-    """从 CCTV1 至 CCTV15 中排除标清/SD后随机抽测，任意一个通过即有效。"""
+    """从CCTV1至CCTV17中排除标清/SD/4K字样频道后随机抽测，任意一个通过即有效。"""
     candidates = extract_speed_test_candidates(channel_lines)
     required_count = max(1, test_channels)
     if len(candidates) < required_count:
         print(
-            f"[-] [{source_label}] CCTV1-CCTV15 非标清可测试频道不足："
+            f"[-] [{source_label}] CCTV1-CCTV17 非标清/非4K可测试频道不足："
             f"{len(candidates)}/{required_count}，判定无效。"
         )
         return False
@@ -663,7 +665,7 @@ def is_source_playable(
     sampled_channels = random.sample(candidates, required_count)
     passed_count = 0
     print(
-        f"[*] [{source_label}] 从 {len(candidates)} 个 CCTV1-CCTV15 非标清频道中"
+        f"[*] [{source_label}] 从 {len(candidates)} 个 CCTV1-CCTV17 非标清/非4K频道中"
         f"随机抽测 {required_count} 个。"
     )
     for channel_name, play_url in sampled_channels:
@@ -935,7 +937,7 @@ def fetch_channel_lines_by_province(
             if len(speed_candidates) < max(1, test_channels_per_source):
                 print(
                     f"[-] [{group_title} {candidate_host}] 已解析 {len(test_lines)} 条频道，"
-                    f"但仅找到 {len(speed_candidates)} 个 CCTV1-CCTV15 非标清HTTP测速频道，"
+                    f"但仅找到 {len(speed_candidates)} 个 CCTV1-CCTV17 非标清/非4K HTTP测速频道，"
                     f"少于要求的 {max(1, test_channels_per_source)} 个，无法进入有效测速。"
                 )
 
