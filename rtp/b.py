@@ -1334,16 +1334,29 @@ def get_git_file_update_time(repo_root: str, relative_path: str) -> str:
     return "历史时间未知"
 
 
+def _readme_carrier_group(name: str) -> str:
+    """按文件名中的运营商将 README 列表分为电信、联通、移动；无法识别的文件放到“其他”。"""
+    stem = os.path.splitext(name)[0]
+    for carrier in ("电信", "联通", "移动"):
+        if carrier in stem:
+            return carrier
+    return "其他"
+
+
 def _build_readme_table_rows(
     repo_root: str,
     subdir: str,
     ext: str,
     update_times: dict[str, str],
+    names: list[str] | None = None,
 ) -> str:
     target_dir = os.path.join(repo_root, subdir)
     if not os.path.exists(target_dir):
         return '<tr><td colspan="4">暂无文件</td></tr>'
-    names = sorted([n for n in os.listdir(target_dir) if n.endswith(ext)])
+    if names is None:
+        names = sorted([n for n in os.listdir(target_dir) if n.endswith(ext)])
+    else:
+        names = sorted(names)
     if not names:
         return '<tr><td colspan="4">暂无文件</td></tr>'
     rows = []
@@ -1369,13 +1382,14 @@ def _build_readme_table_rows(
     return "\n".join(rows)
 
 
-def _build_readme_section_table(
+def _build_readme_html_table(
     repo_root: str,
     subdir: str,
     ext: str,
     update_times: dict[str, str],
+    names: list[str],
 ) -> str:
-    rows = _build_readme_table_rows(repo_root, subdir, ext, update_times)
+    rows = _build_readme_table_rows(repo_root, subdir, ext, update_times, names)
     return (
         '<table style="width:100%; table-layout:auto;">\n'
         "<colgroup>\n"
@@ -1397,6 +1411,36 @@ def _build_readme_section_table(
         "</tbody>\n"
         "</table>"
     )
+
+
+def _build_readme_section_table(
+    repo_root: str,
+    subdir: str,
+    ext: str,
+    update_times: dict[str, str],
+) -> str:
+    """README 文件列表按运营商分组：电信 → 联通 → 移动 → 其他；组内按文件名排序。"""
+    target_dir = os.path.join(repo_root, subdir)
+    if not os.path.exists(target_dir):
+        return '<table><tbody><tr><td>暂无文件</td></tr></tbody></table>'
+
+    names = [n for n in os.listdir(target_dir) if n.endswith(ext)]
+    if not names:
+        return '<table><tbody><tr><td>暂无文件</td></tr></tbody></table>'
+
+    groups = {carrier: [] for carrier in ("电信", "联通", "移动", "其他")}
+    for name in names:
+        groups[_readme_carrier_group(name)].append(name)
+
+    blocks = []
+    for carrier in ("电信", "联通", "移动", "其他"):
+        carrier_names = groups[carrier]
+        if not carrier_names:
+            continue
+        blocks.append(f"### {carrier}\n\n" + _build_readme_html_table(
+            repo_root, subdir, ext, update_times, carrier_names
+        ))
+    return "\n\n".join(blocks)
 
 
 def beijing_now() -> datetime:
