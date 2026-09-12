@@ -5,6 +5,12 @@ http://119.102.157.240:8188/rtp/239.69.2.20:11274
 http://119.102.157.240:8188/rtp/239.69.2.19:11268
 #EXTINF:-1 tvg-id="CCTV4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV4K.png" group-title="湖北电信",CCTV4K
 http://119.102.157.240:8188/rtp/239.69.1.111:10304
+#EXTINF:-1 tvg-id="CHC影迷电影HD" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CHC%E5%BD%B1%E8%BF%B7%E7%94%B5%E5%BD%B1HD.png" group-title="湖北电信",CHC影迷电影HD
+http://119.102.157.240:8188/rtp/239.69.1.241:11088
+#EXTINF:-1 tvg-id="CHC动作电影HD" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CHC%E5%8A%A8%E4%BD%9C%E7%94%B5%E5%BD%B1HD.png" group-title="湖北电信",CHC动作电影HD
+http://119.102.157.240:8188/rtp/239.69.1.242:11094
+#EXTINF:-1 tvg-id="CHC家庭影院HD" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CHC%E5%AE%B6%E5%BA%AD%E5%BD%B1%E9%99%A2HD.png" group-title="湖北电信",CHC家庭影院HD
+http://119.102.157.240:8188/rtp/239.69.1.243:11100
 #EXTINF:-1 tvg-id="CCTV16 4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV16%204K.png" group-title="湖北电信",CCTV16 4K
 http://119.102.157.240:8188/rtp/239.69.1.12:9712
 #EXTINF:-1 tvg-id="CCTV16 4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV16%204K.png" group-title="湖北电信",CCTV16 4K
@@ -127,12 +133,6 @@ http://119.102.157.240:8188/rtp/239.69.1.222:10974
 http://119.102.157.240:8188/rtp/239.69.1.234:11046
 #EXTINF:-1 tvg-id="CGTN法语HD" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CGTN%E6%B3%95%E8%AF%ADHD.png" group-title="湖北电信",CGTN法语HD
 http://119.102.157.240:8188/rtp/239.69.1.235:11052
-#EXTINF:-1 tvg-id="CHC影迷电影HD" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CHC%E5%BD%B1%E8%BF%B7%E7%94%B5%E5%BD%B1HD.png" group-title="湖北电信",CHC影迷电影HD
-http://119.102.157.240:8188/rtp/239.69.1.241:11088
-#EXTINF:-1 tvg-id="CHC家庭影院HD" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CHC%E5%AE%B6%E5%BA%AD%E5%BD%B1%E9%99%A2HD.png" group-title="湖北电信",CHC家庭影院HD
-http://119.102.157.240:8188/rtp/239.69.1.243:11100
-#EXTINF:-1 tvg-id="CHC动作电影HD" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CHC%E5%8A%A8%E4%BD%9C%E7%94%B5%E5%BD%B1HD.png" group-title="湖北电信",CHC动作电影HD
-http://119.102.157.240:8188/rtp/239.69.1.242:11094
 #EXTINF:-1 tvg-id="第一剧场HD" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E7%AC%AC%E4%B8%80%E5%89%A7%E5%9C%BAHD.png" group-title="湖北电信",第一剧场HD
 http://119.102.157.240:8188/rtp/239.69.1.74:10084
 #EXTINF:-1 tvg-id="风云足球HD" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E9%A3%8E%E4%BA%91%E8%B6%B3%E7%90%83HD.png" group-title="湖北电信",风云足球HD
