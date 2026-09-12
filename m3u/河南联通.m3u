@@ -1,4 +1,10 @@
 #EXTM3U x-tvg-url="https://epg.catvod.com/epg.xml"
+#EXTINF:-1 tvg-id="CHC高清电影" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CHC%E9%AB%98%E6%B8%85%E7%94%B5%E5%BD%B1.png" group-title="河南联通",CHC高清电影
+http://222.141.130.238:8888/rtp/225.1.4.207:1260
+#EXTINF:-1 tvg-id="CHC动作电影" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CHC%E5%8A%A8%E4%BD%9C%E7%94%B5%E5%BD%B1.png" group-title="河南联通",CHC动作电影
+http://222.141.130.238:8888/rtp/225.1.4.208:1261
+#EXTINF:-1 tvg-id="CHC家庭影院" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CHC%E5%AE%B6%E5%BA%AD%E5%BD%B1%E9%99%A2.png" group-title="河南联通",CHC家庭影院
+http://222.141.130.238:8888/rtp/225.1.4.209:1262
 #EXTINF:-1 tvg-id="CCTV-1高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-1%E9%AB%98%E6%B8%85.png" group-title="河南联通",CCTV-1高清
 http://222.141.130.238:8888/rtp/225.1.4.73:1102
 #EXTINF:-1 tvg-id="CCTV-2高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-2%E9%AB%98%E6%B8%85.png" group-title="河南联通",CCTV-2高清
@@ -239,12 +245,6 @@ http://222.141.130.238:8888/rtp/225.1.5.45:1355
 http://222.141.130.238:8888/rtp/225.1.5.42:1352
 #EXTINF:-1 tvg-id="河南IPTV-导视" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%B2%B3%E5%8D%97IPTV-%E5%AF%BC%E8%A7%86.png" group-title="河南联通",河南IPTV-导视
 http://222.141.130.238:8888/rtp/225.1.4.194:1244
-#EXTINF:-1 tvg-id="CHC家庭影院" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CHC%E5%AE%B6%E5%BA%AD%E5%BD%B1%E9%99%A2.png" group-title="河南联通",CHC家庭影院
-http://222.141.130.238:8888/rtp/225.1.4.209:1262
-#EXTINF:-1 tvg-id="CHC动作电影" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CHC%E5%8A%A8%E4%BD%9C%E7%94%B5%E5%BD%B1.png" group-title="河南联通",CHC动作电影
-http://222.141.130.238:8888/rtp/225.1.4.208:1261
-#EXTINF:-1 tvg-id="CHC高清电影" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CHC%E9%AB%98%E6%B8%85%E7%94%B5%E5%BD%B1.png" group-title="河南联通",CHC高清电影
-http://222.141.130.238:8888/rtp/225.1.4.207:1260
 #EXTINF:-1 tvg-id="调解剧场" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E8%B0%83%E8%A7%A3%E5%89%A7%E5%9C%BA.png" group-title="河南联通",调解剧场
 http://222.141.130.238:8888/rtp/225.1.5.49:1359
 #EXTINF:-1 tvg-id="体育竞技高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E4%BD%93%E8%82%B2%E7%AB%9E%E6%8A%80%E9%AB%98%E6%B8%85.png" group-title="河南联通",体育竞技高清
