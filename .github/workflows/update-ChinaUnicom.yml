@@ -256,7 +256,7 @@ jobs:
                 --targets "$AUTO_TARGETS" \
                 --max-pages 10 \
                 --max-per-carrier 20 \
-                --min-stream-speed 0.87890625 \
+                --min-stream-speed 0.76171875 \
                 --push
             elif [ "$PROVINCE_1" = "全部" ]; then
               SELECTED_PROVINCES="全部"
@@ -266,7 +266,7 @@ jobs:
                 --carriers "$SELECTED_CARRIERS" \
                 --max-pages 10 \
                 --max-per-carrier 20 \
-                --min-stream-speed 0.87890625 \
+                --min-stream-speed 0.76171875 \
                 --push
             else
               SELECTED_PROVINCES="$PROVINCE_1"
@@ -282,7 +282,7 @@ jobs:
                 --carriers "$SELECTED_CARRIERS" \
                 --max-pages 10 \
                 --max-per-carrier 20 \
-                --min-stream-speed 0.87890625 \
+                --min-stream-speed 0.76171875 \
                 --push
             fi
           else
@@ -291,6 +291,6 @@ jobs:
               --targets "$AUTO_TARGETS" \
               --max-pages 10 \
               --max-per-carrier 20 \
-              --min-stream-speed 0.87890625 \
+              --min-stream-speed 0.76171875 \
               --push
           fi
