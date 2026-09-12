@@ -44,7 +44,7 @@ PROXY_PREFIX = "https://gh-proxy.org/"
 # 默认测速门槛；四川线路单独放宽。
 DEFAULT_MIN_STREAM_SPEED_MB_S = 750.0 / 1024.0
 PROVINCE_MIN_STREAM_SPEED_MB_S = {
-    "四川": 100.0 / 1024.0,
+    "四川": 400.0 / 1024.0,
 }
 
 # 中国省份全称及简称对照表，用于智能嗅探
@@ -1763,7 +1763,7 @@ def parse_args():
         "--min-stream-speed",
         type=float,
         default=None,
-        help="显式覆盖所有省份的测速门槛，单位MB/s；不填写时四川100KB/s、其他省份750KB/s。",
+        help="显式覆盖所有省份的测速门槛，单位MB/s；不填写时四川400KB/s、其他省份750KB/s。",
     )
     ap.add_argument(
         "--stream-test-seconds",
