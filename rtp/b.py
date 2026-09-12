@@ -41,6 +41,27 @@ UPDATE_TIMES_FILE = ".github/iptv-update-times.json"
 RAW_BASE_URL = "https://raw.githubusercontent.com/lsjiaowo/4K-IPTV-M3U/main"
 PROXY_PREFIX = "https://gh-proxy.org/"
 
+# 频道列表第一来源：xisohi/CHINA-IPTV。
+# cqshushu 继续负责发现公网组播转发服务器；只有 CHINA-IPTV 对应列表
+# 不存在、下载失败或没有有效 RTP 频道时，才回退到 cqshushu 原频道分页。
+CHINA_IPTV_RAW_BASE_URL = "https://raw.githubusercontent.com/xisohi/CHINA-IPTV/main/Multicast"
+CHINA_IPTV_PROVINCE_DIRS = {
+    "北京": "beijing", "天津": "tianjin", "河北": "hebei", "山西": "shanxi",
+    "内蒙古": "neimenggu", "辽宁": "liaoning", "吉林": "jilin",
+    "黑龙江": "heilongjiang", "上海": "shanghai", "江苏": "jiangsu",
+    "浙江": "zhejiang", "安徽": "anhui", "福建": "fujian", "江西": "jiangxi",
+    "山东": "shandong", "河南": "henan", "湖北": "hubei", "湖南": "hunan",
+    "广东": "guangdong", "广西": "guangxi", "海南": "hainan", "重庆": "chongqing",
+    "四川": "sichuan", "贵州": "guizhou", "云南": "yunnan", "陕西": "shaanxi",
+    "甘肃": "gansu", "青海": "qinghai", "宁夏": "ningxia", "新疆": "xinjiang",
+}
+CHINA_IPTV_CARRIER_FILES = {
+    "电信": "telecom.txt",
+    "联通": "unicom.txt",
+    "移动": "mobile.txt",
+    "广电": "broadcast.txt",
+}
+
 # 默认测速门槛；四川线路单独放宽。
 DEFAULT_MIN_STREAM_SPEED_MB_S = 750.0 / 1024.0
 PROVINCE_MIN_STREAM_SPEED_MB_S = {
@@ -543,6 +564,137 @@ def extract_speed_test_candidates(channel_lines: list[str]) -> list[tuple[str, s
     return candidates
 
 
+def fetch_china_iptv_rtp_template(
+    province: str,
+    carrier: str,
+    session: requests.Session | None = None,
+    cache: dict | None = None,
+) -> tuple[list[str] | None, str]:
+    """读取 CHINA-IPTV 对应省份/运营商组播表，只保留有效 rtp:// 频道。
+
+    返回 (模板频道行, 原因)。模板频道行仍保持 ``频道名,rtp://组播地址``，
+    #genre#、空地址、非 RTP 地址和格式异常行均不会进入结果。
+    """
+    cache_key = (province, carrier)
+    if cache is not None and cache_key in cache:
+        return cache[cache_key]
+
+    province_dir = CHINA_IPTV_PROVINCE_DIRS.get(province)
+    carrier_file = CHINA_IPTV_CARRIER_FILES.get(carrier)
+    if not province_dir or not carrier_file:
+        result = (None, "未配置对应的省份/运营商文件映射")
+        if cache is not None:
+            cache[cache_key] = result
+        return result
+
+    relative_path = f"Multicast/{province_dir}/{carrier_file}"
+    url = f"{CHINA_IPTV_RAW_BASE_URL}/{province_dir}/{carrier_file}"
+    group_title = f"{province}{carrier}"
+    print(f"[*] [{group_title}] 优先读取 CHINA-IPTV 频道文件：{relative_path}")
+
+    client = session or requests.Session()
+    try:
+        response = client.get(
+            url,
+            headers={"User-Agent": USER_AGENT, "Accept": "text/plain,*/*"},
+            timeout=(8, 20),
+        )
+    except requests.RequestException as exc:
+        result = (None, f"下载失败：{exc}")
+        if cache is not None:
+            cache[cache_key] = result
+        return result
+
+    if response.status_code != 200:
+        result = (None, f"HTTP {response.status_code}")
+        if cache is not None:
+            cache[cache_key] = result
+        return result
+
+    # requests 在 raw 文本未声明 charset 时可能猜错中文编码，明确使用 UTF-8。
+    response.encoding = "utf-8"
+    text = response.text.lstrip("\ufeff")
+    valid_lines: list[str] = []
+    seen: set[str] = set()
+    filtered_genre = 0
+    filtered_empty = 0
+    filtered_invalid = 0
+
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if "," not in line:
+            filtered_invalid += 1
+            continue
+        name, play_url = [part.strip() for part in line.split(",", 1)]
+        if not name:
+            filtered_invalid += 1
+            continue
+        if play_url.casefold() == "#genre#":
+            filtered_genre += 1
+            continue
+        if not play_url:
+            filtered_empty += 1
+            continue
+        if not re.fullmatch(
+            r"rtp://(?:\d{1,3}\.){3}\d{1,3}:\d+",
+            play_url,
+            flags=re.IGNORECASE,
+        ):
+            filtered_invalid += 1
+            continue
+        normalized = f"{name},{play_url}"
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        valid_lines.append(normalized)
+
+    if not valid_lines:
+        result = (
+            None,
+            "未解析到有效 RTP 频道"
+            f"（#genre#={filtered_genre}，空地址={filtered_empty}，其他无效={filtered_invalid}）",
+        )
+        if cache is not None:
+            cache[cache_key] = result
+        return result
+
+    print(
+        f"[+] [{group_title}] 频道列表来源：CHINA-IPTV；"
+        f"有效RTP频道 {len(valid_lines)} 个，已过滤 #genre# {filtered_genre} 个、"
+        f"空地址 {filtered_empty} 个、其他无效记录 {filtered_invalid} 个。"
+    )
+    result = (valid_lines, "ok")
+    if cache is not None:
+        cache[cache_key] = result
+    return result
+
+
+def build_china_iptv_http_lines(rtp_lines: list[str], source_host: str) -> list[str]:
+    """把 CHINA-IPTV 的 rtp://组播地址转换为当前公网服务器的 /rtp/ HTTP 地址。"""
+    host = normalize_source_host(source_host)
+    if not host:
+        return []
+    result: list[str] = []
+    seen: set[str] = set()
+    for line in rtp_lines:
+        if "," not in line:
+            continue
+        name, play_url = [part.strip() for part in line.split(",", 1)]
+        if not play_url.lower().startswith("rtp://"):
+            continue
+        multicast_target = play_url[6:].strip().lstrip("/")
+        if not multicast_target:
+            continue
+        converted = f"{name},http://{host}/rtp/{multicast_target}"
+        if converted in seen:
+            continue
+        seen.add(converted)
+        result.append(converted)
+    return result
+
+
 def fetch_channel_lines_by_s(
     s_token: str,
     session: requests.Session | None = None,
@@ -791,6 +943,9 @@ def fetch_channel_lines_by_province(
        每抓取一页就立即筛选并测试新增的新IP，达到目标后立即停止后续分页。
     4. 搜索到第10页仍不足目标时，才允许已扫描页面中的旧IP兜底；新IP始终最高优先级。
     5. 每个运营商最多测试 max_per_carrier 台候选，找到 TARGET_PLAYABLE_SOURCES_PER_CARRIER 个可用源后停止。
+    6. 候选服务器的频道表优先读取 CHINA-IPTV 对应省份/运营商 Multicast TXT，
+       过滤 #genre#/空地址/非RTP记录后，把 rtp:// 转成当前公网服务器 /rtp/ HTTP 地址；
+       只有 CHINA-IPTV 文件不存在、下载失败或无有效 RTP 频道时，才回退 cqshushu 原频道分页。
     """
     session = requests.Session()
     max_pages = min(max(1, int(max_pages)), REGION_LIST_MAX_PAGES)
@@ -815,6 +970,7 @@ def fetch_channel_lines_by_province(
     playable_counts = {carrier: 0 for carrier in carriers}
     tested_counts = {carrier: 0 for carrier in carriers}
     tested_tokens_by_carrier = {carrier: set() for carrier in carriers}
+    china_iptv_cache: dict[tuple[str, str], tuple[list[str] | None, str]] = {}
 
     def _is_usable_status(status: str) -> bool:
         return source_status_rank(status) > 0
@@ -894,85 +1050,147 @@ def fetch_channel_lines_by_province(
         )
 
         try:
-            print(f"[*] [{group_title} {candidate_host}] 开始获取IP详情页【{candidate_status}】。")
-            try:
-                detail_html = fetch_detail_html(token, session=session)
-            except Exception as exc:
-                print(f"[-] [{group_title} {candidate_host}] IP详情获取失败，未进入测速阶段: {exc}")
-                return False
-
-            if not detail_html:
-                print(f"[-] [{group_title} {candidate_host}] IP详情为空，未进入测速阶段。")
-                return False
-
-            print(f"[+] [{group_title} {candidate_host}] IP详情页获取成功，HTML长度={len(detail_html)}。")
-            s_token = parse_s_token(detail_html)
-            if not s_token:
-                print(
-                    f"[-] [{group_title} {candidate_host}] IP详情页中未找到频道列表 s_token，"
-                    "未进入测速阶段。"
-                )
-                return False
-
-            token_preview = s_token if len(s_token) <= 16 else s_token[:8] + "..." + s_token[-4:]
-            print(f"[+] [{group_title} {candidate_host}] s_token解析成功：{token_preview}")
-            print(f"[*] [{group_title} {candidate_host}] 开始抓取测速频道。")
-
-            # 第一阶段：只抓到足够测速的 CCTV 频道，立即测速。
-            page_state: dict = {}
-            test_lines = fetch_channel_lines_by_s(
-                s_token,
+            # 主路径：CHINA-IPTV 提供省份/运营商 RTP 频道表；cqshushu 只提供公网转发服务器。
+            # 只有 CHINA-IPTV 不可用/无有效 RTP 时，才回退到原 cqshushu 详情页+频道分页。
+            china_template, china_reason = fetch_china_iptv_rtp_template(
+                province,
+                carrier,
                 session=session,
-                stop_after_test_channels=max(1, test_channels_per_source),
-                page_state=page_state,
-            )
-            if not test_lines:
-                print(
-                    f"[-] [{group_title} {candidate_host}] 频道列表未解析到任何频道，"
-                    "未进入测速阶段。"
-                )
-                return False
-
-            speed_candidates = extract_speed_test_candidates(test_lines)
-            if len(speed_candidates) < max(1, test_channels_per_source):
-                print(
-                    f"[-] [{group_title} {candidate_host}] 已解析 {len(test_lines)} 条频道，"
-                    f"但仅找到 {len(speed_candidates)} 个 CCTV1-CCTV17 非标清/非4K HTTP测速频道，"
-                    f"少于要求的 {max(1, test_channels_per_source)} 个，无法进入有效测速。"
-                )
-
-            source_label = f"{group_title} {candidate_host}".strip()
-            if not is_source_playable(
-                test_lines,
-                source_label=source_label,
-                min_speed_mb_s=min_stream_speed_mb_s,
-                sample_seconds=stream_test_seconds,
-                test_channels=test_channels_per_source,
-            ):
-                return False
-
-            # 第二阶段：测速通过后才继续抓完整频道列表。
-            last_page = int(page_state.get("last_page", 0))
-            has_next = bool(page_state.get("has_next", False))
-            print(
-                f"[+] [{source_label}] 测速通过【{candidate_status}】，"
-                f"复用前{last_page}页的 {len(test_lines)} 条频道，"
-                f"从第{last_page + 1}页继续完整抓取。"
+                cache=china_iptv_cache,
             )
 
-            if has_next:
-                lines = fetch_channel_lines_by_s(
-                    s_token,
-                    session=session,
-                    initial_lines=test_lines,
-                    start_page=last_page + 1,
+            lines: list[str] = []
+            channel_source = ""
+
+            if china_template:
+                lines = build_china_iptv_http_lines(china_template, candidate_host)
+                if not lines:
+                    china_reason = "RTP频道转换公网HTTP地址失败"
+                    china_template = None
+                else:
+                    channel_source = "CHINA-IPTV"
+                    print(
+                        f"[*] [{group_title} {candidate_host}] 使用 CHINA-IPTV 频道列表构造公网播放地址；"
+                        f"共 {len(lines)} 个有效频道。"
+                    )
+
+            if china_template:
+                # 测速直接使用最终要输出的 CHINA-IPTV 组播地址，避免“测速地址”和“输出地址”不一致。
+                speed_candidates = extract_speed_test_candidates(lines)
+                if len(speed_candidates) < max(1, test_channels_per_source):
+                    print(
+                        f"[-] [{group_title} {candidate_host}] CHINA-IPTV 已转换 {len(lines)} 条频道，"
+                        f"但仅找到 {len(speed_candidates)} 个 CCTV1-CCTV17 非标清/非4K HTTP测速频道，"
+                        f"少于要求的 {max(1, test_channels_per_source)} 个。"
+                    )
+
+                source_label = f"{group_title} {candidate_host}".strip()
+                if not is_source_playable(
+                    lines,
+                    source_label=source_label,
+                    min_speed_mb_s=min_stream_speed_mb_s,
+                    sample_seconds=stream_test_seconds,
+                    test_channels=test_channels_per_source,
+                ):
+                    # CHINA-IPTV 文件存在且有效，但当前服务器上的这些组播地址测速不通过时，
+                    # 判定该公网服务器无效；不切换 cqshushu 频道表“绕过”测速。
+                    return False
+
+                print(
+                    f"[+] [{source_label}] 测速通过【{candidate_status}】；"
+                    f"最终频道列表来源：CHINA-IPTV（{len(lines)} 个频道）。"
                 )
             else:
-                lines = test_lines
+                print(
+                    f"[!] [{group_title}] CHINA-IPTV不可用：{china_reason}；"
+                    "切换至 cqshushu 频道列表兜底。"
+                )
+                print(f"[*] [{group_title}] 频道列表来源：cqshushu（兜底）")
+                print(f"[*] [{group_title} {candidate_host}] 开始获取IP详情页【{candidate_status}】。")
+                try:
+                    detail_html = fetch_detail_html(token, session=session)
+                except Exception as exc:
+                    print(f"[-] [{group_title} {candidate_host}] IP详情获取失败，未进入测速阶段: {exc}")
+                    return False
 
-            if not lines:
-                print(f"[-] [{source_label}] 完整频道列表抓取失败，跳过该源。")
-                return False
+                if not detail_html:
+                    print(f"[-] [{group_title} {candidate_host}] IP详情为空，未进入测速阶段。")
+                    return False
+
+                print(f"[+] [{group_title} {candidate_host}] IP详情页获取成功，HTML长度={len(detail_html)}。")
+                s_token = parse_s_token(detail_html)
+                if not s_token:
+                    print(
+                        f"[-] [{group_title} {candidate_host}] IP详情页中未找到频道列表 s_token，"
+                        "未进入测速阶段。"
+                    )
+                    return False
+
+                token_preview = s_token if len(s_token) <= 16 else s_token[:8] + "..." + s_token[-4:]
+                print(f"[+] [{group_title} {candidate_host}] s_token解析成功：{token_preview}")
+                print(f"[*] [{group_title} {candidate_host}] 开始从 cqshushu 抓取测速频道。")
+
+                # 兜底第一阶段：只抓到足够测速的 CCTV 频道，立即测速。
+                page_state: dict = {}
+                test_lines = fetch_channel_lines_by_s(
+                    s_token,
+                    session=session,
+                    stop_after_test_channels=max(1, test_channels_per_source),
+                    page_state=page_state,
+                )
+                if not test_lines:
+                    print(
+                        f"[-] [{group_title} {candidate_host}] cqshushu频道列表未解析到任何频道，"
+                        "未进入测速阶段。"
+                    )
+                    return False
+
+                speed_candidates = extract_speed_test_candidates(test_lines)
+                if len(speed_candidates) < max(1, test_channels_per_source):
+                    print(
+                        f"[-] [{group_title} {candidate_host}] 已解析 {len(test_lines)} 条频道，"
+                        f"但仅找到 {len(speed_candidates)} 个 CCTV1-CCTV17 非标清/非4K HTTP测速频道，"
+                        f"少于要求的 {max(1, test_channels_per_source)} 个，无法进入有效测速。"
+                    )
+
+                source_label = f"{group_title} {candidate_host}".strip()
+                if not is_source_playable(
+                    test_lines,
+                    source_label=source_label,
+                    min_speed_mb_s=min_stream_speed_mb_s,
+                    sample_seconds=stream_test_seconds,
+                    test_channels=test_channels_per_source,
+                ):
+                    return False
+
+                # 兜底第二阶段：测速通过后才继续抓 cqshushu 完整频道列表。
+                last_page = int(page_state.get("last_page", 0))
+                has_next = bool(page_state.get("has_next", False))
+                print(
+                    f"[+] [{source_label}] 测速通过【{candidate_status}】，"
+                    f"复用前{last_page}页的 {len(test_lines)} 条频道，"
+                    f"从第{last_page + 1}页继续抓取 cqshushu 完整频道列表。"
+                )
+
+                if has_next:
+                    lines = fetch_channel_lines_by_s(
+                        s_token,
+                        session=session,
+                        initial_lines=test_lines,
+                        start_page=last_page + 1,
+                    )
+                else:
+                    lines = test_lines
+
+                if not lines:
+                    print(f"[-] [{source_label}] cqshushu完整频道列表抓取失败，跳过该源。")
+                    return False
+
+                channel_source = "cqshushu（兜底）"
+                print(
+                    f"[+] [{source_label}] 最终频道列表来源：cqshushu（兜底）"
+                    f"（{len(lines)} 个频道）。"
+                )
 
             selected_ops.append(group_title)
             group_to_sources.setdefault(group_title, []).append(lines)
@@ -1195,6 +1413,10 @@ PRIORITY_CHANNEL_RULES = [
     ("安徽综艺",),
     ("安徽农业",),
     ("安徽国际",),
+    ("CHC影迷电影",),
+    ("CHC高清电影",),
+    ("CHC动作电影",),
+    ("CHC家庭影院",),
 ]
 
 
