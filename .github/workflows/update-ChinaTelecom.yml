@@ -1,15 +1,14 @@
 name: Update China Telecom RTP Sources
-
 on:
   workflow_dispatch:
     inputs:
       province_1:
         description: "省份1（默认项与自动定时运行相同；选择后忽略其他选项）"
         required: true
-        default: "定时默认7省电信"
+        default: "定时默认10省电信"
         type: choice
         options:
-          - "定时默认7省电信"
+          - "定时默认10省电信"
           - "全部"
           - "北京"
           - "天津"
@@ -137,7 +136,6 @@ on:
           - "电信,联通"
           - "电信,移动"
           - "联通,移动"
-
   # 可选外部整点触发入口；电信工作流使用独立事件类型，避免两个工作流被同一个 dispatch 同时触发。
   repository_dispatch:
     types: [hourly_iptv_telecom_update]
@@ -145,7 +143,6 @@ on:
   schedule:
     # 电信候选窗口放在每小时前半小时（01～26分）；小时锁保证本工作流每小时最多执行一次完整抓取。
     - cron: "1,6,11,16,21,26 * * * *"
-
 # 两个运营商工作流共用固定并发组：任何时刻只允许一个电信/联通抓取任务真正运行；后到任务只排队、不取消。
 concurrency:
   group: iptv-source-update
@@ -159,9 +156,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
-      # 电信定时抓取目标：直接在此处增加、删除或调整“省份+运营商”。
-      AUTO_TARGETS: "四川电信,浙江电信,湖北电信,安徽电信,山西电信,广东电信,福建电信"
-
+      # 电信定时默认10省抓取目标：按下列顺序执行；可直接在此处增加、删除或调整“省份+运营商”。
+      AUTO_TARGETS: "四川电信,浙江电信,湖北电信,安徽电信,山西电信,广东电信,湖南电信,河北电信,陕西电信,福建电信"
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -176,13 +172,11 @@ jobs:
           git fetch origin main
           git checkout -B main origin/main
           echo "[*] 已同步到任务实际开始时的最新 origin/main，避免并发排队导致旧基线。"
-
       - name: Build hourly lock key
         id: hourly-slot
         shell: bash
         run: |
           echo "cache_key=update-chinatelecom-hour-$(date -u +'%Y%m%d%H')" >> "$GITHUB_OUTPUT"
-
       - name: Check whether this hour has already run
         id: hourly-cache
         if: github.event_name == 'schedule' || github.event_name == 'repository_dispatch'
@@ -191,25 +185,21 @@ jobs:
           path: .github-hourly-run-telecom
           key: ${{ steps.hourly-slot.outputs.cache_key }}
           lookup-only: true
-
       - name: Explain skipped duplicate
         if: (github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && steps.hourly-cache.outputs.cache-hit == 'true'
         run: echo "[*] 电信工作流本小时已经领取过运行时段，跳过本次候选触发。"
-
       - name: Create hourly running claim
         if: (github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && steps.hourly-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
           mkdir -p .github-hourly-run-telecom
           date -u +'%Y-%m-%dT%H:%M:%SZ' > .github-hourly-run-telecom/claimed-at.txt
-
       - name: Save hourly running claim
         if: (github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && steps.hourly-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: .github-hourly-run-telecom
           key: ${{ steps.hourly-slot.outputs.cache_key }}
-
       - name: Set up Python
         if: github.event_name == 'workflow_dispatch' || steps.hourly-cache.outputs.cache-hit != 'true'
         uses: actions/setup-python@v6
@@ -222,7 +212,6 @@ jobs:
           pwd
           ls -la
           ls -la "${{ github.workspace }}"
-
       - name: Install dependencies
         if: github.event_name == 'workflow_dispatch' || steps.hourly-cache.outputs.cache-hit != 'true'
         run: |
@@ -233,13 +222,11 @@ jobs:
             echo "requirements.txt not found, fallback to direct install."
             pip install "requests>=2.31.0"
           fi
-
       - name: Configure Git for incremental publishing
         if: github.event_name == 'workflow_dispatch' || steps.hourly-cache.outputs.cache-hit != 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
       - name: Run updater
         if: github.event_name == 'workflow_dispatch' || steps.hourly-cache.outputs.cache-hit != 'true'
         env:
@@ -250,7 +237,7 @@ jobs:
           SELECTED_CARRIERS: "${{ github.event.inputs.carriers }}"
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            if [ "$PROVINCE_1" = "定时默认7省电信" ]; then
+            if [ "$PROVINCE_1" = "定时默认10省电信" ]; then
               echo "[*] 手动运行（定时默认组合）：目标=$AUTO_TARGETS"
               python -u rtp/b.py \
                 --targets "$AUTO_TARGETS" \
