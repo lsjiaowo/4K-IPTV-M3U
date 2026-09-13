@@ -1189,6 +1189,7 @@ PRIORITY_CHANNEL_RULES = [
     ("凤凰", "资讯"),
     ("凤凰",),
     ("CCTV4K",),
+    ("CCTV16", "4K"),
     ("安徽经济",),
     ("安徽影视",),
     ("安徽公共",),
@@ -1199,32 +1200,68 @@ PRIORITY_CHANNEL_RULES = [
     ("CHC高清电影",),
     ("CHC动作电影",),
     ("CHC家庭影院",),
+    ("北京卫视4K",),
+    ("纪实科教4K",),
+    ("广东卫视4K",),
+    ("深圳卫视4K",),
+    ("南国都市4K",),
+    ("东方卫视4K",),
+    ("欢笑剧场4K",),
+    ("江苏卫视4K",),
+    ("浙江卫视4K",),
+    ("山东卫视4K",),
+    ("湖南卫视4K",),
+    ("四川卫视4K",),
 ]
 
 
-def sort_priority_channels(channel_lines: list[str]) -> list[str]:
-    """将包含指定关键词的频道移到列表顶部。
+def _is_excluded_4k_channel(channel_name: str) -> bool:
+    """含4K但同时标记为SD/标清的频道，不参与任何4K优先排序。"""
+    normalized = channel_name.casefold()
+    return "4k" in normalized and ("sd" in normalized or "标清" in normalized)
 
-    同一优先级内及未命中关键词的频道都保持原有相对顺序。
+
+def sort_priority_channels(channel_lines: list[str]) -> list[str]:
+    """按指定优先级提升频道，其余频道保持原始相对顺序。
+
+    排序规则：
+    1. 先按 PRIORITY_CHANNEL_RULES 的固定顺序提升指定频道；
+    2. 未命中固定规则、但名称含4K的频道统一归入“其他4K”；
+    3. CCTV4KSD、CCTV4K SD、CCTV4K标清等含SD/标清的4K名称，
+       既不进入CCTV4K，也不进入“其他4K”，保持在普通频道中的原始相对位置；
+    4. 同一优先级内及所有普通频道均依赖Python稳定排序保持原始顺序。
     """
 
+    other_4k_priority = len(PRIORITY_CHANNEL_RULES)
+    normal_priority = other_4k_priority + 1
+
     def priority_key(line: str) -> int:
-        channel_name = line.split(",", 1)[0].strip().casefold()
+        channel_name = line.split(",", 1)[0].strip()
+        normalized_name = channel_name.casefold()
+
+        # 这是所有4K优先规则的统一排除条件。
+        # 例如 CCTV4KSD / CCTV4K SD / CCTV4K标清：
+        # 不进入 CCTV4K，也不进入最后的“其他4K”。
+        excluded_4k = _is_excluded_4k_channel(channel_name)
+
         for index, required_keywords in enumerate(PRIORITY_CHANNEL_RULES):
-            # CCTV4K 只提升真正的高清/超高清频道；名称含 SD 或“标清”的
-            # CCTV4KSD、CCTV4K SD、CCTV4K标清等频道保持原始位置。
-            if required_keywords == ("CCTV4K",) and (
-                "sd" in channel_name or "标清" in channel_name
-            ):
+            rule_is_4k = any("4k" in keyword.casefold() for keyword in required_keywords)
+            if excluded_4k and rule_is_4k:
                 continue
             if all(
-                keyword.casefold() in channel_name
+                keyword.casefold() in normalized_name
                 for keyword in required_keywords
             ):
                 return index
-        return len(PRIORITY_CHANNEL_RULES)
+
+        # 所有明确列出的4K频道之后，再统一提升其他名称的合格4K频道。
+        if "4k" in normalized_name and not excluded_4k:
+            return other_4k_priority
+
+        return normal_priority
 
     return sorted(channel_lines, key=priority_key)
+
 
 def build_tvg_logo_url(channel_name: str) -> str:
     safe_name = quote(channel_name.strip(), safe="")
