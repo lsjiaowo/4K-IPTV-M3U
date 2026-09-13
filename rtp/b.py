@@ -41,6 +41,13 @@ UPDATE_TIMES_FILE = ".github/iptv-update-times.json"
 RAW_BASE_URL = "https://raw.githubusercontent.com/lsjiaowo/4K-IPTV-M3U/main"
 PROXY_PREFIX = "https://gh-proxy.org/"
 
+# 可选的本地频道模板目录。模板文件名使用“省份+运营商”，例如：
+# channel_templates/天津联通.m3u 或 channel_templates/天津联通.txt
+# 优先级：.m3u > .txt > cqshushu 原频道列表。
+# 模板只提供“频道名称 + RTP组播地址”；最终 tvg-id/tvg-logo/group-title、EPG 和排序
+# 仍完全沿用本脚本现有输出逻辑。
+CHANNEL_TEMPLATE_DIR = "channel_templates"
+
 # 默认测速门槛；四川线路单独放宽。
 DEFAULT_MIN_STREAM_SPEED_MB_S = 750.0 / 1024.0
 PROVINCE_MIN_STREAM_SPEED_MB_S = {
@@ -515,6 +522,143 @@ def fetch_detail_html(p_token: str, session: requests.Session | None = None) -> 
     return data.get("html", "") or ""
 
 
+def _parse_rtp_target(value: str) -> str | None:
+    """从模板地址中提取 IPv4:port RTP 组播目标。"""
+    text = (value or "").strip()
+    match = re.fullmatch(
+        r"(?i)rtp://(\d{1,3}(?:\.\d{1,3}){3}):(\d{1,5})/?",
+        text,
+    )
+    if not match:
+        return None
+    ip_text, port_text = match.groups()
+    octets = ip_text.split(".")
+    if any(int(part) > 255 for part in octets):
+        return None
+    port = int(port_text)
+    if not (1 <= port <= 65535):
+        return None
+    return f"{ip_text}:{port}"
+
+
+def parse_channel_template_m3u(content: str) -> list[tuple[str, str]]:
+    """解析 M3U 模板，仅保留“显示频道名 + RTP组播地址”。
+
+    模板中的 tvg-name/tvg-logo/group-title 等元数据不继承；最终 M3U 仍由
+    txt_to_m3u_format() 按现有规则重新生成。
+    """
+    result: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    pending_name = ""
+
+    for raw_line in content.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.upper().startswith("#EXTINF"):
+            # 以 EXTINF 最后一个逗号后的显示名称为准；若没有则尝试 tvg-name。
+            pending_name = line.rsplit(",", 1)[-1].strip() if "," in line else ""
+            if not pending_name:
+                match = re.search(r'tvg-name\s*=\s*"([^"]+)"', line, flags=re.IGNORECASE)
+                pending_name = match.group(1).strip() if match else ""
+            continue
+        if line.startswith("#"):
+            continue
+
+        rtp_target = _parse_rtp_target(line)
+        if not rtp_target or not pending_name:
+            pending_name = ""
+            continue
+        item = (pending_name, rtp_target)
+        if item not in seen:
+            seen.add(item)
+            result.append(item)
+        pending_name = ""
+    return result
+
+
+def parse_channel_template_txt(content: str) -> list[tuple[str, str]]:
+    """解析 TXT 模板，仅保留“频道名 + RTP组播地址”，忽略 #genre# 分类行。"""
+    result: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for raw_line in content.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "#genre#" in line.lower() or "," not in line:
+            continue
+        name, play_url = [part.strip() for part in line.split(",", 1)]
+        if not name:
+            continue
+        rtp_target = _parse_rtp_target(play_url)
+        if not rtp_target:
+            continue
+        item = (name, rtp_target)
+        if item not in seen:
+            seen.add(item)
+            result.append(item)
+    return result
+
+
+def load_local_channel_template(
+    group_title: str,
+    template_dir: str = CHANNEL_TEMPLATE_DIR,
+) -> tuple[list[tuple[str, str]], str | None]:
+    """读取“省份+运营商”本地模板；优先 M3U，其次 TXT。
+
+    某个文件存在但无有效 RTP 频道时继续尝试下一种格式；两种都不可用时返回空，
+    调用方继续使用 cqshushu 原频道列表。
+    """
+    for extension, parser in ((".m3u", parse_channel_template_m3u), (".txt", parse_channel_template_txt)):
+        path = os.path.join(template_dir, f"{group_title}{extension}")
+        if not os.path.isfile(path):
+            continue
+        try:
+            with open(path, "r", encoding="utf-8-sig") as file:
+                content = file.read()
+        except OSError as exc:
+            print(f"[!] [{group_title}] 本地频道模板读取失败：{path}；{exc}")
+            continue
+
+        channels = parser(content)
+        if channels:
+            print(f"[+] [{group_title}] 找到本地频道模板：{path}；有效RTP频道={len(channels)}条。")
+            return channels, path
+        print(f"[!] [{group_title}] 本地频道模板存在但未解析到有效RTP频道：{path}")
+
+    return [], None
+
+
+def build_template_channel_lines(
+    template_channels: list[tuple[str, str]],
+    candidate_host: str,
+) -> list[str]:
+    """把模板 RTP 地址转换为候选公网服务器的 HTTP /rtp/ 地址。"""
+    host = normalize_source_host(candidate_host)
+    if not host:
+        return []
+    return [
+        f"{name},http://{host}/rtp/{rtp_target}"
+        for name, rtp_target in template_channels
+    ]
+
+
+def extract_general_speed_test_candidates(channel_lines: list[str]) -> list[tuple[str, str]]:
+    """模板缺少足够 CCTV 时的兜底测速候选：普通 HTTP 频道，排除标清/SD/4K。"""
+    candidates: list[tuple[str, str]] = []
+    seen_urls: set[str] = set()
+    for line in channel_lines:
+        if "," not in line:
+            continue
+        channel_name, play_url = [part.strip() for part in line.split(",", 1)]
+        upper_name = channel_name.upper()
+        if not channel_name or "标清" in channel_name or "SD" in upper_name or "4K" in upper_name:
+            continue
+        if not play_url.lower().startswith(("http://", "https://")) or play_url in seen_urls:
+            continue
+        seen_urls.add(play_url)
+        candidates.append((channel_name, play_url))
+    return candidates
+
+
 def extract_speed_test_candidates(channel_lines: list[str]) -> list[tuple[str, str]]:
     """提取CCTV1-CCTV17中不含标清/SD/4K字样的HTTP测速频道，并按URL去重。"""
     candidates: list[tuple[str, str]] = []
@@ -707,6 +851,62 @@ def is_source_playable(
     )
     return False
 
+def is_template_source_playable(
+    channel_lines: list[str],
+    source_label: str,
+    min_speed_mb_s: float = DEFAULT_MIN_STREAM_SPEED_MB_S,
+    sample_seconds: float = 3.0,
+    test_channels: int = 2,
+) -> bool:
+    """本地模板测速：优先现有 CCTV 规则；不足时从普通非SD/非4K频道中抽测。"""
+    required_count = max(1, test_channels)
+    candidates = extract_speed_test_candidates(channel_lines)
+    candidate_kind = "CCTV1-CCTV17 非标清/非4K"
+
+    if len(candidates) < required_count:
+        candidates = extract_general_speed_test_candidates(channel_lines)
+        candidate_kind = "模板普通非标清/非4K"
+        print(
+            f"[*] [{source_label}] 模板中的 CCTV 测速频道不足，"
+            f"改从 {len(candidates)} 个普通非标清/非4K频道中测速。"
+        )
+
+    if len(candidates) < required_count:
+        print(
+            f"[-] [{source_label}] 可测试频道不足：{len(candidates)}/{required_count}，判定无效。"
+        )
+        return False
+
+    sampled_channels = random.sample(candidates, required_count)
+    print(
+        f"[*] [{source_label}] 从 {len(candidates)} 个{candidate_kind}频道中随机抽测 "
+        f"{required_count} 个。"
+    )
+    for channel_name, play_url in sampled_channels:
+        print(f"[*] [{source_label}] 测速频道：{channel_name} {play_url}")
+        try:
+            speed_mb_s, total_bytes = measure_stream_speed(
+                play_url,
+                sample_seconds=sample_seconds,
+            )
+        except requests.RequestException as exc:
+            print(f"[-] [{source_label}] 测速失败：{exc}")
+            continue
+        print(
+            f"[*] [{source_label}] 下载 {total_bytes / (1024 * 1024):.2f} MB，"
+            f"平均速度 {speed_mb_s * 1024:.0f} KB/s，"
+            f"要求 > {min_speed_mb_s * 1024:.0f} KB/s"
+        )
+        if speed_mb_s > min_speed_mb_s:
+            print(f"[+] [{source_label}] {channel_name} 测速通过。")
+            print(f"[+] [{source_label}] 已有1个抽测频道通过，立即停止其余频道测速。")
+            return True
+        print(f"[-] [{source_label}] {channel_name} 速度不足。")
+
+    print(f"[-] [{source_label}] 0/{required_count} 个抽测频道通过，丢弃该服务器。")
+    return False
+
+
 def parse_channel_lines(channels_html: str) -> list[str]:
     lines = []
     for row_html in re.findall(r"<tr[^>]*>(.*?)</tr>", channels_html, flags=re.IGNORECASE | re.DOTALL):
@@ -816,6 +1016,17 @@ def fetch_channel_lines_by_province(
     tested_counts = {carrier: 0 for carrier in carriers}
     tested_tokens_by_carrier = {carrier: set() for carrier in carriers}
 
+    # 每个“省份+运营商”的本地模板只读取/解析一次；没有有效模板时缓存为空并继续走 cqshushu。
+    local_template_cache: dict[str, tuple[list[tuple[str, str]], str | None]] = {}
+
+    def _get_local_template(group_title: str) -> tuple[list[tuple[str, str]], str | None]:
+        if group_title not in local_template_cache:
+            local_template_cache[group_title] = load_local_channel_template(group_title)
+            channels, path = local_template_cache[group_title]
+            if not channels:
+                print(f"[*] [{group_title}] 未找到有效本地频道模板，频道列表继续使用 cqshushu。")
+        return local_template_cache[group_title]
+
     def _is_usable_status(status: str) -> bool:
         return source_status_rank(status) > 0
 
@@ -894,6 +1105,41 @@ def fetch_channel_lines_by_province(
         )
 
         try:
+            # 本地模板优先：cqshushu 只负责提供候选公网服务器地址。
+            # 有有效模板时，不再请求该候选的 cqshushu IP详情页/频道列表。
+            template_channels, template_path = _get_local_template(group_title)
+            if template_channels:
+                source_label = f"{group_title} {candidate_host}".strip()
+                lines = build_template_channel_lines(template_channels, candidate_host)
+                if not lines:
+                    print(f"[-] [{source_label}] 无法使用候选服务器地址构造模板播放地址，跳过该源。")
+                    return False
+
+                print(
+                    f"[*] [{source_label}] 频道列表来源：本地模板 {template_path}；"
+                    f"已转换 {len(lines)} 条 HTTP /rtp/ 播放地址。"
+                )
+                if not is_template_source_playable(
+                    lines,
+                    source_label=source_label,
+                    min_speed_mb_s=min_stream_speed_mb_s,
+                    sample_seconds=stream_test_seconds,
+                    test_channels=test_channels_per_source,
+                ):
+                    return False
+
+                selected_ops.append(group_title)
+                group_to_sources.setdefault(group_title, []).append(lines)
+                playable_counts[carrier] = playable_counts.get(carrier, 0) + 1
+                print(
+                    f"[+] [{province}{carrier}] 可用源：{candidate_host}【{candidate_status}】；"
+                    f"频道列表来源=本地模板；已获得 "
+                    f"{playable_counts[carrier]}/{TARGET_PLAYABLE_SOURCES_PER_CARRIER} "
+                    f"个可用播放列表（已测试 {tested_counts[carrier]}/{max_per_carrier} 台）。"
+                )
+                return True
+
+            print(f"[*] [{group_title} {candidate_host}] 频道列表来源：cqshushu（本地无有效模板）。")
             print(f"[*] [{group_title} {candidate_host}] 开始获取IP详情页【{candidate_status}】。")
             try:
                 detail_html = fetch_detail_html(token, session=session)
