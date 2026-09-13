@@ -627,12 +627,89 @@ def load_local_channel_template(
     return [], None
 
 
+def resolve_relay_host_with_port(
+    candidate_host: str,
+    p_token: str,
+    session: requests.Session | None = None,
+) -> str:
+    """解析候选公网转发服务器的完整 host:port。
+
+    省份服务器列表中的 host 字段有时只有 IPv4，不包含实际 HTTP 转发端口。
+    若候选本身已有端口则直接使用；否则只借助 cqshushu 的详情页和频道列表
+    获取一条完整 HTTP 播放地址，从其 netloc 提取真正的 IP:PORT。
+    本地模板仍然负责频道名称和 RTP 组播地址，不使用 cqshushu 的频道内容输出。
+    """
+    normalized = normalize_source_host(candidate_host)
+    if not normalized:
+        return ""
+
+    parsed_candidate = urlparse(
+        candidate_host if "://" in candidate_host else f"http://{candidate_host}"
+    )
+    if parsed_candidate.port is not None:
+        return normalized
+
+    try:
+        detail_html = fetch_detail_html(p_token, session=session)
+    except Exception as exc:
+        print(
+            f"[-] [{candidate_host}] 为本地模板解析公网转发端口时，"
+            f"IP详情页获取失败：{exc}"
+        )
+        return ""
+
+    if not detail_html:
+        print(f"[-] [{candidate_host}] IP详情页为空，无法解析公网转发端口。")
+        return ""
+
+    s_token = parse_s_token(detail_html)
+    if not s_token:
+        print(f"[-] [{candidate_host}] IP详情页未找到 s_token，无法解析公网转发端口。")
+        return ""
+
+    # 这里只需拿到一页中的一条完整 HTTP 播放地址来确定公网端口。
+    # 不使用 cqshushu 的频道名称/组播地址生成最终列表。
+    probe_lines = fetch_channel_lines_by_s(
+        s_token,
+        session=session,
+        max_pages=1,
+    )
+    candidate_ip = parsed_candidate.hostname or normalized.split(":", 1)[0]
+    fallback_netloc = ""
+
+    for line in probe_lines:
+        if "," not in line:
+            continue
+        play_url = line.split(",", 1)[1].strip()
+        parsed_url = urlparse(play_url)
+        if parsed_url.scheme.lower() not in ("http", "https") or not parsed_url.netloc:
+            continue
+        if parsed_url.port is None:
+            continue
+        netloc = parsed_url.netloc.lower().strip()
+        if parsed_url.hostname == candidate_ip:
+            print(f"[+] [{candidate_host}] 已解析公网转发地址：{netloc}")
+            return netloc
+        if not fallback_netloc:
+            fallback_netloc = netloc
+
+    if fallback_netloc:
+        print(
+            f"[!] [{candidate_host}] 频道页中的公网IP与列表IP不完全一致；"
+            f"采用频道播放地址中的转发地址：{fallback_netloc}"
+        )
+        return fallback_netloc
+
+    print(f"[-] [{candidate_host}] 未能从频道页解析出带端口的 HTTP 转发地址。")
+    return ""
+
+
 def build_template_channel_lines(
     template_channels: list[tuple[str, str]],
-    candidate_host: str,
+    relay_host: str,
 ) -> list[str]:
-    """把模板 RTP 地址转换为候选公网服务器的 HTTP /rtp/ 地址。"""
-    host = normalize_source_host(candidate_host)
+    """把模板 RTP 地址转换为带真实公网端口的 HTTP /rtp/ 地址。"""
+    host = normalize_source_host(relay_host)
     if not host:
         return []
     return [
@@ -1109,15 +1186,27 @@ def fetch_channel_lines_by_province(
             # 有有效模板时，不再请求该候选的 cqshushu IP详情页/频道列表。
             template_channels, template_path = _get_local_template(group_title)
             if template_channels:
-                source_label = f"{group_title} {candidate_host}".strip()
-                lines = build_template_channel_lines(template_channels, candidate_host)
+                relay_host = resolve_relay_host_with_port(
+                    candidate_host,
+                    token,
+                    session=session,
+                )
+                source_label = f"{group_title} {relay_host or candidate_host}".strip()
+                if not relay_host:
+                    print(
+                        f"[-] [{group_title} {candidate_host}] 无法解析候选服务器的公网转发端口，"
+                        "跳过该源，避免错误地按80端口测速。"
+                    )
+                    return False
+
+                lines = build_template_channel_lines(template_channels, relay_host)
                 if not lines:
                     print(f"[-] [{source_label}] 无法使用候选服务器地址构造模板播放地址，跳过该源。")
                     return False
 
                 print(
                     f"[*] [{source_label}] 频道列表来源：本地模板 {template_path}；"
-                    f"已转换 {len(lines)} 条 HTTP /rtp/ 播放地址。"
+                    f"已转换 {len(lines)} 条带公网端口的 HTTP /rtp/ 播放地址。"
                 )
                 if not is_template_source_playable(
                     lines,
