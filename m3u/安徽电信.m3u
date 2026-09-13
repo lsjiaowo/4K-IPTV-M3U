@@ -11,24 +11,24 @@ http://114.107.189.225:8188/rtp/238.1.79.41:4440
 http://114.107.189.225:8188/rtp/238.1.79.40:4432
 #EXTINF:-1 tvg-id="安徽国际频道" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%AE%89%E5%BE%BD%E5%9B%BD%E9%99%85%E9%A2%91%E9%81%93.png" group-title="安徽电信",安徽国际频道
 http://114.107.189.225:8188/rtp/238.1.78.61:6360
-#EXTINF:-1 tvg-id="东方卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E4%B8%9C%E6%96%B9%E5%8D%AB%E8%A7%864K.png" group-title="安徽电信",东方卫视4K
-http://114.107.189.225:8188/rtp/238.1.79.39:4428
-#EXTINF:-1 tvg-id="浙江卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%B5%99%E6%B1%9F%E5%8D%AB%E8%A7%864K.png" group-title="安徽电信",浙江卫视4K
-http://114.107.189.225:8188/rtp/238.1.79.28:4336
-#EXTINF:-1 tvg-id="江苏卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%B1%9F%E8%8B%8F%E5%8D%AB%E8%A7%864K.png" group-title="安徽电信",江苏卫视4K
-http://114.107.189.225:8188/rtp/238.1.78.37:4088
-#EXTINF:-1 tvg-id="广东卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%B9%BF%E4%B8%9C%E5%8D%AB%E8%A7%864K.png" group-title="安徽电信",广东卫视4K
-http://114.107.189.225:8188/rtp/238.1.79.25:4312
-#EXTINF:-1 tvg-id="四川卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%9B%9B%E5%B7%9D%E5%8D%AB%E8%A7%864K.png" group-title="安徽电信",四川卫视4K
-http://114.107.189.225:8188/rtp/238.1.79.51:4520
-#EXTINF:-1 tvg-id="湖南卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%B9%96%E5%8D%97%E5%8D%AB%E8%A7%864K.png" group-title="安徽电信",湖南卫视4K
-http://114.107.189.225:8188/rtp/238.1.79.38:4416
-#EXTINF:-1 tvg-id="深圳卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%B7%B1%E5%9C%B3%E5%8D%AB%E8%A7%864K.png" group-title="安徽电信",深圳卫视4K
-http://114.107.189.225:8188/rtp/238.1.79.26:4320
-#EXTINF:-1 tvg-id="山东卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%B1%B1%E4%B8%9C%E5%8D%AB%E8%A7%864K.png" group-title="安徽电信",山东卫视4K
-http://114.107.189.225:8188/rtp/238.1.79.29:4344
 #EXTINF:-1 tvg-id="北京卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%8C%97%E4%BA%AC%E5%8D%AB%E8%A7%864K.png" group-title="安徽电信",北京卫视4K
 http://114.107.189.225:8188/rtp/238.1.79.24:4304
+#EXTINF:-1 tvg-id="广东卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%B9%BF%E4%B8%9C%E5%8D%AB%E8%A7%864K.png" group-title="安徽电信",广东卫视4K
+http://114.107.189.225:8188/rtp/238.1.79.25:4312
+#EXTINF:-1 tvg-id="深圳卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%B7%B1%E5%9C%B3%E5%8D%AB%E8%A7%864K.png" group-title="安徽电信",深圳卫视4K
+http://114.107.189.225:8188/rtp/238.1.79.26:4320
+#EXTINF:-1 tvg-id="东方卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E4%B8%9C%E6%96%B9%E5%8D%AB%E8%A7%864K.png" group-title="安徽电信",东方卫视4K
+http://114.107.189.225:8188/rtp/238.1.79.39:4428
+#EXTINF:-1 tvg-id="江苏卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%B1%9F%E8%8B%8F%E5%8D%AB%E8%A7%864K.png" group-title="安徽电信",江苏卫视4K
+http://114.107.189.225:8188/rtp/238.1.78.37:4088
+#EXTINF:-1 tvg-id="浙江卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%B5%99%E6%B1%9F%E5%8D%AB%E8%A7%864K.png" group-title="安徽电信",浙江卫视4K
+http://114.107.189.225:8188/rtp/238.1.79.28:4336
+#EXTINF:-1 tvg-id="山东卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%B1%B1%E4%B8%9C%E5%8D%AB%E8%A7%864K.png" group-title="安徽电信",山东卫视4K
+http://114.107.189.225:8188/rtp/238.1.79.29:4344
+#EXTINF:-1 tvg-id="湖南卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%B9%96%E5%8D%97%E5%8D%AB%E8%A7%864K.png" group-title="安徽电信",湖南卫视4K
+http://114.107.189.225:8188/rtp/238.1.79.38:4416
+#EXTINF:-1 tvg-id="四川卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%9B%9B%E5%B7%9D%E5%8D%AB%E8%A7%864K.png" group-title="安徽电信",四川卫视4K
+http://114.107.189.225:8188/rtp/238.1.79.51:4520
 #EXTINF:-1 tvg-id="CCTV-1HD" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-1HD.png" group-title="安徽电信",CCTV-1HD
 http://114.107.189.225:8188/rtp/238.1.78.166:7200
 #EXTINF:-1 tvg-id="CCTV-2HD" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-2HD.png" group-title="安徽电信",CCTV-2HD
