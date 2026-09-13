@@ -5,48 +5,48 @@ http://119.102.157.240:8188/rtp/239.69.2.20:11274
 http://119.102.157.240:8188/rtp/239.69.2.19:11268
 #EXTINF:-1 tvg-id="CCTV4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV4K.png" group-title="湖北电信",CCTV4K
 http://119.102.157.240:8188/rtp/239.69.1.111:10304
+#EXTINF:-1 tvg-id="CCTV16 4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV16%204K.png" group-title="湖北电信",CCTV16 4K
+http://119.102.157.240:8188/rtp/239.69.1.12:9712
+#EXTINF:-1 tvg-id="CCTV16 4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV16%204K.png" group-title="湖北电信",CCTV16 4K
+http://119.102.157.240:8188/rtp/239.69.1.249:11136
 #EXTINF:-1 tvg-id="CHC影迷电影HD" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CHC%E5%BD%B1%E8%BF%B7%E7%94%B5%E5%BD%B1HD.png" group-title="湖北电信",CHC影迷电影HD
 http://119.102.157.240:8188/rtp/239.69.1.241:11088
 #EXTINF:-1 tvg-id="CHC动作电影HD" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CHC%E5%8A%A8%E4%BD%9C%E7%94%B5%E5%BD%B1HD.png" group-title="湖北电信",CHC动作电影HD
 http://119.102.157.240:8188/rtp/239.69.1.242:11094
 #EXTINF:-1 tvg-id="CHC家庭影院HD" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CHC%E5%AE%B6%E5%BA%AD%E5%BD%B1%E9%99%A2HD.png" group-title="湖北电信",CHC家庭影院HD
 http://119.102.157.240:8188/rtp/239.69.1.243:11100
-#EXTINF:-1 tvg-id="CCTV16 4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV16%204K.png" group-title="湖北电信",CCTV16 4K
-http://119.102.157.240:8188/rtp/239.69.1.12:9712
-#EXTINF:-1 tvg-id="CCTV16 4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV16%204K.png" group-title="湖北电信",CCTV16 4K
-http://119.102.157.240:8188/rtp/239.69.1.249:11136
 #EXTINF:-1 tvg-id="北京卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%8C%97%E4%BA%AC%E5%8D%AB%E8%A7%864K.png" group-title="湖北电信",北京卫视4K
 http://119.102.157.240:8188/rtp/239.69.2.22:11286
-#EXTINF:-1 tvg-id="东方卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E4%B8%9C%E6%96%B9%E5%8D%AB%E8%A7%864K.png" group-title="湖北电信",东方卫视4K
-http://119.102.157.240:8188/rtp/239.69.2.37:11376
 #EXTINF:-1 tvg-id="广东卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%B9%BF%E4%B8%9C%E5%8D%AB%E8%A7%864K.png" group-title="湖北电信",广东卫视4K
 http://119.102.157.240:8188/rtp/239.69.2.27:11316
 #EXTINF:-1 tvg-id="深圳卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%B7%B1%E5%9C%B3%E5%8D%AB%E8%A7%864K.png" group-title="湖北电信",深圳卫视4K
 http://119.102.157.240:8188/rtp/239.69.2.28:11322
+#EXTINF:-1 tvg-id="东方卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E4%B8%9C%E6%96%B9%E5%8D%AB%E8%A7%864K.png" group-title="湖北电信",东方卫视4K
+http://119.102.157.240:8188/rtp/239.69.2.37:11376
+#EXTINF:-1 tvg-id="欢笑剧场4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%AC%A2%E7%AC%91%E5%89%A7%E5%9C%BA4K.png" group-title="湖北电信",欢笑剧场4K
+http://119.102.157.240:8188/rtp/239.69.2.5:11184
+#EXTINF:-1 tvg-id="江苏卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%B1%9F%E8%8B%8F%E5%8D%AB%E8%A7%864K.png" group-title="湖北电信",江苏卫视4K
+http://119.102.157.240:8188/rtp/239.69.1.24:9784
+#EXTINF:-1 tvg-id="江苏卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%B1%9F%E8%8B%8F%E5%8D%AB%E8%A7%864K.png" group-title="湖北电信",江苏卫视4K
+http://119.102.157.240:8188/rtp/239.69.2.36:11370
+#EXTINF:-1 tvg-id="浙江卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%B5%99%E6%B1%9F%E5%8D%AB%E8%A7%864K.png" group-title="湖北电信",浙江卫视4K
+http://119.102.157.240:8188/rtp/239.69.2.35:11364
+#EXTINF:-1 tvg-id="浙江卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%B5%99%E6%B1%9F%E5%8D%AB%E8%A7%864K.png" group-title="湖北电信",浙江卫视4K
+http://119.102.157.240:8188/rtp/239.69.1.25:9790
+#EXTINF:-1 tvg-id="山东卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%B1%B1%E4%B8%9C%E5%8D%AB%E8%A7%864K.png" group-title="湖北电信",山东卫视4K
+http://119.102.157.240:8188/rtp/239.69.1.26:9796
+#EXTINF:-1 tvg-id="山东卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%B1%B1%E4%B8%9C%E5%8D%AB%E8%A7%864K.png" group-title="湖北电信",山东卫视4K
+http://119.102.157.240:8188/rtp/239.69.2.38:11382
 #EXTINF:-1 tvg-id="湖南卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%B9%96%E5%8D%97%E5%8D%AB%E8%A7%864K.png" group-title="湖北电信",湖南卫视4K
 http://119.102.157.240:8188/rtp/239.69.1.13:9718
 #EXTINF:-1 tvg-id="湖南卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%B9%96%E5%8D%97%E5%8D%AB%E8%A7%864K.png" group-title="湖北电信",湖南卫视4K
 http://119.102.157.240:8188/rtp/239.69.1.27:9802
 #EXTINF:-1 tvg-id="湖南卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%B9%96%E5%8D%97%E5%8D%AB%E8%A7%864K.png" group-title="湖北电信",湖南卫视4K
 http://119.102.157.240:8188/rtp/239.69.2.34:11358
-#EXTINF:-1 tvg-id="山东卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%B1%B1%E4%B8%9C%E5%8D%AB%E8%A7%864K.png" group-title="湖北电信",山东卫视4K
-http://119.102.157.240:8188/rtp/239.69.1.26:9796
-#EXTINF:-1 tvg-id="山东卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%B1%B1%E4%B8%9C%E5%8D%AB%E8%A7%864K.png" group-title="湖北电信",山东卫视4K
-http://119.102.157.240:8188/rtp/239.69.2.38:11382
 #EXTINF:-1 tvg-id="四川卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%9B%9B%E5%B7%9D%E5%8D%AB%E8%A7%864K.png" group-title="湖北电信",四川卫视4K
 http://119.102.157.240:8188/rtp/239.69.2.39:11388
 #EXTINF:-1 tvg-id="四川卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%9B%9B%E5%B7%9D%E5%8D%AB%E8%A7%864K.png" group-title="湖北电信",四川卫视4K
 http://119.102.157.240:8188/rtp/239.69.1.28:9808
-#EXTINF:-1 tvg-id="浙江卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%B5%99%E6%B1%9F%E5%8D%AB%E8%A7%864K.png" group-title="湖北电信",浙江卫视4K
-http://119.102.157.240:8188/rtp/239.69.2.35:11364
-#EXTINF:-1 tvg-id="浙江卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%B5%99%E6%B1%9F%E5%8D%AB%E8%A7%864K.png" group-title="湖北电信",浙江卫视4K
-http://119.102.157.240:8188/rtp/239.69.1.25:9790
-#EXTINF:-1 tvg-id="江苏卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%B1%9F%E8%8B%8F%E5%8D%AB%E8%A7%864K.png" group-title="湖北电信",江苏卫视4K
-http://119.102.157.240:8188/rtp/239.69.1.24:9784
-#EXTINF:-1 tvg-id="江苏卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%B1%9F%E8%8B%8F%E5%8D%AB%E8%A7%864K.png" group-title="湖北电信",江苏卫视4K
-http://119.102.157.240:8188/rtp/239.69.2.36:11370
-#EXTINF:-1 tvg-id="欢笑剧场4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%AC%A2%E7%AC%91%E5%89%A7%E5%9C%BA4K.png" group-title="湖北电信",欢笑剧场4K
-http://119.102.157.240:8188/rtp/239.69.2.5:11184
 #EXTINF:-1 tvg-id="CCTV1HD" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV1HD.png" group-title="湖北电信",CCTV1HD
 http://119.102.157.240:8188/rtp/239.254.96.96:8550
 #EXTINF:-1 tvg-id="CCTV2HD" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV2HD.png" group-title="湖北电信",CCTV2HD
