@@ -1,6 +1,24 @@
 #EXTM3U x-tvg-url="https://epg.catvod.com/epg.xml"
 #EXTINF:-1 tvg-id="CCTV4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV4K.png" group-title="黑龙江联通",CCTV4K
 http://113.9.235.95:9989/rtp/229.58.190.228:5000
+#EXTINF:-1 tvg-id="北京卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%8C%97%E4%BA%AC%E5%8D%AB%E8%A7%864K.png" group-title="黑龙江联通",北京卫视4K
+http://113.9.235.95:9989/rtp/229.58.190.212:5000
+#EXTINF:-1 tvg-id="广东卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%B9%BF%E4%B8%9C%E5%8D%AB%E8%A7%864K.png" group-title="黑龙江联通",广东卫视4K
+http://113.9.235.95:9989/rtp/229.58.190.213:5000
+#EXTINF:-1 tvg-id="深圳卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%B7%B1%E5%9C%B3%E5%8D%AB%E8%A7%864K.png" group-title="黑龙江联通",深圳卫视4K
+http://113.9.235.95:9989/rtp/229.58.190.216:5000
+#EXTINF:-1 tvg-id="上海东方卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E4%B8%8A%E6%B5%B7%E4%B8%9C%E6%96%B9%E5%8D%AB%E8%A7%864K.png" group-title="黑龙江联通",上海东方卫视4K
+http://113.9.235.95:9989/rtp/229.58.190.222:5000
+#EXTINF:-1 tvg-id="江苏卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%B1%9F%E8%8B%8F%E5%8D%AB%E8%A7%864K.png" group-title="黑龙江联通",江苏卫视4K
+http://113.9.235.95:9989/rtp/229.58.190.223:5000
+#EXTINF:-1 tvg-id="浙江卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%B5%99%E6%B1%9F%E5%8D%AB%E8%A7%864K.png" group-title="黑龙江联通",浙江卫视4K
+http://113.9.235.95:9989/rtp/229.58.190.225:5000
+#EXTINF:-1 tvg-id="山东卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%B1%B1%E4%B8%9C%E5%8D%AB%E8%A7%864K.png" group-title="黑龙江联通",山东卫视4K
+http://113.9.235.95:9989/rtp/229.58.190.227:5000
+#EXTINF:-1 tvg-id="湖南卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%B9%96%E5%8D%97%E5%8D%AB%E8%A7%864K.png" group-title="黑龙江联通",湖南卫视4K
+http://113.9.235.95:9989/rtp/229.58.190.226:5000
+#EXTINF:-1 tvg-id="四川卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%9B%9B%E5%B7%9D%E5%8D%AB%E8%A7%864K.png" group-title="黑龙江联通",四川卫视4K
+http://113.9.235.95:9989/rtp/229.58.190.224:5000
 #EXTINF:-1 tvg-id="CCTV1高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV1%E9%AB%98%E6%B8%85.png" group-title="黑龙江联通",CCTV1高清
 http://113.9.235.95:9989/rtp/229.58.190.151:5000
 #EXTINF:-1 tvg-id="CCTV1" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV1.png" group-title="黑龙江联通",CCTV1
@@ -59,24 +77,6 @@ http://113.9.235.95:9989/rtp/229.58.190.137:5000
 http://113.9.235.95:9989/rtp/229.58.190.127:5000
 #EXTINF:-1 tvg-id="CCTV17高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV17%E9%AB%98%E6%B8%85.png" group-title="黑龙江联通",CCTV17高清
 http://113.9.235.95:9989/rtp/229.58.190.211:5000
-#EXTINF:-1 tvg-id="北京卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%8C%97%E4%BA%AC%E5%8D%AB%E8%A7%864K.png" group-title="黑龙江联通",北京卫视4K
-http://113.9.235.95:9989/rtp/229.58.190.212:5000
-#EXTINF:-1 tvg-id="广东卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%B9%BF%E4%B8%9C%E5%8D%AB%E8%A7%864K.png" group-title="黑龙江联通",广东卫视4K
-http://113.9.235.95:9989/rtp/229.58.190.213:5000
-#EXTINF:-1 tvg-id="深圳卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%B7%B1%E5%9C%B3%E5%8D%AB%E8%A7%864K.png" group-title="黑龙江联通",深圳卫视4K
-http://113.9.235.95:9989/rtp/229.58.190.216:5000
-#EXTINF:-1 tvg-id="上海东方卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E4%B8%8A%E6%B5%B7%E4%B8%9C%E6%96%B9%E5%8D%AB%E8%A7%864K.png" group-title="黑龙江联通",上海东方卫视4K
-http://113.9.235.95:9989/rtp/229.58.190.222:5000
-#EXTINF:-1 tvg-id="江苏卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%B1%9F%E8%8B%8F%E5%8D%AB%E8%A7%864K.png" group-title="黑龙江联通",江苏卫视4K
-http://113.9.235.95:9989/rtp/229.58.190.223:5000
-#EXTINF:-1 tvg-id="四川卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%9B%9B%E5%B7%9D%E5%8D%AB%E8%A7%864K.png" group-title="黑龙江联通",四川卫视4K
-http://113.9.235.95:9989/rtp/229.58.190.224:5000
-#EXTINF:-1 tvg-id="浙江卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%B5%99%E6%B1%9F%E5%8D%AB%E8%A7%864K.png" group-title="黑龙江联通",浙江卫视4K
-http://113.9.235.95:9989/rtp/229.58.190.225:5000
-#EXTINF:-1 tvg-id="湖南卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%B9%96%E5%8D%97%E5%8D%AB%E8%A7%864K.png" group-title="黑龙江联通",湖南卫视4K
-http://113.9.235.95:9989/rtp/229.58.190.226:5000
-#EXTINF:-1 tvg-id="山东卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%B1%B1%E4%B8%9C%E5%8D%AB%E8%A7%864K.png" group-title="黑龙江联通",山东卫视4K
-http://113.9.235.95:9989/rtp/229.58.190.227:5000
 #EXTINF:-1 tvg-id="安徽卫视高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%AE%89%E5%BE%BD%E5%8D%AB%E8%A7%86%E9%AB%98%E6%B8%85.png" group-title="黑龙江联通",安徽卫视高清
 http://113.9.235.95:9989/rtp/229.58.190.162:5000
 #EXTINF:-1 tvg-id="安徽卫视" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%AE%89%E5%BE%BD%E5%8D%AB%E8%A7%86.png" group-title="黑龙江联通",安徽卫视
