@@ -300,34 +300,10 @@ jobs:
           ACTIVE=false
           if [ "${{ steps.mode.outputs.run }}" = "true" ]; then
             if [ "${{ steps.mode.outputs.mode }}" = "health" ]; then
-            HEALTH_ARGS=()
-            if [ -n "$HEALTH_FILE_1" ]; then HEALTH_ARGS+=(--health-file-1 "$HEALTH_FILE_1"); fi
-            if [ -n "$HEALTH_FILE_2" ]; then HEALTH_ARGS+=(--health-file-2 "$HEALTH_FILE_2"); fi
-            if [ -n "$HEALTH_FILE_3" ]; then HEALTH_ARGS+=(--health-file-3 "$HEALTH_FILE_3"); fi
-
-            if [ "$HEALTH_FILE_MODE" = "不测速旧源，直接重新抓取" ]; then
-              HEALTH_MODE="refresh"
-            else
-              HEALTH_MODE="check"
+              ACTIVE=true
+            elif [ "${{ steps.mode.outputs.use_full_lock }}" != "true" ] || [ "${{ steps.hourly-cache.outputs.cache-hit }}" != "true" ]; then
+              ACTIVE=true
             fi
-
-            if [ ${#HEALTH_ARGS[@]} -gt 0 ]; then
-              echo "[*] 联通指定播放列表模式：文件=${HEALTH_FILE_1:-空},${HEALTH_FILE_2:-空},${HEALTH_FILE_3:-空}；处理方式=$HEALTH_FILE_MODE。"
-            else
-              echo "[*] 联通测速检查：未指定播放列表，按原逻辑检查全部现有联通 M3U；两轮失败才定向修复失效槽位。"
-            fi
-
-            python -u rtp/b.py \
-              --health-check \
-              --health-carriers "联通" \
-              "${HEALTH_ARGS[@]}" \
-              --health-file-mode "$HEALTH_MODE" \
-              --max-pages 10 \
-              --max-per-carrier 20 \
-              --min-stream-speed 0.5859375 \
-              --push
-            exit 0
-          fi
           fi
           echo "active=$ACTIVE" >> "$GITHUB_OUTPUT"
 
@@ -377,10 +353,28 @@ jobs:
         shell: bash
         run: |
           if [ "${{ steps.mode.outputs.mode }}" = "health" ]; then
-            echo "[*] 联通测速检查：检查全部现有联通 M3U；两轮失败才定向修复失效槽位。"
+            HEALTH_ARGS=()
+            if [ -n "$HEALTH_FILE_1" ]; then HEALTH_ARGS+=(--health-file-1 "$HEALTH_FILE_1"); fi
+            if [ -n "$HEALTH_FILE_2" ]; then HEALTH_ARGS+=(--health-file-2 "$HEALTH_FILE_2"); fi
+            if [ -n "$HEALTH_FILE_3" ]; then HEALTH_ARGS+=(--health-file-3 "$HEALTH_FILE_3"); fi
+
+            if [ "$HEALTH_FILE_MODE" = "不测速旧源，直接重新抓取" ]; then
+              HEALTH_MODE="refresh"
+            else
+              HEALTH_MODE="check"
+            fi
+
+            if [ ${#HEALTH_ARGS[@]} -gt 0 ]; then
+              echo "[*] 联通指定播放列表模式：文件=${HEALTH_FILE_1:-空},${HEALTH_FILE_2:-空},${HEALTH_FILE_3:-空}；处理方式=$HEALTH_FILE_MODE。"
+            else
+              echo "[*] 联通测速检查：未指定播放列表，按原逻辑检查全部现有联通 M3U；两轮失败才定向修复失效槽位。"
+            fi
+
             python -u rtp/b.py \
               --health-check \
               --health-carriers "联通" \
+              "${HEALTH_ARGS[@]}" \
+              --health-file-mode "$HEALTH_MODE" \
               --max-pages 10 \
               --max-per-carrier 20 \
               --min-stream-speed 0.5859375 \
@@ -495,4 +489,3 @@ jobs:
           for name in sorted(files):
               print(f"    - {name}")
           PY
-
