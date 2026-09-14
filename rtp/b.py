@@ -39,8 +39,11 @@ EPG_URL = "https://epg.catvod.com/epg.xml"
 TVG_LOGO_BASE_URL = "https://gcore.jsdelivr.net/gh/taksssss/tv/icon/"
 README_FILE = "README.md"
 UPDATE_TIMES_FILE = ".github/iptv-update-times.json"
-RAW_BASE_URL = "https://raw.githubusercontent.com/lsjiaowo/4K-IPTV-M3U/main"
-PROXY_PREFIX = "https://gh-proxy.org/"
+# README 中的 M3U 订阅地址使用 Secret Gist RAW；真实 Gist ID 只从 Actions Secret 注入，
+# 不写死在源码中。TXT 文件保留在 Private 仓库，通过 GitHub 登录后的 blob 链接查看。
+GITHUB_REPO_BLOB_BASE_URL = "https://github.com/lsjiaowo/4K-IPTV-M3U/blob/main"
+GIST_OWNER = "lsjiaowo"
+IPTV_GIST_ID = os.environ.get("IPTV_GIST_ID", "").strip()
 
 # 可选的本地频道模板目录。模板文件名使用“省份+运营商”，例如：
 # channel_templates/天津联通.m3u 或 channel_templates/天津联通.txt
@@ -1768,24 +1771,46 @@ def _build_readme_table_rows(
         names = sorted(names)
     if not names:
         return '<tr><td colspan="4">暂无文件</td></tr>'
+
     rows = []
     for name in names:
         relative_path = f"{subdir}/{name}"
         updated_at = update_times.get(relative_path) or get_git_file_update_time(
             repo_root, relative_path
         )
-        # “加速链接”的 href 继续使用 gh-proxy + URL 编码后的文件名，保证浏览器兼容性；
-        # “可复制直链”不经过 gh-proxy，并保留原始中文文件名，直接显示 raw.githubusercontent.com 直链。
         encoded_name = quote(name)
-        raw_url = f"{RAW_BASE_URL}/{subdir}/{encoded_name}"
-        proxy_url = f"{PROXY_PREFIX}{raw_url}"
-        copy_raw_url = f"{RAW_BASE_URL}/{subdir}/{name}"
+
+        if subdir == "m3u":
+            # M3U 对外订阅统一走 Secret Gist RAW。Gist ID 只来自环境变量 IPTV_GIST_ID，
+            # 由 GitHub Actions 的 secrets.IPTV_GIST_ID 注入，不在仓库源码中保存真实 ID。
+            if IPTV_GIST_ID:
+                gist_raw_base = f"https://gist.githubusercontent.com/{GIST_OWNER}/{IPTV_GIST_ID}/raw"
+                href_url = f"{gist_raw_base}/{encoded_name}"
+                copy_url = f"{gist_raw_base}/{name}"
+                action_text = "播放链接"
+            else:
+                # 本地运行或 Secret 未注入时不回退到公开 raw.githubusercontent.com，
+                # 避免 Private 架构下误生成失效/不符合预期的公开仓库地址。
+                href_url = ""
+                copy_url = "未配置 IPTV_GIST_ID"
+                action_text = "未配置"
+        else:
+            # TXT 不发布到 Gist，继续保存在 Private 仓库中；README 本身仅仓库成员可见，
+            # 登录 GitHub 后可通过 blob 链接直接查看文件内容。
+            href_url = f"{GITHUB_REPO_BLOB_BASE_URL}/{subdir}/{encoded_name}"
+            copy_url = f"{GITHUB_REPO_BLOB_BASE_URL}/{subdir}/{name}"
+            action_text = "查看文件"
+
+        action_html = (
+            f'<a href="{href_url}">{action_text}</a>'
+            if href_url else action_text
+        )
         rows.append(
             "<tr>"
             f'<td style="white-space:nowrap;">{name}</td>'
-            f'<td style="white-space:nowrap;"><a href="{proxy_url}">下载链接</a></td>'
+            f'<td style="white-space:nowrap;">{action_html}</td>'
             f'<td style="white-space:nowrap;">{updated_at}</td>'
-            f'<td><code>{copy_raw_url}</code></td>'
+            f'<td><code>{copy_url}</code></td>'
             "</tr>"
         )
     return "\n".join(rows)
@@ -1799,6 +1824,7 @@ def _build_readme_html_table(
     names: list[str],
 ) -> str:
     rows = _build_readme_table_rows(repo_root, subdir, ext, update_times, names)
+    link_header = "播放链接" if subdir == "m3u" else "仓库链接"
     return (
         '<table style="width:100%; table-layout:auto;">\n'
         "<colgroup>\n"
@@ -1810,7 +1836,7 @@ def _build_readme_html_table(
         "<thead>\n"
         "<tr>\n"
         '<th style="white-space:nowrap;">文件名</th>\n'
-        '<th style="white-space:nowrap;">加速链接</th>\n'
+        f'<th style="white-space:nowrap;">{link_header}</th>\n'
         '<th style="white-space:nowrap;">最近更新时间</th>\n'
         '<th style="white-space:nowrap;">可复制直链</th>\n'
         "</tr>\n"
@@ -1820,7 +1846,6 @@ def _build_readme_html_table(
         "</tbody>\n"
         "</table>"
     )
-
 
 def _build_readme_section_table(
     repo_root: str,
