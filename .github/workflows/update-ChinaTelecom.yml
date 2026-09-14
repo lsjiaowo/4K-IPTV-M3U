@@ -10,6 +10,29 @@ on:
         options:
           - "测速检查"
           - "默认省份抓取"
+      health_file_1:
+        description: "指定播放列表1（仅测速检查有效；留空=按原逻辑检查全部）"
+        required: false
+        default: ""
+        type: string
+      health_file_2:
+        description: "指定播放列表2（仅测速检查有效；留空忽略）"
+        required: false
+        default: ""
+        type: string
+      health_file_3:
+        description: "指定播放列表3（仅测速检查有效；留空忽略）"
+        required: false
+        default: ""
+        type: string
+      health_file_mode:
+        description: "指定播放列表处理方式（仅指定播放列表时有效）"
+        required: true
+        default: "先测速，失败才重新抓取"
+        type: choice
+        options:
+          - "先测速，失败才重新抓取"
+          - "不测速旧源，直接重新抓取"
       province_1:
         description: "省份1（仅默认省份抓取有效；测速检查时忽略）"
         required: true
@@ -273,10 +296,33 @@ jobs:
           ACTIVE=false
           if [ "${{ steps.mode.outputs.run }}" = "true" ]; then
             if [ "${{ steps.mode.outputs.mode }}" = "health" ]; then
-              ACTIVE=true
-            elif [ "${{ steps.mode.outputs.use_full_lock }}" != "true" ] || [ "${{ steps.hourly-cache.outputs.cache-hit }}" != "true" ]; then
-              ACTIVE=true
+            HEALTH_ARGS=()
+            if [ -n "$HEALTH_FILE_1" ]; then HEALTH_ARGS+=(--health-file-1 "$HEALTH_FILE_1"); fi
+            if [ -n "$HEALTH_FILE_2" ]; then HEALTH_ARGS+=(--health-file-2 "$HEALTH_FILE_2"); fi
+            if [ -n "$HEALTH_FILE_3" ]; then HEALTH_ARGS+=(--health-file-3 "$HEALTH_FILE_3"); fi
+
+            if [ "$HEALTH_FILE_MODE" = "不测速旧源，直接重新抓取" ]; then
+              HEALTH_MODE="refresh"
+            else
+              HEALTH_MODE="check"
             fi
+
+            if [ ${#HEALTH_ARGS[@]} -gt 0 ]; then
+              echo "[*] 电信指定播放列表模式：文件=${HEALTH_FILE_1:-空},${HEALTH_FILE_2:-空},${HEALTH_FILE_3:-空}；处理方式=$HEALTH_FILE_MODE。"
+            else
+              echo "[*] 电信测速检查：未指定播放列表，按原逻辑检查全部现有电信 M3U；两轮失败才定向修复失效槽位。"
+            fi
+
+            python -u rtp/b.py \
+              --health-check \
+              --health-carriers "电信" \
+              "${HEALTH_ARGS[@]}" \
+              --health-file-mode "$HEALTH_MODE" \
+              --max-pages 10 \
+              --max-per-carrier 20 \
+              --push
+            exit 0
+          fi
           fi
           echo "active=$ACTIVE" >> "$GITHUB_OUTPUT"
 
@@ -319,6 +365,10 @@ jobs:
           PROVINCE_2: "${{ github.event.inputs.province_2 }}"
           PROVINCE_3: "${{ github.event.inputs.province_3 }}"
           SELECTED_CARRIERS: "${{ github.event.inputs.carriers }}"
+          HEALTH_FILE_1: "${{ github.event.inputs.health_file_1 }}"
+          HEALTH_FILE_2: "${{ github.event.inputs.health_file_2 }}"
+          HEALTH_FILE_3: "${{ github.event.inputs.health_file_3 }}"
+          HEALTH_FILE_MODE: "${{ github.event.inputs.health_file_mode }}"
         shell: bash
         run: |
           if [ "${{ steps.mode.outputs.mode }}" = "health" ]; then
@@ -435,3 +485,4 @@ jobs:
           for name in sorted(files):
               print(f"    - {name}")
           PY
+
