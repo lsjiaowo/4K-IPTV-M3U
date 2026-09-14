@@ -149,12 +149,9 @@ on:
     types: [hourly_iptv_telecom_update]
 
   schedule:
-    # 原完整抓取候选时段（除11分外），full模式下保持原小时锁逻辑。
-    - cron: "1,6,16,21,26 * * * *"
-    # 共享11分：health模式执行健康检查；full模式作为原完整抓取候选时段。
-    - cron: "11 * * * *"
-    # 测速检查专用时段：每小时41分；11分由下方独立11分触发同时服务两种模式。
-    - cron: "41 * * * *"
+    # 电信候选窗口放在每小时前半小时（01～26分）；health/full 共用相同候选时间；小时锁保证定时任务每小时最多实际执行一次。
+    - cron: "1,6,11,16,21,26 * * * *"
+
 # 两个运营商工作流共用固定并发组：健康检查、完整定时抓取和手动抓取均串行执行，避免同时修改仓库。
 concurrency:
   group: iptv-source-update
@@ -213,16 +210,13 @@ jobs:
             fi
           elif [ "${{ github.event_name }}" = "schedule" ]; then
             if [ "$SCHEDULE_MODE" = "health" ]; then
-              if [ "$SCHEDULE_EXPR" = "11 * * * *" ] || [ "$SCHEDULE_EXPR" = "41 * * * *" ]; then
-                RUN=true
-                MODE="health"
-              fi
+              RUN=true
+              MODE="health"
+              USE_FULL_LOCK=true
             elif [ "$SCHEDULE_MODE" = "full" ]; then
-              if [ "$SCHEDULE_EXPR" = "1,6,16,21,26 * * * *" ] || [ "$SCHEDULE_EXPR" = "11 * * * *" ]; then
-                RUN=true
-                MODE="full"
-                USE_FULL_LOCK=true
-              fi
+              RUN=true
+              MODE="full"
+              USE_FULL_LOCK=true
             else
               echo "::error::SCHEDULE_MODE 只能是 health 或 full，当前=$SCHEDULE_MODE"
               exit 1
@@ -234,38 +228,38 @@ jobs:
           echo "use_full_lock=$USE_FULL_LOCK" >> "$GITHUB_OUTPUT"
           echo "[*] event=${{ github.event_name }} schedule=$SCHEDULE_EXPR default=$SCHEDULE_MODE selected=$MODE run=$RUN"
 
-      - name: Build hourly full-scrape lock key
+      - name: Build hourly scheduled-run lock key
         id: hourly-slot
-        if: steps.mode.outputs.run == 'true' && steps.mode.outputs.mode == 'full' && steps.mode.outputs.use_full_lock == 'true'
+        if: steps.mode.outputs.run == 'true' && steps.mode.outputs.use_full_lock == 'true'
         shell: bash
         run: |
-          echo "cache_key=update-chinatelecom-full-hour-$(date -u +'%Y%m%d%H')" >> "$GITHUB_OUTPUT"
+          echo "cache_key=update-chinatelecom-scheduled-hour-$(date -u +'%Y%m%d%H')" >> "$GITHUB_OUTPUT"
 
-      - name: Check whether this hour already ran full scrape
+      - name: Check whether this hour already ran scheduled task
         id: hourly-cache
-        if: steps.mode.outputs.run == 'true' && steps.mode.outputs.mode == 'full' && steps.mode.outputs.use_full_lock == 'true'
+        if: steps.mode.outputs.run == 'true' && steps.mode.outputs.use_full_lock == 'true'
         uses: actions/cache/restore@v4
         with:
-          path: .github-hourly-run-telecom-full
+          path: .github-hourly-run-telecom-scheduled
           key: ${{ steps.hourly-slot.outputs.cache_key }}
           lookup-only: true
 
-      - name: Explain skipped duplicate full scrape
-        if: steps.mode.outputs.run == 'true' && steps.mode.outputs.mode == 'full' && steps.mode.outputs.use_full_lock == 'true' && steps.hourly-cache.outputs.cache-hit == 'true'
-        run: echo "[*] 电信完整抓取本小时已经领取过运行时段，跳过本次候选触发。"
+      - name: Explain skipped duplicate scheduled task
+        if: steps.mode.outputs.run == 'true' && steps.mode.outputs.use_full_lock == 'true' && steps.hourly-cache.outputs.cache-hit == 'true'
+        run: echo "[*] 电信定时任务本小时已经领取过运行时段，跳过本次候选触发。"
 
-      - name: Claim hourly full-scrape slot
-        if: steps.mode.outputs.run == 'true' && steps.mode.outputs.mode == 'full' && steps.mode.outputs.use_full_lock == 'true' && steps.hourly-cache.outputs.cache-hit != 'true'
+      - name: Claim hourly scheduled-run slot
+        if: steps.mode.outputs.run == 'true' && steps.mode.outputs.use_full_lock == 'true' && steps.hourly-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
-          mkdir -p .github-hourly-run-telecom-full
-          date -u +'%Y-%m-%dT%H:%M:%SZ' > .github-hourly-run-telecom-full/claimed-at.txt
+          mkdir -p .github-hourly-run-telecom-scheduled
+          date -u +'%Y-%m-%dT%H:%M:%SZ' > .github-hourly-run-telecom-scheduled/claimed-at.txt
 
       - name: Save hourly full-scrape claim
-        if: steps.mode.outputs.run == 'true' && steps.mode.outputs.mode == 'full' && steps.mode.outputs.use_full_lock == 'true' && steps.hourly-cache.outputs.cache-hit != 'true'
+        if: steps.mode.outputs.run == 'true' && steps.mode.outputs.use_full_lock == 'true' && steps.hourly-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
-          path: .github-hourly-run-telecom-full
+          path: .github-hourly-run-telecom-scheduled
           key: ${{ steps.hourly-slot.outputs.cache_key }}
 
       - name: Decide whether execution is active
