@@ -1058,6 +1058,9 @@ def fetch_channel_lines_by_province(
     stream_test_seconds: float = 3.0,
     test_channels_per_source: int = 2,
     previous_hosts_by_carrier: dict[str, set[str]] | None = None,
+    target_playable_sources: int = TARGET_PLAYABLE_SOURCES_PER_CARRIER,
+    excluded_endpoints_by_carrier: dict[str, set[str]] | None = None,
+    deprioritized_ips_by_carrier: dict[str, set[str]] | None = None,
 ):
     """
     最大10页动态扫描 + 提前测速：
@@ -1067,9 +1070,10 @@ def fetch_channel_lines_by_province(
     3. 若仍不足目标，则继续第6～10页；第6～10页成功请求后同样只随机等待5～10秒，
        每抓取一页就立即筛选并测试新增的新IP，达到目标后立即停止后续分页。
     4. 搜索到第10页仍不足目标时，才允许已扫描页面中的旧IP兜底；新IP始终最高优先级。
-    5. 每个运营商最多测试 max_per_carrier 台候选，找到 TARGET_PLAYABLE_SOURCES_PER_CARRIER 个可用源后停止。
+    5. 每个运营商最多测试 max_per_carrier 台候选，找到 target_playable_sources 个可用源后停止。
     """
     session = requests.Session()
+    target_playable_sources = max(1, int(target_playable_sources))
     max_pages = min(max(1, int(max_pages)), REGION_LIST_MAX_PAGES)
     now_dt = datetime.now()
 
@@ -1136,21 +1140,32 @@ def fetch_channel_lines_by_province(
         carrier_rows.sort(key=_sort_key, reverse=True)
 
         previous_hosts = (previous_hosts_by_carrier or {}).get(carrier, set())
-        new_rows = [
-            row
-            for row in carrier_rows
-            if normalize_source_host(row.get("host", "")) not in previous_hosts
-        ]
-        old_rows = [
-            row
-            for row in carrier_rows
-            if normalize_source_host(row.get("host", "")) in previous_hosts
-        ]
-        return new_rows, old_rows
+        deprioritized_ips = (deprioritized_ips_by_carrier or {}).get(carrier, set())
+
+        def _row_ip(row: dict) -> str:
+            host = normalize_source_host(row.get("host", ""))
+            parsed = urlparse("//" + host)
+            return parsed.hostname or host.split(":", 1)[0]
+
+        # 正常完整抓取保持原有“新 endpoint 优先、旧 endpoint 最后兜底”。
+        # 健康修复时 additionally 将“与失效/占用 endpoint 同公网IP但不同端口”的候选降为第二优先级，
+        # 但绝不拉黑整个公网IP：例如 222.2.2.2:8188 失效后，222.2.2.2:4022 仍可测速采用。
+        preferred_new_rows = []
+        same_ip_rows = []
+        old_rows = []
+        for row in carrier_rows:
+            host = normalize_source_host(row.get("host", ""))
+            if host in previous_hosts:
+                old_rows.append(row)
+            elif _row_ip(row) in deprioritized_ips:
+                same_ip_rows.append(row)
+            else:
+                preferred_new_rows.append(row)
+        return preferred_new_rows + same_ip_rows, old_rows
 
     def _targets_complete() -> bool:
         return all(
-            playable_counts.get(carrier, 0) >= TARGET_PLAYABLE_SOURCES_PER_CARRIER
+            playable_counts.get(carrier, 0) >= target_playable_sources
             for carrier in carriers
         )
 
@@ -1163,7 +1178,7 @@ def fetch_channel_lines_by_province(
             return False
         if tested_counts.get(carrier, 0) >= max_per_carrier:
             return False
-        if playable_counts.get(carrier, 0) >= TARGET_PLAYABLE_SOURCES_PER_CARRIER:
+        if playable_counts.get(carrier, 0) >= target_playable_sources:
             return False
 
         tested_tokens_by_carrier[carrier].add(token)
@@ -1198,6 +1213,11 @@ def fetch_channel_lines_by_province(
                         "跳过该源，避免错误地按80端口测速。"
                     )
                     return False
+                relay_host = normalize_source_host(relay_host)
+                excluded_endpoints = (excluded_endpoints_by_carrier or {}).get(carrier, set())
+                if relay_host in excluded_endpoints:
+                    print(f"[*] [{source_label}] endpoint {relay_host} 本轮已失效或已被同组槽位占用，跳过。")
+                    return False
 
                 lines = build_template_channel_lines(template_channels, relay_host)
                 if not lines:
@@ -1223,7 +1243,7 @@ def fetch_channel_lines_by_province(
                 print(
                     f"[+] [{province}{carrier}] 可用源：{candidate_host}【{candidate_status}】；"
                     f"频道列表来源=本地模板；已获得 "
-                    f"{playable_counts[carrier]}/{TARGET_PLAYABLE_SOURCES_PER_CARRIER} "
+                    f"{playable_counts[carrier]}/{target_playable_sources} "
                     f"个可用播放列表（已测试 {tested_counts[carrier]}/{max_per_carrier} 台）。"
                 )
                 return True
@@ -1266,6 +1286,12 @@ def fetch_channel_lines_by_province(
                     f"[-] [{group_title} {candidate_host}] 频道列表未解析到任何频道，"
                     "未进入测速阶段。"
                 )
+                return False
+
+            candidate_endpoint = _source_host_from_lines(test_lines) or normalize_source_host(candidate_host)
+            excluded_endpoints = (excluded_endpoints_by_carrier or {}).get(carrier, set())
+            if candidate_endpoint and candidate_endpoint in excluded_endpoints:
+                print(f"[*] [{group_title} {candidate_host}] endpoint {candidate_endpoint} 本轮已失效或已被同组槽位占用，跳过。")
                 return False
 
             speed_candidates = extract_speed_test_candidates(test_lines)
@@ -1315,7 +1341,7 @@ def fetch_channel_lines_by_province(
 
             print(
                 f"[+] [{province}{carrier}] 可用源：{candidate_host}【{candidate_status}】；"
-                f"已获得 {playable_counts[carrier]}/{TARGET_PLAYABLE_SOURCES_PER_CARRIER} "
+                f"已获得 {playable_counts[carrier]}/{target_playable_sources} "
                 f"个可用播放列表（已测试 {tested_counts[carrier]}/{max_per_carrier} 台）。"
             )
             return True
@@ -1334,7 +1360,7 @@ def fetch_channel_lines_by_province(
         新IP永远排在旧IP之前；allow_old=False 时完全不碰旧IP。
         """
         for carrier in carriers:
-            if playable_counts.get(carrier, 0) >= TARGET_PLAYABLE_SOURCES_PER_CARRIER:
+            if playable_counts.get(carrier, 0) >= target_playable_sources:
                 continue
             if tested_counts.get(carrier, 0) >= max_per_carrier:
                 continue
@@ -1369,7 +1395,7 @@ def fetch_channel_lines_by_province(
 
             candidates = untested_new + (untested_old if allow_old else [])
             for picked in candidates:
-                if playable_counts.get(carrier, 0) >= TARGET_PLAYABLE_SOURCES_PER_CARRIER:
+                if playable_counts.get(carrier, 0) >= target_playable_sources:
                     break
                 if tested_counts.get(carrier, 0) >= max_per_carrier:
                     break
@@ -1471,16 +1497,16 @@ def fetch_channel_lines_by_province(
     for carrier in carriers:
         found = playable_counts.get(carrier, 0)
         tested = tested_counts.get(carrier, 0)
-        if found >= TARGET_PLAYABLE_SOURCES_PER_CARRIER:
+        if found >= target_playable_sources:
             print(
                 f"[+] [{province}{carrier}] 已达到目标："
-                f"{found}/{TARGET_PLAYABLE_SOURCES_PER_CARRIER} 个可用播放列表；"
+                f"{found}/{target_playable_sources} 个可用播放列表；"
                 f"共测试 {tested}/{max_per_carrier} 台候选服务器。"
             )
         else:
             print(
                 f"[!] [{province}{carrier}] 搜索结束："
-                f"仅获得 {found}/{TARGET_PLAYABLE_SOURCES_PER_CARRIER} 个可用播放列表；"
+                f"仅获得 {found}/{target_playable_sources} 个可用播放列表；"
                 f"共测试 {tested}/{max_per_carrier} 台候选服务器。"
             )
 
@@ -1905,17 +1931,57 @@ def parse_existing_m3u_channel_lines(path: str) -> list[str]:
         pending_name = ""
     return lines
 
-def existing_playlist_health_check(path: str, label: str, sample_seconds: float = 3.0, test_channels: int = 2) -> bool:
-    """健康检查：CCTV1-CCTV17/CCTV5+随机2个，任意1个严格 >100KB/s 即健康。"""
+def _health_test_once(
+    path: str,
+    label: str,
+    sample_seconds: float = 3.0,
+    test_channels: int = 2,
+    exclude_urls: set[str] | None = None,
+) -> tuple[str, set[str]]:
+    """单轮健康检查。返回 (healthy/failed/untestable, 本轮抽测URL集合)。"""
     lines = parse_existing_m3u_channel_lines(path)
-    if not lines:
-        print(f"[-] [{label}] 播放列表为空或无法解析，健康检查失败。")
-        return False
-    return is_source_playable(
-        lines, source_label=f"健康检查 {label}",
-        min_speed_mb_s=HEALTH_CHECK_MIN_SPEED_MB_S,
-        sample_seconds=sample_seconds, test_channels=test_channels,
-    )
+    candidates = extract_speed_test_candidates(lines)
+    required_count = max(1, test_channels)
+    if len(candidates) < required_count:
+        print(
+            f"[!] [{label}] 可用于健康检查的 CCTV1-CCTV17 非标清/非4K频道不足："
+            f"{len(candidates)}/{required_count}；不判定网络失效，也不触发重抓。"
+        )
+        return "untestable", set()
+
+    excluded = exclude_urls or set()
+    fresh = [item for item in candidates if item[1] not in excluded]
+    pool = fresh if len(fresh) >= required_count else candidates
+    sampled = random.sample(pool, required_count)
+    sampled_urls = {url for _, url in sampled}
+    if exclude_urls and pool is fresh:
+        print(f"[*] [{label}] 复检优先改抽与首轮不同的 {required_count} 个 CCTV 频道。")
+    else:
+        print(f"[*] [{label}] 从 {len(candidates)} 个候选中随机抽测 {required_count} 个 CCTV 频道。")
+
+    for channel_name, play_url in sampled:
+        print(f"[*] [{label}] 健康测速：{channel_name} {play_url}")
+        try:
+            speed_mb_s, total_bytes = measure_stream_speed(play_url, sample_seconds=sample_seconds)
+        except requests.RequestException as exc:
+            print(f"[-] [{label}] 健康测速失败：{exc}")
+            continue
+        print(
+            f"[*] [{label}] 下载 {total_bytes / (1024 * 1024):.2f} MB，"
+            f"平均速度 {speed_mb_s * 1024:.0f} KB/s，要求 > {HEALTH_CHECK_MIN_SPEED_MB_S * 1024:.0f} KB/s"
+        )
+        if speed_mb_s > HEALTH_CHECK_MIN_SPEED_MB_S:
+            print(f"[+] [{label}] {channel_name} >100 KB/s，当前播放列表健康。")
+            return "healthy", sampled_urls
+        print(f"[-] [{label}] {channel_name} 未达到健康门槛。")
+    return "failed", sampled_urls
+
+
+def existing_playlist_health_check(path: str, label: str, sample_seconds: float = 3.0, test_channels: int = 2) -> bool:
+    """兼容入口：单轮健康检查；只有明确 healthy 返回 True。"""
+    status, _ = _health_test_once(path, label, sample_seconds, test_channels)
+    return status == "healthy"
+
 
 def _playlist_identity(filename: str):
     """山西联通1.m3u -> (山西, 联通, 山西联通, 1)。"""
@@ -1928,6 +1994,7 @@ def _playlist_identity(filename: str):
         return None
     return province, carrier, f"{province}{carrier}", suffix
 
+
 def _source_host_from_lines(lines: list[str]) -> str:
     for line in lines:
         if "," not in line:
@@ -1938,8 +2005,18 @@ def _source_host_from_lines(lines: list[str]) -> str:
             return normalize_source_host(parsed.netloc)
     return ""
 
+
+def _endpoint_ip(endpoint: str) -> str:
+    endpoint = normalize_source_host(endpoint)
+    if not endpoint:
+        return ""
+    parsed = urlparse("//" + endpoint)
+    return parsed.hostname or endpoint.split(":", 1)[0]
+
+
 def _source_host_from_m3u(path: str) -> str:
     return _source_host_from_lines(parse_existing_m3u_channel_lines(path))
+
 
 def _write_single_playlist_slot(repo_root: str, group_title: str, suffix: str, channel_lines: list[str]) -> list[str]:
     """只覆盖一个失效槽位，并同步覆盖同名 TXT；其它健康槽位绝不改动。"""
@@ -1955,77 +2032,145 @@ def _write_single_playlist_slot(repo_root: str, group_title: str, suffix: str, c
         f.write(txt_to_m3u_format(txt_content, group_title) + "\n")
     return [f"txt/{file_stem}.txt", f"m3u/{file_stem}.m3u"]
 
-def repair_failed_playlist_slot(repo_root: str, province: str, carrier: str, group_title: str, suffix: str,
-                                failed_host: str, protected_hosts: set[str], args) -> list[str]:
-    """只为一个失效文件寻找替代源；正式抓取仍使用省份既有速度门槛。"""
-    previous = set(protected_hosts)
-    if failed_host:
-        previous.add(failed_host)
+
+def repair_failed_playlist_slot(
+    repo_root: str,
+    province: str,
+    carrier: str,
+    group_title: str,
+    suffix: str,
+    failed_endpoint: str,
+    occupied_endpoints: set[str],
+    args,
+) -> tuple[list[str], str]:
+    """
+    只为一个失效槽位寻找1个替代源。
+    精确 endpoint(IP:port) 才禁止复用；同公网IP的其它端口允许测速采用。
+    候选优先级仍优先真正的新公网IP，其次同IP不同端口。
+    """
+    excluded_endpoints = {normalize_source_host(x) for x in occupied_endpoints if x}
+    if failed_endpoint:
+        excluded_endpoints.add(normalize_source_host(failed_endpoint))
+    deprioritized_ips = {_endpoint_ip(x) for x in excluded_endpoints if _endpoint_ip(x)}
+
     formal_speed = resolve_min_stream_speed(province, args.min_stream_speed)
-    print(f"[*] [{group_title}{suffix}.m3u] 启动单槽位修复；正式新源门槛 > {formal_speed * 1024:.0f} KB/s。")
+    print(
+        f"[*] [{group_title}{suffix}.m3u] 启动单槽位修复；正式新源门槛 > {formal_speed * 1024:.0f} KB/s；"
+        f"只寻找1个替代源。"
+    )
+    print(
+        f"[*] [{group_title}{suffix}.m3u] 本轮禁止重复 endpoint："
+        f"{sorted(excluded_endpoints) or ['无']}；同公网IP不同端口仍允许采用。"
+    )
+
     grouped, status, _ = fetch_channel_lines_by_province(
-        province, carriers=(carrier,), max_pages=args.max_pages, max_per_carrier=args.max_per_carrier,
-        max_age_hours=args.max_age_hours, min_stream_speed_mb_s=formal_speed,
-        stream_test_seconds=args.stream_test_seconds, test_channels_per_source=args.test_channels_per_source,
-        previous_hosts_by_carrier={carrier: previous},
+        province,
+        carriers=(carrier,),
+        max_pages=args.max_pages,
+        max_per_carrier=args.max_per_carrier,
+        max_age_hours=args.max_age_hours,
+        min_stream_speed_mb_s=formal_speed,
+        stream_test_seconds=args.stream_test_seconds,
+        test_channels_per_source=args.test_channels_per_source,
+        previous_hosts_by_carrier={carrier: set()},
+        target_playable_sources=1,
+        excluded_endpoints_by_carrier={carrier: excluded_endpoints},
+        deprioritized_ips_by_carrier={carrier: deprioritized_ips},
     )
     sources = grouped.get(group_title, []) if grouped else []
     for lines in sources:
-        host = _source_host_from_lines(lines)
-        if not host:
+        endpoint = _source_host_from_lines(lines)
+        if not endpoint:
             continue
-        if host in protected_hosts:
-            print(f"[*] [{group_title}{suffix}.m3u] 候选 {host} 正被同组健康列表使用，跳过，保持双源独立。")
-            continue
-        if failed_host and host == failed_host:
-            print(f"[*] [{group_title}{suffix}.m3u] 候选仍是本轮失效地址 {host}，不作为替换源。")
+        endpoint = normalize_source_host(endpoint)
+        if endpoint in excluded_endpoints:
+            print(f"[*] [{group_title}{suffix}.m3u] 候选 endpoint {endpoint} 已被占用/失效，跳过。")
             continue
         paths = _write_single_playlist_slot(repo_root, group_title, suffix, lines)
-        print(f"[+] [{group_title}{suffix}.m3u] 单槽位修复成功：{failed_host or '未知旧地址'} -> {host}")
-        return paths
-    print(f"[!] [{group_title}{suffix}.m3u] 本轮未找到合格且不与健康槽位重复的新服务器；保留原 M3U/TXT，等待下一轮。状态={status}")
-    return []
+        print(
+            f"[+] [{group_title}{suffix}.m3u] 单槽位修复成功："
+            f"{failed_endpoint or '未知旧地址'} -> {endpoint}"
+        )
+        return paths, endpoint
+
+    print(
+        f"[!] [{group_title}{suffix}.m3u] 本轮未找到合格且 endpoint 不重复的替代服务器；"
+        f"保留原 M3U/TXT，等待下一轮。状态={status}"
+    )
+    return [], ""
+
 
 def run_health_check_and_repair(repo_root: str, args) -> list[str]:
-    """检查所有现有 M3U；首轮失败后5~10秒复检，确认失败才进行单槽位修复。"""
+    """按运营商检查全部已有M3U；两轮失败才单槽位修复。"""
+    selected_health_carriers = set(parse_carrier_selection(args.health_carriers))
     m3u_dir = os.path.join(repo_root, "m3u")
     files = []
-    health_carriers = set(parse_carrier_selection(args.health_carriers)) if args.health_carriers else set()
     for name in sorted(os.listdir(m3u_dir)) if os.path.isdir(m3u_dir) else []:
         ident = _playlist_identity(name)
-        if name.endswith(".m3u") and ident:
-            if health_carriers and ident[1] not in health_carriers:
-                continue
+        if name.endswith(".m3u") and ident and ident[1] in selected_health_carriers:
             files.append((name, ident))
     if not files:
-        print("[*] 未发现可健康检查的省份运营商 M3U 文件。")
+        print(f"[*] 未发现可健康检查的 M3U 文件；运营商={','.join(selected_health_carriers)}。")
         return []
-    print(f"[*] 健康检查模式：共 {len(files)} 个现有 M3U；每个随机抽2个CCTV，门槛严格 >100 KB/s。")
-    healthy: dict[str, bool] = {}
+
+    print(
+        f"[*] 健康检查模式：运营商={','.join(selected_health_carriers)}；共 {len(files)} 个现有 M3U；"
+        "每个随机抽2个CCTV，门槛严格 >100 KB/s。"
+    )
+    health_status: dict[str, str] = {}
     hosts: dict[str, str] = {}
     for name, _ in files:
         path = os.path.join(m3u_dir, name)
         hosts[name] = _source_host_from_m3u(path)
-        ok = existing_playlist_health_check(path, name, args.health_stream_test_seconds, 2)
-        if not ok:
+        status, first_urls = _health_test_once(path, name, args.health_stream_test_seconds, 2)
+        if status == "failed":
             delay = random.uniform(HEALTH_CHECK_RETRY_DELAY_MIN_SEC, HEALTH_CHECK_RETRY_DELAY_MAX_SEC)
-            print(f"[!] [{name}] 首轮健康检查失败；{delay:.1f}秒后重新随机抽2个CCTV复检。")
+            print(f"[!] [{name}] 首轮健康检查失败；{delay:.1f}秒后重新抽2个CCTV复检。")
             time.sleep(delay)
-            ok = existing_playlist_health_check(path, name, args.health_stream_test_seconds, 2)
-        healthy[name] = ok
-        print(f"[{'+' if ok else '-'}] [{name}] 健康检查最终结果：{'HEALTHY，保持现状' if ok else 'FAILED，需要单槽位修复'}。")
+            status, _ = _health_test_once(
+                path, name, args.health_stream_test_seconds, 2, exclude_urls=first_urls
+            )
+        health_status[name] = status
+        result_text = {
+            "healthy": "HEALTHY，保持现状",
+            "failed": "FAILED，需要单槽位修复",
+            "untestable": "UNTESTABLE，可测试CCTV不足，本轮保持现状",
+        }[status]
+        print(f"[{'+' if status == 'healthy' else '!' if status == 'untestable' else '-'}] [{name}] 健康检查最终结果：{result_text}。")
+
     changed: list[str] = []
+    # 动态占用池：健康槽位 + 本轮刚修复成功的槽位。这样同组多个失败槽位不会修成同一 endpoint。
+    occupied_by_group: dict[str, set[str]] = {}
+    for name, ident in files:
+        group_title = ident[2]
+        if health_status.get(name) in {"healthy", "untestable"} and hosts.get(name):
+            occupied_by_group.setdefault(group_title, set()).add(hosts[name])
+
     for name, (province, carrier, group_title, suffix) in files:
-        if healthy[name]:
+        if health_status.get(name) != "failed":
             continue
-        protected = {hosts[n] for n, ident in files if n != name and ident[2] == group_title and healthy.get(n) and hosts.get(n)}
-        paths = repair_failed_playlist_slot(repo_root, province, carrier, group_title, suffix, hosts.get(name, ""), protected, args)
+        paths, new_endpoint = repair_failed_playlist_slot(
+            repo_root,
+            province,
+            carrier,
+            group_title,
+            suffix,
+            hosts.get(name, ""),
+            occupied_by_group.setdefault(group_title, set()),
+            args,
+        )
         if paths:
             changed.extend(paths)
+            if new_endpoint:
+                occupied_by_group[group_title].add(new_endpoint)
+                hosts[name] = new_endpoint
+                health_status[name] = "healthy"
             record_province_update_times(repo_root, province, paths)
+
     if changed:
         update_readme_file_list(repo_root)
     return changed
+
 
 def process_province(
     province,
@@ -2237,7 +2382,7 @@ def parse_exact_targets(value: str) -> dict[str, tuple[str, ...]]:
 
 
 def parse_args():
-    ap = argparse.ArgumentParser(description="按省份抓取频道并生成 txt/m3u。")
+    ap = argparse.ArgumentParser(description="IPTV 双模式：按省份完整抓取，或检查现有M3U并对失效槽位定向修复。")
     ap.add_argument(
         "--push",
         action="store_true",
@@ -2306,15 +2451,15 @@ def parse_args():
     )
     ap.add_argument(
         "--health-check", action="store_true",
-        help="检查所有现有M3U：每个随机抽2个CCTV，>100KB/s即健康；失败后复检，确认失效才单槽位重抓。",
+        help="健康检查模式：按 --health-carriers 检查全部现有M3U；随机2个CCTV，>100KB/s即健康；两轮失败才单槽位重抓。",
+    )
+    ap.add_argument(
+        "--health-carriers", default="全部",
+        help="健康检查仅处理指定运营商，例如：电信 或 联通；默认全部。",
     )
     ap.add_argument(
         "--health-stream-test-seconds", type=float, default=3.0,
         help="已有播放列表健康检查单频道测速时长，单位秒（默认3）。",
-    )
-    ap.add_argument(
-        "--health-carriers", default="",
-        help="健康检查仅处理指定运营商，可填电信/联通/移动或逗号组合；留空检查全部现有M3U。",
     )
     return ap.parse_args()
 
