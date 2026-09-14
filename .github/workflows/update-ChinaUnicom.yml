@@ -10,9 +10,9 @@ on:
         type: choice
         options:
           - "测速检查"
-          - "默认/手动省份抓取"
+          - "默认省份抓取"
       province_1:
-        description: "省份1（默认项与自动定时运行相同；选择后忽略其他选项）"
+        description: "省份1（仅默认省份抓取有效；测速检查时忽略）"
         required: true
         default: "定时默认10省联通"
         type: choice
@@ -53,7 +53,7 @@ on:
           - "俄罗斯"
           - "韩国"
       province_2:
-        description: "省份2（可选）"
+        description: "省份2（仅默认省份抓取有效；测速检查时忽略）"
         required: true
         default: "不选择"
         type: choice
@@ -93,7 +93,7 @@ on:
           - "俄罗斯"
           - "韩国"
       province_3:
-        description: "省份3（可选）"
+        description: "省份3（仅默认省份抓取有效；测速检查时忽略）"
         required: true
         default: "不选择"
         type: choice
@@ -133,7 +133,7 @@ on:
           - "俄罗斯"
           - "韩国"
       carriers:
-        description: "选择运营商组合"
+        description: "选择运营商组合（仅默认省份抓取有效；测速检查时忽略）"
         required: true
         default: "全部"
         type: choice
@@ -168,7 +168,7 @@ jobs:
     timeout-minutes: 180
     env:
       # 默认定时模式只能二选一：health=测速检查；full=原来的默认省份完整抓取。
-      # 手动 workflow_dispatch 不受此设置限制，可在运行时自由选择两种模式。
+      # 手动 workflow_dispatch 不受此设置限制：可选择“测速检查”或“默认省份抓取”；测速检查时省份/运营商输入全部忽略。
       SCHEDULE_MODE: "health"
       # 联通定时抓取目标：直接在此处增加、删除或调整“省份+运营商”。
       AUTO_TARGETS: "北京联通,四川联通,天津联通,山东联通,山西联通,河北联通,河南联通,海南联通,重庆联通,黑龙江联通"
@@ -202,9 +202,13 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             RUN=true
             if [ "$MANUAL_MODE" = "测速检查" ]; then
+              # 测速检查固定按当前工作流运营商执行；省份1/2/3和运营商组合输入全部忽略。
               MODE="health"
-            else
+            elif [ "$MANUAL_MODE" = "默认省份抓取" ]; then
               MODE="full"
+            else
+              echo "::error::手动运行模式只能是 测速检查 或 默认省份抓取，当前=$MANUAL_MODE"
+              exit 1
             fi
           elif [ "${{ github.event_name }}" = "repository_dispatch" ]; then
             if [ "$SCHEDULE_MODE" = "full" ]; then
