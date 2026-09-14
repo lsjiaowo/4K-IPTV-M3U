@@ -1905,7 +1905,6 @@ def update_readme_file_list(repo_root: str) -> None:
 
 
 # ===== 已有播放列表健康检查 / 单槽位修复 =====
-HEALTH_CHECK_MIN_SPEED_MB_S = 100.0 / 1024.0
 HEALTH_CHECK_RETRY_DELAY_MIN_SEC = 5.0
 HEALTH_CHECK_RETRY_DELAY_MAX_SEC = 10.0
 
@@ -1935,6 +1934,7 @@ def parse_existing_m3u_channel_lines(path: str) -> list[str]:
 def _health_test_once(
     path: str,
     label: str,
+    min_speed_mb_s: float,
     sample_seconds: float = 3.0,
     test_channels: int = 2,
     exclude_urls: set[str] | None = None,
@@ -1969,18 +1969,26 @@ def _health_test_once(
             continue
         print(
             f"[*] [{label}] 下载 {total_bytes / (1024 * 1024):.2f} MB，"
-            f"平均速度 {speed_mb_s * 1024:.0f} KB/s，要求 > {HEALTH_CHECK_MIN_SPEED_MB_S * 1024:.0f} KB/s"
+            f"平均速度 {speed_mb_s * 1024:.0f} KB/s，要求 > {min_speed_mb_s * 1024:.0f} KB/s"
         )
-        if speed_mb_s > HEALTH_CHECK_MIN_SPEED_MB_S:
-            print(f"[+] [{label}] {channel_name} >100 KB/s，当前播放列表健康。")
+        if speed_mb_s > min_speed_mb_s:
+            print(f"[+] [{label}] {channel_name} >{min_speed_mb_s * 1024:.0f} KB/s，当前播放列表健康。")
             return "healthy", sampled_urls
         print(f"[-] [{label}] {channel_name} 未达到健康门槛。")
     return "failed", sampled_urls
 
 
-def existing_playlist_health_check(path: str, label: str, sample_seconds: float = 3.0, test_channels: int = 2) -> bool:
-    """兼容入口：单轮健康检查；只有明确 healthy 返回 True。"""
-    status, _ = _health_test_once(path, label, sample_seconds, test_channels)
+def existing_playlist_health_check(
+    path: str,
+    label: str,
+    min_speed_mb_s: float = DEFAULT_MIN_STREAM_SPEED_MB_S,
+    sample_seconds: float = 3.0,
+    test_channels: int = 2,
+) -> bool:
+    """兼容入口：单轮健康检查；测速门槛与正式抓取保持一致。"""
+    status, _ = _health_test_once(
+        path, label, min_speed_mb_s, sample_seconds, test_channels
+    )
     return status == "healthy"
 
 
@@ -2116,20 +2124,33 @@ def run_health_check_and_repair(repo_root: str, args) -> list[str]:
 
     print(
         f"[*] 健康检查模式：运营商={','.join(selected_health_carriers)}；共 {len(files)} 个现有 M3U；"
-        "每个随机抽2个CCTV，门槛严格 >100 KB/s。"
+        "每个随机抽2个CCTV；测速门槛与正式抓取完全一致。"
     )
     health_status: dict[str, str] = {}
     hosts: dict[str, str] = {}
-    for name, _ in files:
+    for name, ident in files:
         path = os.path.join(m3u_dir, name)
+        province = ident[0]
+        health_min_speed = resolve_min_stream_speed(province, args.min_stream_speed)
         hosts[name] = _source_host_from_m3u(path)
-        status, first_urls = _health_test_once(path, name, args.health_stream_test_seconds, 2)
+        print(
+            f"[*] [{name}] 健康检查测速门槛与正式抓取一致："
+            f"> {health_min_speed * 1024:.0f} KB/s。"
+        )
+        status, first_urls = _health_test_once(
+            path, name, health_min_speed, args.health_stream_test_seconds, 2
+        )
         if status == "failed":
             delay = random.uniform(HEALTH_CHECK_RETRY_DELAY_MIN_SEC, HEALTH_CHECK_RETRY_DELAY_MAX_SEC)
             print(f"[!] [{name}] 首轮健康检查失败；{delay:.1f}秒后重新抽2个CCTV复检。")
             time.sleep(delay)
             status, _ = _health_test_once(
-                path, name, args.health_stream_test_seconds, 2, exclude_urls=first_urls
+                path,
+                name,
+                health_min_speed,
+                args.health_stream_test_seconds,
+                2,
+                exclude_urls=first_urls,
             )
         health_status[name] = status
         result_text = {
@@ -2452,7 +2473,7 @@ def parse_args():
     )
     ap.add_argument(
         "--health-check", action="store_true",
-        help="健康检查模式：按 --health-carriers 检查全部现有M3U；随机2个CCTV，>100KB/s即健康；两轮失败才单槽位重抓。",
+        help="健康检查模式：按 --health-carriers 检查全部现有M3U；测速门槛与正式抓取完全一致；两轮失败才单槽位重抓。",
     )
     ap.add_argument(
         "--health-carriers", default="全部",
