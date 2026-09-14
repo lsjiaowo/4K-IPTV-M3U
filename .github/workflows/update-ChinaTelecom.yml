@@ -314,6 +314,7 @@ jobs:
         if: steps.active.outputs.active == 'true'
         env:
           PYTHONUNBUFFERED: "1"
+          IPTV_GIST_ID: ${{ secrets.IPTV_GIST_ID }}
           PROVINCE_1: "${{ github.event.inputs.province_1 }}"
           PROVINCE_2: "${{ github.event.inputs.province_2 }}"
           PROVINCE_3: "${{ github.event.inputs.province_3 }}"
