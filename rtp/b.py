@@ -555,6 +555,9 @@ def _parse_rtp_target(value: str) -> str | None:
 def parse_channel_template_m3u(content: str) -> list[tuple[str, str]]:
     """解析 M3U 模板，仅保留“显示频道名 + RTP组播地址”。
 
+    同时兼容 rtp://239.x.x.x:port 与
+    http://任意IP:任意端口/rtp/239.x.x.x:port 两种模板地址；HTTP 地址中的
+    公网/局域网转发 IP:PORT 仅作为占位，最终会替换为当前候选的真实 endpoint。
     模板中的 tvg-name/tvg-logo/group-title 等元数据不继承；最终 M3U 仍由
     txt_to_m3u_format() 按现有规则重新生成。
     """
@@ -576,7 +579,7 @@ def parse_channel_template_m3u(content: str) -> list[tuple[str, str]]:
         if line.startswith("#"):
             continue
 
-        rtp_target = _parse_rtp_target(line)
+        rtp_target = _parse_rtp_target_from_play_url(line)
         if not rtp_target or not pending_name:
             pending_name = ""
             continue
@@ -599,7 +602,7 @@ def parse_channel_template_txt(content: str) -> list[tuple[str, str]]:
         name, play_url = [part.strip() for part in line.split(",", 1)]
         if not name:
             continue
-        rtp_target = _parse_rtp_target(play_url)
+        rtp_target = _parse_rtp_target_from_play_url(play_url)
         if not rtp_target:
             continue
         item = (name, rtp_target)
