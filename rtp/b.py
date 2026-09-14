@@ -47,10 +47,17 @@ IPTV_GIST_ID = os.environ.get("IPTV_GIST_ID", "").strip()
 
 # 可选的本地频道模板目录。模板文件名使用“省份+运营商”，例如：
 # channel_templates/天津联通.m3u 或 channel_templates/天津联通.txt
-# 优先级：.m3u > .txt > cqshushu 原频道列表。
+# 来源选择：优先 .m3u，其次 .txt；若均无有效模板，则锁定使用 cqshushu。
+# 同一“省份+运营商”一次运行中来源锁定后不再混用。
 # 模板只提供“频道名称 + RTP组播地址”；最终 tvg-id/tvg-logo/group-title、EPG 和排序
 # 仍完全沿用本脚本现有输出逻辑。
 CHANNEL_TEMPLATE_DIR = "channel_templates"
+
+# 一次脚本运行期间按“省份+运营商”锁定频道来源并复用测速频道模板。
+# mode=template：测速和最终列表都只使用 channel_templates；cqshushu 仅用于解析候选真实 IP:PORT。
+# mode=cqshushu：测速和最终列表都使用 cqshushu；第一次抓到足够 CCTV 后缓存 RTP 测速模板，
+#                 后续候选只替换真实 IP:PORT，不再重复抓取 CCTV 测速频道列表。
+_CHANNEL_SOURCE_RUNTIME_CACHE: dict[str, dict] = {}
 
 # 默认测速门槛；四川线路单独放宽。
 DEFAULT_MIN_STREAM_SPEED_MB_S = 750.0 / 1024.0
@@ -608,8 +615,8 @@ def load_local_channel_template(
 ) -> tuple[list[tuple[str, str]], str | None]:
     """读取“省份+运营商”本地模板；优先 M3U，其次 TXT。
 
-    某个文件存在但无有效 RTP 频道时继续尝试下一种格式；两种都不可用时返回空，
-    调用方继续使用 cqshushu 原频道列表。
+    某个文件存在但无有效 RTP 频道时继续尝试下一种格式；两种都不可用时返回空。
+    调用方会在“省份+运营商”层级锁定为 cqshushu 模式，本轮后续不再切换来源。
     """
     for extension, parser in ((".m3u", parse_channel_template_m3u), (".txt", parse_channel_template_txt)):
         path = os.path.join(template_dir, f"{group_title}{extension}")
@@ -720,6 +727,50 @@ def build_template_channel_lines(
         f"{name},http://{host}/rtp/{rtp_target}"
         for name, rtp_target in template_channels
     ]
+
+
+def _parse_rtp_target_from_play_url(value: str) -> str | None:
+    """从 cqshushu 的 HTTP /rtp/ 播放地址或标准 rtp:// 地址提取 IPv4:port。"""
+    direct = _parse_rtp_target(value)
+    if direct:
+        return direct
+
+    text = (value or "").strip()
+    parsed = urlparse(text)
+    match = re.search(
+        r"(?i)(?:^|/)rtp/(\d{1,3}(?:\.\d{1,3}){3}):(\d{1,5})(?:/|$)",
+        parsed.path or "",
+    )
+    if not match:
+        return None
+    ip_text, port_text = match.groups()
+    octets = ip_text.split(".")
+    if any(int(part) > 255 for part in octets):
+        return None
+    port = int(port_text)
+    if not (1 <= port <= 65535):
+        return None
+    return f"{ip_text}:{port}"
+
+
+def build_cctv_speed_template(channel_lines: list[str]) -> list[tuple[str, str]]:
+    """从已抓频道中提取可复用的 CCTV 测速模板，仅保留“频道名 + RTP组播地址”。
+
+    公网 IP:PORT 不进入缓存；后续候选只需解析自己的真实 endpoint，
+    再用 build_template_channel_lines() 重新拼成 HTTP /rtp/ 测速地址。
+    """
+    result: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for name, play_url in extract_speed_test_candidates(channel_lines):
+        rtp_target = _parse_rtp_target_from_play_url(play_url)
+        if not rtp_target:
+            continue
+        item = (name, rtp_target)
+        if item in seen:
+            continue
+        seen.add(item)
+        result.append(item)
+    return result
 
 
 def extract_general_speed_test_candidates(channel_lines: list[str]) -> list[tuple[str, str]]:
@@ -939,29 +990,22 @@ def is_template_source_playable(
     sample_seconds: float = 3.0,
     test_channels: int = 2,
 ) -> bool:
-    """本地模板测速：优先现有 CCTV 规则；不足时从普通非SD/非4K频道中抽测。"""
+    """本地模板测速：严格只使用 CCTV1-CCTV17 非标清/非4K测速频道，不切换其它来源。"""
     required_count = max(1, test_channels)
     candidates = extract_speed_test_candidates(channel_lines)
-    candidate_kind = "CCTV1-CCTV17 非标清/非4K"
-
-    if len(candidates) < required_count:
-        candidates = extract_general_speed_test_candidates(channel_lines)
-        candidate_kind = "模板普通非标清/非4K"
-        print(
-            f"[*] [{source_label}] 模板中的 CCTV 测速频道不足，"
-            f"改从 {len(candidates)} 个普通非标清/非4K频道中测速。"
-        )
 
     if len(candidates) < required_count:
         print(
-            f"[-] [{source_label}] 可测试频道不足：{len(candidates)}/{required_count}，判定无效。"
+            f"[-] [{source_label}] channel_templates 中可测试的 "
+            f"CCTV1-CCTV17 非标清/非4K频道不足：{len(candidates)}/{required_count}；"
+            "频道来源已锁定为本地模板，本轮不切换到 cqshushu 或普通频道测速。"
         )
         return False
 
     sampled_channels = random.sample(candidates, required_count)
     print(
-        f"[*] [{source_label}] 从 {len(candidates)} 个{candidate_kind}频道中随机抽测 "
-        f"{required_count} 个。"
+        f"[*] [{source_label}] 从 channel_templates 的 {len(candidates)} 个 "
+        f"CCTV1-CCTV17 非标清/非4K频道中随机抽测 {required_count} 个。"
     )
     for channel_name, play_url in sampled_channels:
         print(f"[*] [{source_label}] 测速频道：{channel_name} {play_url}")
@@ -1075,6 +1119,10 @@ def fetch_channel_lines_by_province(
        每抓取一页就立即筛选并测试新增的新IP，达到目标后立即停止后续分页。
     4. 搜索到第10页仍不足目标时，才允许已扫描页面中的旧IP兜底；新IP始终最高优先级。
     5. 每个运营商最多测试 max_per_carrier 台候选，找到 target_playable_sources 个可用源后停止。
+    6. 每个“省份+运营商”在本次脚本运行中锁定唯一频道来源：
+       - 有 channel_templates：测速与最终列表都使用模板；cqshushu 仅辅助解析真实 IP:PORT。
+       - 无 channel_templates：全程使用 cqshushu；第一次找到足够 CCTV 后缓存 RTP 测速模板，
+         后续候选只替换真实 IP:PORT，不再重复获取 CCTV 测速频道列表。
     """
     session = requests.Session()
     target_playable_sources = max(1, int(target_playable_sources))
@@ -1101,16 +1149,39 @@ def fetch_channel_lines_by_province(
     tested_counts = {carrier: 0 for carrier in carriers}
     tested_tokens_by_carrier = {carrier: set() for carrier in carriers}
 
-    # 每个“省份+运营商”的本地模板只读取/解析一次；没有有效模板时缓存为空并继续走 cqshushu。
-    local_template_cache: dict[str, tuple[list[tuple[str, str]], str | None]] = {}
+    def _get_channel_source_context(group_title: str) -> dict:
+        """按“省份+运营商”在本次脚本运行期间锁定唯一频道来源。"""
+        context = _CHANNEL_SOURCE_RUNTIME_CACHE.get(group_title)
+        if context is not None:
+            return context
 
-    def _get_local_template(group_title: str) -> tuple[list[tuple[str, str]], str | None]:
-        if group_title not in local_template_cache:
-            local_template_cache[group_title] = load_local_channel_template(group_title)
-            channels, path = local_template_cache[group_title]
-            if not channels:
-                print(f"[*] [{group_title}] 未找到有效本地频道模板，频道列表继续使用 cqshushu。")
-        return local_template_cache[group_title]
+        template_channels, template_path = load_local_channel_template(group_title)
+        if template_channels:
+            context = {
+                "mode": "template",
+                "template_channels": template_channels,
+                "template_path": template_path,
+                "speed_template": [],
+                "candidate_meta": {},
+            }
+            print(
+                f"[*] [{group_title}] 频道来源锁定：channel_templates；"
+                "本轮测速与最终完整频道列表均使用本地模板，绝不切换到 cqshushu 频道内容。"
+            )
+        else:
+            context = {
+                "mode": "cqshushu",
+                "template_channels": [],
+                "template_path": None,
+                "speed_template": [],
+                "candidate_meta": {},
+            }
+            print(
+                f"[*] [{group_title}] 频道来源锁定：cqshushu；"
+                "本轮测速与最终完整频道列表均使用 cqshushu，绝不切换到 channel_templates。"
+            )
+        _CHANNEL_SOURCE_RUNTIME_CACHE[group_title] = context
+        return context
 
     def _is_usable_status(status: str) -> bool:
         return source_status_rank(status) > 0
@@ -1201,36 +1272,58 @@ def fetch_channel_lines_by_province(
         )
 
         try:
-            # 本地模板优先：cqshushu 只负责提供候选公网服务器地址。
-            # 有有效模板时，不再请求该候选的 cqshushu IP详情页/频道列表。
-            template_channels, template_path = _get_local_template(group_title)
-            if template_channels:
-                relay_host = resolve_relay_host_with_port(
-                    candidate_host,
-                    token,
-                    session=session,
-                )
+            source_context = _get_channel_source_context(group_title)
+            source_mode = source_context.get("mode", "cqshushu")
+
+            # ------------------------------------------------------------
+            # 模式 A：channel_templates
+            # - 从一开始就只使用本地模板中的频道名/RTP组播地址。
+            # - cqshushu 仅允许用于解析候选真实公网 IP:PORT，不采用其频道内容。
+            # - 测速通过后的最终完整列表仍直接套用同一份本地模板。
+            # ------------------------------------------------------------
+            if source_mode == "template":
+                template_channels = source_context.get("template_channels", [])
+                template_path = source_context.get("template_path")
+                candidate_meta = source_context.setdefault("candidate_meta", {})
+                cached_meta = candidate_meta.get(token, {})
+                relay_host = cached_meta.get("relay_host", "")
+                if relay_host:
+                    print(
+                        f"[*] [{group_title} {candidate_host}] 复用本轮已解析 endpoint：{relay_host}；"
+                        "无需再次请求频道页解析端口。"
+                    )
+                else:
+                    relay_host = resolve_relay_host_with_port(
+                        candidate_host,
+                        token,
+                        session=session,
+                    )
+                    if relay_host:
+                        candidate_meta[token] = {"relay_host": normalize_source_host(relay_host)}
                 source_label = f"{group_title} {relay_host or candidate_host}".strip()
                 if not relay_host:
                     print(
-                        f"[-] [{group_title} {candidate_host}] 无法解析候选服务器的公网转发端口，"
+                        f"[-] [{group_title} {candidate_host}] 无法解析候选服务器的公网转发 IP:PORT，"
                         "跳过该源，避免错误地按80端口测速。"
                     )
                     return False
                 relay_host = normalize_source_host(relay_host)
                 excluded_endpoints = (excluded_endpoints_by_carrier or {}).get(carrier, set())
                 if relay_host in excluded_endpoints:
-                    print(f"[*] [{source_label}] endpoint {relay_host} 本轮已失效或已被同组槽位占用，跳过。")
+                    print(
+                        f"[*] [{source_label}] endpoint {relay_host} "
+                        "本轮已失效或已被同组槽位占用，跳过。"
+                    )
                     return False
 
                 lines = build_template_channel_lines(template_channels, relay_host)
                 if not lines:
-                    print(f"[-] [{source_label}] 无法使用候选服务器地址构造模板播放地址，跳过该源。")
+                    print(f"[-] [{source_label}] 无法使用 channel_templates 构造播放地址，跳过该源。")
                     return False
 
                 print(
-                    f"[*] [{source_label}] 频道列表来源：本地模板 {template_path}；"
-                    f"已转换 {len(lines)} 条带公网端口的 HTTP /rtp/ 播放地址。"
+                    f"[*] [{source_label}] 频道来源=channel_templates：{template_path}；"
+                    f"已按当前 endpoint {relay_host} 构造 {len(lines)} 条 HTTP /rtp/ 播放地址。"
                 )
                 if not is_template_source_playable(
                     lines,
@@ -1246,67 +1339,162 @@ def fetch_channel_lines_by_province(
                 playable_counts[carrier] = playable_counts.get(carrier, 0) + 1
                 print(
                     f"[+] [{province}{carrier}] 可用源：{candidate_host}【{candidate_status}】；"
-                    f"频道列表来源=本地模板；已获得 "
+                    f"频道来源=channel_templates；已获得 "
                     f"{playable_counts[carrier]}/{target_playable_sources} "
                     f"个可用播放列表（已测试 {tested_counts[carrier]}/{max_per_carrier} 台）。"
                 )
                 return True
 
-            print(f"[*] [{group_title} {candidate_host}] 频道列表来源：cqshushu（本地无有效模板）。")
-            print(f"[*] [{group_title} {candidate_host}] 开始获取IP详情页【{candidate_status}】。")
-            try:
-                detail_html = fetch_detail_html(token, session=session)
-            except Exception as exc:
-                print(f"[-] [{group_title} {candidate_host}] IP详情获取失败，未进入测速阶段: {exc}")
-                return False
+            # ------------------------------------------------------------
+            # 模式 B：cqshushu
+            # - 第一个能抓到足够 CCTV 的候选建立“频道名 + RTP组播地址”测速模板。
+            # - 后续候选复用该 CCTV 模板，只替换各自真实 IP:PORT，不再重复抓测速频道列表。
+            # - 最终完整列表仍只从 cqshushu 获取，绝不切换到 channel_templates。
+            # ------------------------------------------------------------
+            print(f"[*] [{group_title} {candidate_host}] 频道来源=cqshushu（本轮已锁定）。")
+            candidate_meta = source_context.setdefault("candidate_meta", {})
+            cached_meta = candidate_meta.get(token, {})
+            s_token = cached_meta.get("s_token", "")
+            relay_host = cached_meta.get("relay_host", "")
 
-            if not detail_html:
-                print(f"[-] [{group_title} {candidate_host}] IP详情为空，未进入测速阶段。")
-                return False
-
-            print(f"[+] [{group_title} {candidate_host}] IP详情页获取成功，HTML长度={len(detail_html)}。")
-            s_token = parse_s_token(detail_html)
-            if not s_token:
+            if s_token:
+                token_preview = s_token if len(s_token) <= 16 else s_token[:8] + "..." + s_token[-4:]
                 print(
-                    f"[-] [{group_title} {candidate_host}] IP详情页中未找到频道列表 s_token，"
-                    "未进入测速阶段。"
+                    f"[*] [{group_title} {candidate_host}] 复用本轮候选解析缓存："
+                    f"s_token={token_preview}，endpoint={relay_host or '待解析'}。"
                 )
-                return False
+            else:
+                print(f"[*] [{group_title} {candidate_host}] 开始获取IP详情页【{candidate_status}】。")
+                try:
+                    detail_html = fetch_detail_html(token, session=session)
+                except Exception as exc:
+                    print(f"[-] [{group_title} {candidate_host}] IP详情获取失败，未进入测速阶段: {exc}")
+                    return False
 
-            token_preview = s_token if len(s_token) <= 16 else s_token[:8] + "..." + s_token[-4:]
-            print(f"[+] [{group_title} {candidate_host}] s_token解析成功：{token_preview}")
-            print(f"[*] [{group_title} {candidate_host}] 开始抓取测速频道。")
+                if not detail_html:
+                    print(f"[-] [{group_title} {candidate_host}] IP详情为空，未进入测速阶段。")
+                    return False
 
-            # 第一阶段：只抓到足够测速的 CCTV 频道，立即测速。
+                print(f"[+] [{group_title} {candidate_host}] IP详情页获取成功，HTML长度={len(detail_html)}。")
+                s_token = parse_s_token(detail_html)
+                if not s_token:
+                    print(
+                        f"[-] [{group_title} {candidate_host}] IP详情页中未找到频道列表 s_token，"
+                        "未进入测速阶段。"
+                    )
+                    return False
+
+                token_preview = s_token if len(s_token) <= 16 else s_token[:8] + "..." + s_token[-4:]
+                print(f"[+] [{group_title} {candidate_host}] s_token解析成功：{token_preview}")
+                cached_meta = dict(cached_meta)
+                cached_meta["s_token"] = s_token
+                candidate_meta[token] = cached_meta
+
+            cached_speed_template = source_context.get("speed_template", [])
             page_state: dict = {}
-            test_lines = fetch_channel_lines_by_s(
-                s_token,
-                session=session,
-                stop_after_test_channels=max(1, test_channels_per_source),
-                page_state=page_state,
-            )
-            if not test_lines:
-                print(
-                    f"[-] [{group_title} {candidate_host}] 频道列表未解析到任何频道，"
-                    "未进入测速阶段。"
-                )
-                return False
+            cq_lines_for_current: list[str] = []
 
-            candidate_endpoint = _source_host_from_lines(test_lines) or normalize_source_host(candidate_host)
+            if not cached_speed_template:
+                print(
+                    f"[*] [{group_title} {candidate_host}] 本轮尚无 cqshushu CCTV 测速模板；"
+                    "开始抓取频道，首次找到足够 CCTV 后立即缓存并供后续候选复用。"
+                )
+                cq_lines_for_current = fetch_channel_lines_by_s(
+                    s_token,
+                    session=session,
+                    stop_after_test_channels=max(1, test_channels_per_source),
+                    page_state=page_state,
+                )
+                if not cq_lines_for_current:
+                    print(
+                        f"[-] [{group_title} {candidate_host}] 频道列表未解析到任何频道，"
+                        "未进入测速阶段。"
+                    )
+                    return False
+
+                speed_template = build_cctv_speed_template(cq_lines_for_current)
+                if len(speed_template) < max(1, test_channels_per_source):
+                    print(
+                        f"[-] [{group_title} {candidate_host}] 已解析 {len(cq_lines_for_current)} 条频道，"
+                        f"但仅找到 {len(speed_template)} 个可复用的 CCTV1-CCTV17 非标清/非4K测速频道，"
+                        f"少于要求的 {max(1, test_channels_per_source)} 个，无法建立测速模板。"
+                    )
+                    return False
+
+                source_context["speed_template"] = speed_template
+                cached_speed_template = speed_template
+                print(
+                    f"[+] [{group_title}] 已建立 cqshushu CCTV 测速缓存："
+                    f"{len(cached_speed_template)} 个频道；后续候选不再重复抓取 CCTV 测速频道列表。"
+                )
+                relay_host = _source_host_from_lines(cq_lines_for_current) or relay_host or normalize_source_host(candidate_host)
+                cached_meta = dict(candidate_meta.get(token, {}))
+                cached_meta.update({"s_token": s_token, "relay_host": normalize_source_host(relay_host)})
+                candidate_meta[token] = cached_meta
+            else:
+                print(
+                    f"[*] [{group_title} {candidate_host}] 复用本轮 cqshushu CCTV 测速缓存："
+                    f"{len(cached_speed_template)} 个频道；仅解析当前候选真实 IP:PORT。"
+                )
+                if relay_host:
+                    print(
+                        f"[*] [{group_title} {candidate_host}] 已有本轮 endpoint 缓存：{relay_host}；"
+                        "直接套用 CCTV 测速模板。"
+                    )
+                else:
+                    normalized_candidate = normalize_source_host(candidate_host)
+                    parsed_candidate = urlparse(
+                        candidate_host if "://" in candidate_host else f"http://{candidate_host}"
+                    )
+                    if parsed_candidate.port is not None:
+                        relay_host = normalized_candidate
+                        print(f"[+] [{group_title} {candidate_host}] 候选已包含端口：{relay_host}")
+                    else:
+                        # 这里只请求当前候选 cqshushu 的第1页来提取真实公网 IP:PORT。
+                        # 页面中的频道内容不参与本轮测速模板选择；测速仍严格复用第一次缓存的 CCTV RTP。
+                        cq_lines_for_current = fetch_channel_lines_by_s(
+                            s_token,
+                            session=session,
+                            max_pages=1,
+                            page_state=page_state,
+                        )
+                        relay_host = _source_host_from_lines(cq_lines_for_current) if cq_lines_for_current else ""
+                        if relay_host:
+                            print(
+                                f"[+] [{group_title} {candidate_host}] 已解析当前真实公网转发地址："
+                                f"{relay_host}；第1页仅用于 endpoint 解析，不重新建立测速频道模板。"
+                            )
+                    if relay_host:
+                        cached_meta = dict(candidate_meta.get(token, {}))
+                        cached_meta.update({"s_token": s_token, "relay_host": normalize_source_host(relay_host)})
+                        candidate_meta[token] = cached_meta
+
+                if not relay_host:
+                    print(
+                        f"[-] [{group_title} {candidate_host}] 无法解析当前候选真实公网 IP:PORT，"
+                        "跳过该源。"
+                    )
+                    return False
+
+            relay_host = normalize_source_host(relay_host)
             excluded_endpoints = (excluded_endpoints_by_carrier or {}).get(carrier, set())
-            if candidate_endpoint and candidate_endpoint in excluded_endpoints:
-                print(f"[*] [{group_title} {candidate_host}] endpoint {candidate_endpoint} 本轮已失效或已被同组槽位占用，跳过。")
+            if relay_host and relay_host in excluded_endpoints:
+                print(
+                    f"[*] [{group_title} {candidate_host}] endpoint {relay_host} "
+                    "本轮已失效或已被同组槽位占用，跳过。"
+                )
                 return False
 
-            speed_candidates = extract_speed_test_candidates(test_lines)
-            if len(speed_candidates) < max(1, test_channels_per_source):
-                print(
-                    f"[-] [{group_title} {candidate_host}] 已解析 {len(test_lines)} 条频道，"
-                    f"但仅找到 {len(speed_candidates)} 个 CCTV1-CCTV17 非标清/非4K HTTP测速频道，"
-                    f"少于要求的 {max(1, test_channels_per_source)} 个，无法进入有效测速。"
-                )
+            test_lines = build_template_channel_lines(cached_speed_template, relay_host)
+            if not test_lines:
+                print(f"[-] [{group_title} {candidate_host}] 无法使用缓存 CCTV 模板构造测速地址。")
+                return False
 
-            source_label = f"{group_title} {candidate_host}".strip()
+            source_label = f"{group_title} {relay_host}".strip()
+            print(
+                f"[*] [{source_label}] 测速频道来源=cqshushu首次缓存；"
+                f"当前仅替换 endpoint={relay_host}，可测速CCTV={len(test_lines)}。"
+            )
             if not is_source_playable(
                 test_lines,
                 source_label=source_label,
@@ -1316,27 +1504,37 @@ def fetch_channel_lines_by_province(
             ):
                 return False
 
-            # 第二阶段：测速通过后才继续抓完整频道列表。
-            last_page = int(page_state.get("last_page", 0))
-            has_next = bool(page_state.get("has_next", False))
-            print(
-                f"[+] [{source_label}] 测速通过【{candidate_status}】，"
-                f"复用前{last_page}页的 {len(test_lines)} 条频道，"
-                f"从第{last_page + 1}页继续完整抓取。"
-            )
-
-            if has_next:
+            # 测速通过后，最终完整频道列表仍严格使用当前候选自己的 cqshushu s_token。
+            # 若为了首次测速或 endpoint 解析已经抓过当前候选前几页，则直接复用并从下一页继续。
+            if cq_lines_for_current:
+                last_page = int(page_state.get("last_page", 0))
+                has_next = bool(page_state.get("has_next", False))
+                print(
+                    f"[+] [{source_label}] 测速通过【{candidate_status}】；最终列表来源仍为 cqshushu。"
+                    f"复用当前候选已抓前{last_page}页的 {len(cq_lines_for_current)} 条频道，"
+                    f"从第{last_page + 1}页继续完整抓取。"
+                )
+                if has_next:
+                    lines = fetch_channel_lines_by_s(
+                        s_token,
+                        session=session,
+                        initial_lines=cq_lines_for_current,
+                        start_page=last_page + 1,
+                    )
+                else:
+                    lines = cq_lines_for_current
+            else:
+                print(
+                    f"[+] [{source_label}] 测速通过【{candidate_status}】；"
+                    "最终列表来源仍为 cqshushu，现在从第1页开始抓取完整频道列表。"
+                )
                 lines = fetch_channel_lines_by_s(
                     s_token,
                     session=session,
-                    initial_lines=test_lines,
-                    start_page=last_page + 1,
                 )
-            else:
-                lines = test_lines
 
             if not lines:
-                print(f"[-] [{source_label}] 完整频道列表抓取失败，跳过该源。")
+                print(f"[-] [{source_label}] cqshushu 完整频道列表抓取失败，跳过该源。")
                 return False
 
             selected_ops.append(group_title)
@@ -1345,7 +1543,7 @@ def fetch_channel_lines_by_province(
 
             print(
                 f"[+] [{province}{carrier}] 可用源：{candidate_host}【{candidate_status}】；"
-                f"已获得 {playable_counts[carrier]}/{target_playable_sources} "
+                f"频道来源=cqshushu；已获得 {playable_counts[carrier]}/{target_playable_sources} "
                 f"个可用播放列表（已测试 {tested_counts[carrier]}/{max_per_carrier} 台）。"
             )
             return True
