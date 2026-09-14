@@ -1138,6 +1138,10 @@ def fetch_channel_lines_by_province(
         f"[*] [{province}] 启用动态分页：前5页正常扫描；"
         f"新IP搜索深度={max_pages}页；最大搜索={REGION_LIST_MAX_PAGES}页。"
     )
+    multicast_source_url = (
+        f"https://iptv.cqshushu.com/index.php?t=multicast&province={region_code}"
+    )
+    print(f"[*] 正在抓取组播源: {multicast_source_url}")
 
     all_rows: list[dict] = []
     seen_region_tokens: set[str] = set()
