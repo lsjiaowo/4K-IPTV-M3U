@@ -1876,6 +1876,157 @@ def update_readme_file_list(repo_root: str) -> None:
     print("[+] README.md 文件列表已自动更新。")
 
 
+
+# ===== 已有播放列表健康检查 / 单槽位修复 =====
+HEALTH_CHECK_MIN_SPEED_MB_S = 100.0 / 1024.0
+HEALTH_CHECK_RETRY_DELAY_MIN_SEC = 5.0
+HEALTH_CHECK_RETRY_DELAY_MAX_SEC = 10.0
+
+def parse_existing_m3u_channel_lines(path: str) -> list[str]:
+    """读取已生成 M3U，转换成“频道名,播放地址”，供健康检查复用现有测速规则。"""
+    try:
+        content = Path(path).read_text(encoding="utf-8-sig", errors="ignore")
+    except OSError as exc:
+        print(f"[-] 无法读取已有播放列表 {path}: {exc}")
+        return []
+    lines: list[str] = []
+    pending_name = ""
+    for raw in content.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if line.startswith("#EXTINF"):
+            pending_name = line.rsplit(",", 1)[-1].strip() if "," in line else ""
+            continue
+        if line.startswith("#"):
+            continue
+        if pending_name and line.lower().startswith(("http://", "https://")):
+            lines.append(f"{pending_name},{line}")
+        pending_name = ""
+    return lines
+
+def existing_playlist_health_check(path: str, label: str, sample_seconds: float = 3.0, test_channels: int = 2) -> bool:
+    """健康检查：CCTV1-CCTV17/CCTV5+随机2个，任意1个严格 >100KB/s 即健康。"""
+    lines = parse_existing_m3u_channel_lines(path)
+    if not lines:
+        print(f"[-] [{label}] 播放列表为空或无法解析，健康检查失败。")
+        return False
+    return is_source_playable(
+        lines, source_label=f"健康检查 {label}",
+        min_speed_mb_s=HEALTH_CHECK_MIN_SPEED_MB_S,
+        sample_seconds=sample_seconds, test_channels=test_channels,
+    )
+
+def _playlist_identity(filename: str):
+    """山西联通1.m3u -> (山西, 联通, 山西联通, 1)。"""
+    stem = Path(filename).stem
+    m = re.match(r"^(.+?)(电信|联通|移动|广电)(\d*)$", stem)
+    if not m:
+        return None
+    province, carrier, suffix = m.group(1), m.group(2), m.group(3)
+    if province not in PROVINCE_CODES:
+        return None
+    return province, carrier, f"{province}{carrier}", suffix
+
+def _source_host_from_lines(lines: list[str]) -> str:
+    for line in lines:
+        if "," not in line:
+            continue
+        url = line.split(",", 1)[1].strip()
+        parsed = urlparse(url)
+        if parsed.hostname:
+            return normalize_source_host(parsed.netloc)
+    return ""
+
+def _source_host_from_m3u(path: str) -> str:
+    return _source_host_from_lines(parse_existing_m3u_channel_lines(path))
+
+def _write_single_playlist_slot(repo_root: str, group_title: str, suffix: str, channel_lines: list[str]) -> list[str]:
+    """只覆盖一个失效槽位，并同步覆盖同名 TXT；其它健康槽位绝不改动。"""
+    file_stem = f"{group_title}{suffix}"
+    channel_lines = sort_priority_channels(channel_lines)
+    txt_path = os.path.join(repo_root, "txt", f"{file_stem}.txt")
+    m3u_path = os.path.join(repo_root, "m3u", f"{file_stem}.m3u")
+    txt_content = "\n".join(channel_lines)
+    with open(txt_path, "w", encoding="utf-8") as f:
+        f.write(txt_content + "\n")
+    with open(m3u_path, "w", encoding="utf-8") as f:
+        f.write(f'#EXTM3U x-tvg-url="{EPG_URL}"\n')
+        f.write(txt_to_m3u_format(txt_content, group_title) + "\n")
+    return [f"txt/{file_stem}.txt", f"m3u/{file_stem}.m3u"]
+
+def repair_failed_playlist_slot(repo_root: str, province: str, carrier: str, group_title: str, suffix: str,
+                                failed_host: str, protected_hosts: set[str], args) -> list[str]:
+    """只为一个失效文件寻找替代源；正式抓取仍使用省份既有速度门槛。"""
+    previous = set(protected_hosts)
+    if failed_host:
+        previous.add(failed_host)
+    formal_speed = resolve_min_stream_speed(province, args.min_stream_speed)
+    print(f"[*] [{group_title}{suffix}.m3u] 启动单槽位修复；正式新源门槛 > {formal_speed * 1024:.0f} KB/s。")
+    grouped, status, _ = fetch_channel_lines_by_province(
+        province, carriers=(carrier,), max_pages=args.max_pages, max_per_carrier=args.max_per_carrier,
+        max_age_hours=args.max_age_hours, min_stream_speed_mb_s=formal_speed,
+        stream_test_seconds=args.stream_test_seconds, test_channels_per_source=args.test_channels_per_source,
+        previous_hosts_by_carrier={carrier: previous},
+    )
+    sources = grouped.get(group_title, []) if grouped else []
+    for lines in sources:
+        host = _source_host_from_lines(lines)
+        if not host:
+            continue
+        if host in protected_hosts:
+            print(f"[*] [{group_title}{suffix}.m3u] 候选 {host} 正被同组健康列表使用，跳过，保持双源独立。")
+            continue
+        if failed_host and host == failed_host:
+            print(f"[*] [{group_title}{suffix}.m3u] 候选仍是本轮失效地址 {host}，不作为替换源。")
+            continue
+        paths = _write_single_playlist_slot(repo_root, group_title, suffix, lines)
+        print(f"[+] [{group_title}{suffix}.m3u] 单槽位修复成功：{failed_host or '未知旧地址'} -> {host}")
+        return paths
+    print(f"[!] [{group_title}{suffix}.m3u] 本轮未找到合格且不与健康槽位重复的新服务器；保留原 M3U/TXT，等待下一轮。状态={status}")
+    return []
+
+def run_health_check_and_repair(repo_root: str, args) -> list[str]:
+    """检查所有现有 M3U；首轮失败后5~10秒复检，确认失败才进行单槽位修复。"""
+    m3u_dir = os.path.join(repo_root, "m3u")
+    files = []
+    health_carriers = set(parse_carrier_selection(args.health_carriers)) if args.health_carriers else set()
+    for name in sorted(os.listdir(m3u_dir)) if os.path.isdir(m3u_dir) else []:
+        ident = _playlist_identity(name)
+        if name.endswith(".m3u") and ident:
+            if health_carriers and ident[1] not in health_carriers:
+                continue
+            files.append((name, ident))
+    if not files:
+        print("[*] 未发现可健康检查的省份运营商 M3U 文件。")
+        return []
+    print(f"[*] 健康检查模式：共 {len(files)} 个现有 M3U；每个随机抽2个CCTV，门槛严格 >100 KB/s。")
+    healthy: dict[str, bool] = {}
+    hosts: dict[str, str] = {}
+    for name, _ in files:
+        path = os.path.join(m3u_dir, name)
+        hosts[name] = _source_host_from_m3u(path)
+        ok = existing_playlist_health_check(path, name, args.health_stream_test_seconds, 2)
+        if not ok:
+            delay = random.uniform(HEALTH_CHECK_RETRY_DELAY_MIN_SEC, HEALTH_CHECK_RETRY_DELAY_MAX_SEC)
+            print(f"[!] [{name}] 首轮健康检查失败；{delay:.1f}秒后重新随机抽2个CCTV复检。")
+            time.sleep(delay)
+            ok = existing_playlist_health_check(path, name, args.health_stream_test_seconds, 2)
+        healthy[name] = ok
+        print(f"[{'+' if ok else '-'}] [{name}] 健康检查最终结果：{'HEALTHY，保持现状' if ok else 'FAILED，需要单槽位修复'}。")
+    changed: list[str] = []
+    for name, (province, carrier, group_title, suffix) in files:
+        if healthy[name]:
+            continue
+        protected = {hosts[n] for n, ident in files if n != name and ident[2] == group_title and healthy.get(n) and hosts.get(n)}
+        paths = repair_failed_playlist_slot(repo_root, province, carrier, group_title, suffix, hosts.get(name, ""), protected, args)
+        if paths:
+            changed.extend(paths)
+            record_province_update_times(repo_root, province, paths)
+    if changed:
+        update_readme_file_list(repo_root)
+    return changed
+
 def process_province(
     province,
     txt_output_dir,
@@ -2153,6 +2304,18 @@ def parse_args():
         default=2,
         help="每条服务器最多抽测的频道数量（默认2）。",
     )
+    ap.add_argument(
+        "--health-check", action="store_true",
+        help="检查所有现有M3U：每个随机抽2个CCTV，>100KB/s即健康；失败后复检，确认失效才单槽位重抓。",
+    )
+    ap.add_argument(
+        "--health-stream-test-seconds", type=float, default=3.0,
+        help="已有播放列表健康检查单频道测速时长，单位秒（默认3）。",
+    )
+    ap.add_argument(
+        "--health-carriers", default="",
+        help="健康检查仅处理指定运营商，可填电信/联通/移动或逗号组合；留空检查全部现有M3U。",
+    )
     return ap.parse_args()
 
 
@@ -2182,6 +2345,22 @@ def main():
     repo_root = os.path.dirname(script_dir)
     txt_output_dir = os.path.join(repo_root, "txt")
     m3u_output_dir = os.path.join(repo_root, "m3u")
+
+    if args.health_check:
+        os.makedirs(txt_output_dir, exist_ok=True)
+        os.makedirs(m3u_output_dir, exist_ok=True)
+        changed = run_health_check_and_repair(repo_root, args)
+        if changed:
+            if args.push:
+                publish_paths = sorted(set(changed + [README_FILE]))
+                if os.path.exists(os.path.join(repo_root, UPDATE_TIMES_FILE)):
+                    publish_paths.append(UPDATE_TIMES_FILE)
+                push_to_github(publish_paths, province="健康检查修复")
+            else:
+                print(f"[+] 健康检查完成：成功修复 {len(changed)//2} 个失效播放列表；未启用 --push。")
+        else:
+            print("[*] 健康检查完成：没有需要发布的新文件（全部健康，或失效槽位暂未找到合格替代源）。")
+        return
     try:
         selected_carriers = parse_carrier_selection(args.carriers)
         if args.targets:
