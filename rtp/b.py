@@ -2110,7 +2110,7 @@ def repair_failed_playlist_slot(
 
 
 def run_health_check_and_repair(repo_root: str, args) -> list[str]:
-    """按运营商检查全部已有M3U；两轮失败才单槽位修复。"""
+    """按省份逐组健康检查；同一省份测速完成后立即修复失效槽位，再进入下一省份。"""
     selected_health_carriers = set(parse_carrier_selection(args.health_carriers))
     m3u_dir = os.path.join(repo_root, "m3u")
     files = []
@@ -2124,75 +2124,138 @@ def run_health_check_and_repair(repo_root: str, args) -> list[str]:
 
     print(
         f"[*] 健康检查模式：运营商={','.join(selected_health_carriers)}；共 {len(files)} 个现有 M3U；"
-        "每个随机抽2个CCTV；测速门槛与正式抓取完全一致。"
+        "按省份逐组处理；每个随机抽2个CCTV；测速门槛与正式抓取完全一致。"
     )
-    health_status: dict[str, str] = {}
-    hosts: dict[str, str] = {}
-    for name, ident in files:
-        path = os.path.join(m3u_dir, name)
-        province = ident[0]
-        health_min_speed = resolve_min_stream_speed(province, args.min_stream_speed)
-        hosts[name] = _source_host_from_m3u(path)
-        print(
-            f"[*] [{name}] 健康检查测速门槛与正式抓取一致："
-            f"> {health_min_speed * 1024:.0f} KB/s。"
-        )
-        status, first_urls = _health_test_once(
-            path, name, health_min_speed, args.health_stream_test_seconds, 2
-        )
-        if status == "failed":
-            delay = random.uniform(HEALTH_CHECK_RETRY_DELAY_MIN_SEC, HEALTH_CHECK_RETRY_DELAY_MAX_SEC)
-            print(f"[!] [{name}] 首轮健康检查失败；{delay:.1f}秒后重新抽2个CCTV复检。")
-            time.sleep(delay)
-            status, _ = _health_test_once(
-                path,
-                name,
-                health_min_speed,
-                args.health_stream_test_seconds,
-                2,
-                exclude_urls=first_urls,
-            )
-        health_status[name] = status
-        result_text = {
-            "healthy": "HEALTHY，保持现状",
-            "failed": "FAILED，需要单槽位修复",
-            "untestable": "UNTESTABLE，可测试CCTV不足，本轮保持现状",
-        }[status]
-        print(f"[{'+' if status == 'healthy' else '!' if status == 'untestable' else '-'}] [{name}] 健康检查最终结果：{result_text}。")
 
-    changed: list[str] = []
-    # 动态占用池：健康槽位 + 本轮刚修复成功的槽位。这样同组多个失败槽位不会修成同一 endpoint。
-    occupied_by_group: dict[str, set[str]] = {}
+    # 保持文件原有排序，但把同一“省份+运营商”的所有槽位放在一个处理组内。
+    grouped_files: dict[str, list[tuple[str, tuple]]] = {}
+    group_order: list[str] = []
     for name, ident in files:
         group_title = ident[2]
-        if health_status.get(name) in {"healthy", "untestable"} and hosts.get(name):
-            occupied_by_group.setdefault(group_title, set()).add(hosts[name])
+        if group_title not in grouped_files:
+            grouped_files[group_title] = []
+            group_order.append(group_title)
+        grouped_files[group_title].append((name, ident))
 
-    for name, (province, carrier, group_title, suffix) in files:
-        if health_status.get(name) != "failed":
+    changed: list[str] = []
+
+    for group_title in group_order:
+        group_files = grouped_files[group_title]
+        province = group_files[0][1][0]
+        carrier = group_files[0][1][1]
+        print(f"\n[*] ===== 开始处理 {group_title}：现有 {len(group_files)} 个播放列表槽位 =====")
+
+        health_status: dict[str, str] = {}
+        hosts: dict[str, str] = {}
+
+        # 第一步：只检测当前省份/运营商的全部现有槽位。
+        for name, ident in group_files:
+            path = os.path.join(m3u_dir, name)
+            health_min_speed = resolve_min_stream_speed(province, args.min_stream_speed)
+            hosts[name] = _source_host_from_m3u(path)
+            print(
+                f"[*] [{name}] 健康检查测速门槛与正式抓取一致："
+                f"> {health_min_speed * 1024:.0f} KB/s。"
+            )
+            status, first_urls = _health_test_once(
+                path, name, health_min_speed, args.health_stream_test_seconds, 2
+            )
+            if status == "failed":
+                delay = random.uniform(HEALTH_CHECK_RETRY_DELAY_MIN_SEC, HEALTH_CHECK_RETRY_DELAY_MAX_SEC)
+                print(f"[!] [{name}] 首轮健康检查失败；{delay:.1f}秒后重新抽2个CCTV复检。")
+                time.sleep(delay)
+                status, _ = _health_test_once(
+                    path,
+                    name,
+                    health_min_speed,
+                    args.health_stream_test_seconds,
+                    2,
+                    exclude_urls=first_urls,
+                )
+            health_status[name] = status
+            result_text = {
+                "healthy": "HEALTHY，保持现状",
+                "failed": "FAILED，需要单槽位修复",
+                "untestable": "UNTESTABLE，可测试CCTV不足，本轮保持现状",
+            }[status]
+            print(
+                f"[{'+' if status == 'healthy' else '!' if status == 'untestable' else '-'}] "
+                f"[{name}] 健康检查最终结果：{result_text}。"
+            )
+
+        failed_files = [
+            (name, ident) for name, ident in group_files
+            if health_status.get(name) == "failed"
+        ]
+
+        if not failed_files:
+            # 全部有效/不可测时不写任何文件，也不更新已有的播放列表更新时间。
+            print(
+                f"[+] [{group_title}] 本组健康检查完成：没有失效槽位；"
+                "现有 M3U/TXT 及上一次更新时间全部保持不变。"
+            )
             continue
-        paths, new_endpoint = repair_failed_playlist_slot(
-            repo_root,
-            province,
-            carrier,
-            group_title,
-            suffix,
-            hosts.get(name, ""),
-            occupied_by_group.setdefault(group_title, set()),
-            args,
+
+        print(
+            f"[!] [{group_title}] 检测到 {len(failed_files)} 个失效槽位；"
+            "现在立即完成本省份定向修复，修复结束后才进入下一个省份。"
         )
-        if paths:
-            changed.extend(paths)
-            if new_endpoint:
-                occupied_by_group[group_title].add(new_endpoint)
-                hosts[name] = new_endpoint
-                health_status[name] = "healthy"
-            record_province_update_times(repo_root, province, paths)
+
+        # 动态占用池只放当前仍健康/不可测的槽位，以及本轮刚修复成功的新 endpoint。
+        # 精确 IP:port 禁止重复；同公网 IP 的其它端口仍允许采用。
+        occupied_endpoints: set[str] = set()
+        for name, _ in group_files:
+            if health_status.get(name) in {"healthy", "untestable"} and hosts.get(name):
+                occupied_endpoints.add(hosts[name])
+
+        group_changed: list[str] = []
+        repaired_slots = 0
+        unrepaired_slots = 0
+
+        # 第二步：当前省份所有失败槽位立即逐个修复。
+        for name, (slot_province, slot_carrier, slot_group_title, suffix) in failed_files:
+            paths, new_endpoint = repair_failed_playlist_slot(
+                repo_root,
+                slot_province,
+                slot_carrier,
+                slot_group_title,
+                suffix,
+                hosts.get(name, ""),
+                occupied_endpoints,
+                args,
+            )
+            if paths:
+                changed.extend(paths)
+                group_changed.extend(paths)
+                repaired_slots += 1
+                if new_endpoint:
+                    occupied_endpoints.add(new_endpoint)
+                    hosts[name] = new_endpoint
+                    health_status[name] = "healthy"
+            else:
+                unrepaired_slots += 1
+
+        if group_changed:
+            # 关键规则：只有真正抓到新 IP/endpoint 并生成新播放列表时，才写入对应文件更新时间。
+            # 测试有效的旧槽位、UNTESTABLE 槽位、修复失败而保留旧文件的槽位均不更新时间。
+            record_province_update_times(repo_root, province, group_changed)
+            print(
+                f"[+] [{group_title}] 本组定向修复完成：成功更新 {repaired_slots} 个失效槽位"
+                + (f"；仍有 {unrepaired_slots} 个槽位未找到合格替代源，旧文件保持不变。" if unrepaired_slots else "。")
+            )
+            print(
+                f"[*] [{group_title}] 上方记录的更新时间仅对应本轮实际抓取到新 IP/播放列表并生成的文件；"
+                "原本测速有效的文件继续保持上一次记录。"
+            )
+        else:
+            print(
+                f"[!] [{group_title}] 本组失效槽位本轮均未找到合格替代源；"
+                "保留原 M3U/TXT 和原更新时间，不写入新的完成时间。"
+            )
 
     if changed:
         update_readme_file_list(repo_root)
     return changed
-
 
 def process_province(
     province,
