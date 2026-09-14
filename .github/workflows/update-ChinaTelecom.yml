@@ -372,3 +372,65 @@ jobs:
               --max-per-carrier 20 \
               --push
           fi
+      - name: Sync M3U playlists to Secret Gist
+        if: steps.active.outputs.active == 'true'
+        env:
+          GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
+          GIST_ID: ${{ secrets.IPTV_GIST_ID }}
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import urllib.request
+          from pathlib import Path
+
+          token = os.environ["GIST_TOKEN"].strip()
+          gist_id = os.environ["GIST_ID"].strip()
+
+          if not token:
+              raise RuntimeError("GIST_TOKEN is empty")
+          if not gist_id:
+              raise RuntimeError("IPTV_GIST_ID is empty")
+
+          m3u_dir = Path("m3u")
+          files = {}
+
+          for path in sorted(m3u_dir.glob("*.m3u")):
+              if path.is_file():
+                  files[path.name] = {
+                      "content": path.read_text(encoding="utf-8")
+                  }
+
+          if not files:
+              raise RuntimeError("No .m3u files found under m3u/")
+
+          payload = json.dumps(
+              {"files": files},
+              ensure_ascii=False
+          ).encode("utf-8")
+
+          req = urllib.request.Request(
+              f"https://api.github.com/gists/{gist_id}",
+              data=payload,
+              method="PATCH",
+              headers={
+                  "Accept": "application/vnd.github+json",
+                  "Authorization": f"Bearer {token}",
+                  "X-GitHub-Api-Version": "2022-11-28",
+                  "Content-Type": "application/json",
+                  "User-Agent": "4K-IPTV-M3U-Gist-Sync",
+              },
+          )
+
+          with urllib.request.urlopen(req, timeout=120) as response:
+              body = response.read().decode("utf-8", errors="replace")
+              if response.status != 200:
+                  raise RuntimeError(
+                      f"Gist sync failed: HTTP {response.status}: {body}"
+                  )
+
+          print(f"[*] Secret Gist sync successful: {len(files)} M3U files uploaded.")
+          for name in sorted(files):
+              print(f"    - {name}")
+          PY
