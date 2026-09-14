@@ -1,6 +1,6 @@
 ## 4K-IPTV-M3U
 
-基于组播源的省级直播列表仓库，按省份自动生成 `m3u/txt` 文件，并在 README 中展示可直接使用的加速下载链接。
+基于组播源的省级直播列表仓库，按省份自动生成 `m3u/txt` 文件，并在 README 中展示可直接使用和复制的播放列表链接。
 ### 咪咕源 实时更新 https://gh-proxy.org/https://github.com/jia070310/lemonTV/blob/main/iptv-fe.m3u
 ### 相关播放器项目
 
@@ -20,8 +20,10 @@
 ### 更新机制
 
 - 定时任务执行后自动更新 `m3u`、`txt`
+- M3U 播放列表自动同步至 Secret Gist
 - 同步自动重写 README 文件列表（含“最近更新时间”）
-- 下载链接统一使用 `gh-proxy` 加速前缀
+- M3U 订阅地址统一使用 Secret Gist RAW 固定地址
+- TXT 文件保留在 Private 仓库中，通过仓库链接查看
 
 ### 本地运行
 
@@ -30,10 +32,11 @@ pip install -r requirements.txt
 python rtp/b.py
 ```
 
-## 加速下载说明
+## 链接说明
 
-以下下载链接均已添加 `gh-proxy` 加速前缀，可直接使用。  
-GitHub README 不支持可执行脚本，`onclick` 复制按钮会失效，因此改为“可复制直链”文本（手动复制即可）。
+M3U 播放列表使用 Secret Gist RAW 固定地址，可直接复制到播放器中使用。  
+TXT 文件继续保存在 Private 仓库中，登录 GitHub 后可通过仓库链接查看。  
+GitHub README 不支持可执行脚本，`onclick` 复制按钮会失效，因此继续使用“可复制直链”文本（手动复制即可）。
 
 ---
 
