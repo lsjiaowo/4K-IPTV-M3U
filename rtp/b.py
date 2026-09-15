@@ -94,6 +94,20 @@ PROVINCE_CODES = {
     "新疆": "xj", "台湾": "tw", "俄罗斯": "ru", "韩国": "kr",
 }
 
+# “全部省份抓取”仅遍历中国大陆31个省级地区；台湾、俄罗斯、韩国不进入自动全国扫描。
+ALL_MAINLAND_PROVINCES = [
+    province for province in PROVINCE_CODES
+    if province not in {"台湾", "俄罗斯", "韩国"}
+]
+
+# 全国抓取时的运营商优先省份。优先列表只改变执行顺序，不会重复抓取；
+# 优先省份完成后继续处理其余全部大陆省份。
+CARRIER_PRIORITY_PROVINCES = {
+    "电信": ["四川", "浙江", "湖北", "安徽", "山西", "广东", "湖南", "河北", "陕西", "福建"],
+    "联通": ["北京", "四川", "天津", "山东", "山西", "河北", "河南", "海南", "重庆", "黑龙江"],
+    "移动": [],
+}
+
 
 def get_root_domain(domain):
     """提取根域名，防 DDNS 假去重"""
@@ -2793,15 +2807,34 @@ def split_selection(value: str) -> list[str]:
 
 
 def parse_province_selection(value: str) -> list[str]:
+    """解析省份选择；“全部”仅返回中国大陆31个省级地区。"""
     items = split_selection(value)
     if not items:
         return list(PROVINCES)
     if "全部" in items:
-        return list(PROVINCE_CODES)
+        return list(ALL_MAINLAND_PROVINCES)
     unknown = [item for item in items if item not in PROVINCE_CODES]
     if unknown:
         raise ValueError(f"未知省份：{', '.join(unknown)}")
     return items
+
+
+def order_all_provinces_for_carriers(
+    provinces: list[str],
+    carriers: tuple[str, ...],
+) -> list[str]:
+    """全国抓取时按运营商优先省份排序；其余省份保持统一大陆省份顺序。
+
+    单运营商电信/联通使用各自固定10省优先顺序；移动没有额外优先省份。
+    多运营商组合不强行套用某一个运营商的优先级，保持原省份顺序。
+    """
+    if len(carriers) != 1:
+        return list(provinces)
+    priority = CARRIER_PRIORITY_PROVINCES.get(carriers[0], [])
+    selected = set(provinces)
+    ordered = [province for province in priority if province in selected]
+    ordered.extend(province for province in provinces if province not in ordered)
+    return ordered
 
 
 def parse_carrier_selection(value: str) -> tuple[str, ...]:
@@ -2854,7 +2887,7 @@ def parse_args():
     ap.add_argument(
         "--provinces",
         default="",
-        help="处理一个、多个或全部省份，例如：安徽,湖北 或 全部。",
+        help="处理一个、多个或全部省份，例如：安徽,湖北 或 全部；全部仅遍历中国大陆31个省级地区，电信/联通自动应用优先省份顺序。",
     )
     ap.add_argument(
         "--carriers",
@@ -2989,10 +3022,21 @@ def main():
                 raise ValueError("--only-province 只能指定一个省份")
             execution_plan = {provinces[0]: selected_carriers}
         else:
-            execution_plan = {
-                province: selected_carriers
-                for province in parse_province_selection(args.provinces)
-            }
+            provinces = parse_province_selection(args.provinces)
+            if "全部" in split_selection(args.provinces):
+                provinces = order_all_provinces_for_carriers(provinces, selected_carriers)
+                priority = CARRIER_PRIORITY_PROVINCES.get(selected_carriers[0], []) if len(selected_carriers) == 1 else []
+                if priority:
+                    print(
+                        f"[*] 全部省份抓取：运营商={selected_carriers[0]}；"
+                        f"优先顺序={','.join(priority)}；优先省份完成后继续其余全部大陆省份。"
+                    )
+                else:
+                    print(
+                        f"[*] 全部省份抓取：运营商={','.join(selected_carriers)}；"
+                        "按统一大陆省份顺序执行。"
+                    )
+            execution_plan = {province: selected_carriers for province in provinces}
     except ValueError as exc:
         raise SystemExit(f"参数错误：{exc}") from exc
 
