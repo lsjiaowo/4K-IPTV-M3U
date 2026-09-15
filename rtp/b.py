@@ -2296,6 +2296,121 @@ def _write_single_playlist_slot(repo_root: str, group_title: str, suffix: str, c
     return [f"txt/{file_stem}.txt", f"m3u/{file_stem}.m3u"]
 
 
+
+# ===== 手动指定公网 endpoint 导入 =====
+def _validate_manual_endpoint(value: str) -> str:
+    """校验并规范化人工输入的 IPv4:PORT；只接受明确的 IPv4 和 1~65535 端口。"""
+    text = normalize_source_host((value or "").strip())
+    m = re.fullmatch(r"(\d{1,3}(?:\.\d{1,3}){3}):(\d{1,5})", text)
+    if not m:
+        raise ValueError("--manual-endpoint 必须是 IPv4:PORT，例如 122.246.149.196:8188")
+    ip_text, port_text = m.groups()
+    if any(int(part) > 255 for part in ip_text.split(".")):
+        raise ValueError(f"--manual-endpoint IPv4 地址无效：{ip_text}")
+    port = int(port_text)
+    if not 1 <= port <= 65535:
+        raise ValueError(f"--manual-endpoint 端口无效：{port}")
+    return f"{ip_text}:{port}"
+
+
+def _next_free_playlist_suffix(repo_root: str, group_title: str) -> str:
+    """返回当前分组第一个空闲槽位：主槽位为空则返回''，否则依次 1、2、3...。"""
+    m3u_dir = Path(repo_root) / "m3u"
+    suffix = ""
+    index = 0
+    while (m3u_dir / f"{group_title}{suffix}.m3u").exists():
+        index += 1
+        suffix = str(index)
+    return suffix
+
+
+def _normalize_manual_replace_slot(value: str, group_title: str) -> str:
+    """把“浙江电信1 / 浙江电信1.m3u / 1”规范化为槽位后缀；主槽位可填 浙江电信 或 0。"""
+    text = (value or "").strip()
+    if not text:
+        raise ValueError("替换指定槽位时必须填写 --manual-endpoint-slot")
+    text = os.path.basename(text.replace("\\", "/"))
+    if text.lower().endswith(".m3u"):
+        text = text[:-4]
+    if text == "0":
+        return ""
+    if text.isdigit():
+        return "" if int(text) == 0 else str(int(text))
+    m = re.fullmatch(re.escape(group_title) + r"(\d*)", text)
+    if not m:
+        raise ValueError(f"替换槽位必须属于 {group_title}，例如 {group_title}1 或 1")
+    return m.group(1)
+
+
+def run_manual_endpoint_import(repo_root: str, args) -> list[str]:
+    """
+    人工指定公网 IP:PORT 导入。
+    只跳过 cqshushu 的候选服务器发现/真实端口解析；频道必须来自本地 channel_templates，
+    并继续执行正式 CCTV 随机2频道测速（1个通过即合格）、精确 endpoint 去重、TXT/M3U 输出。
+    add=写入第一个空闲槽位；replace=只覆盖明确指定且已存在的槽位。
+    """
+    endpoint = _validate_manual_endpoint(args.manual_endpoint)
+    target = (args.manual_endpoint_target or "").strip()
+    identity = _playlist_identity(f"{target}.m3u")
+    if not identity:
+        raise ValueError("--manual-endpoint-target 必须是有效的“省份+运营商”，例如 浙江电信")
+    province, carrier, group_title, _ = identity
+
+    template_channels, template_path = load_local_channel_template(group_title)
+    if not template_channels:
+        raise ValueError(
+            f"{group_title} 没有可用的 channel_templates 本地模板；手动 endpoint 模式不会改用 cqshushu 频道内容"
+        )
+    lines = build_template_channel_lines(template_channels, endpoint)
+    if not lines:
+        raise ValueError(f"无法用 {endpoint} 构造 {group_title} 模板播放地址")
+
+    action = args.manual_endpoint_action
+    if action == "replace":
+        suffix = _normalize_manual_replace_slot(args.manual_endpoint_slot, group_title)
+        target_path = Path(repo_root) / "m3u" / f"{group_title}{suffix}.m3u"
+        if not target_path.exists():
+            raise ValueError(f"指定替换槽位不存在：{target_path.name}；为避免误建文件，已停止")
+    else:
+        suffix = _next_free_playlist_suffix(repo_root, group_title)
+        target_path = Path(repo_root) / "m3u" / f"{group_title}{suffix}.m3u"
+
+    # 同组其它槽位用于精确 endpoint 去重。replace 时排除被替换槽位自身。
+    occupied: dict[str, str] = {}
+    for path in sorted((Path(repo_root) / "m3u").glob(f"{group_title}*.m3u")):
+        if action == "replace" and path.resolve() == target_path.resolve():
+            continue
+        ident = _playlist_identity(path.name)
+        if not ident or ident[2] != group_title:
+            continue
+        old_endpoint = normalize_source_host(_source_host_from_m3u(str(path)))
+        if old_endpoint:
+            occupied[path.name] = old_endpoint
+    duplicate_file = next((name for name, old in occupied.items() if old == endpoint), "")
+    if duplicate_file:
+        raise ValueError(f"endpoint {endpoint} 已存在于 {duplicate_file}，禁止生成重复槽位")
+
+    formal_speed = resolve_min_stream_speed(province, args.min_stream_speed)
+    print(f"[*] [{group_title}] 手动 endpoint={endpoint}；操作={'添加新槽位' if action == 'add' else '替换指定槽位'}；目标={target_path.name}")
+    print(f"[*] [{group_title}] 频道来源锁定={template_path}；不搜索 cqshushu 服务器列表；正式门槛 > {formal_speed * 1024:.0f} KB/s。")
+    print(f"[*] [{group_title}] 同组其它槽位 endpoint 去重={occupied or '无'}")
+
+    if not is_template_source_playable(
+        lines,
+        f"{group_title} 手动 {endpoint}",
+        min_speed_mb_s=formal_speed,
+        sample_seconds=args.stream_test_seconds,
+        test_channels=args.test_channels_per_source,
+    ):
+        print(f"[-] [{group_title}] 手动 endpoint {endpoint} 未通过正式测速，不写入任何播放列表。")
+        return []
+
+    paths = _write_single_playlist_slot(repo_root, group_title, suffix, lines)
+    record_province_update_times(repo_root, province, paths)
+    update_readme_file_list(repo_root)
+    print(f"[+] [{group_title}] 手动 endpoint {endpoint} 测速通过，已写入 {target_path.name} 及同名 TXT。")
+    return paths
+
 def repair_failed_playlist_slot(
     repo_root: str,
     province: str,
@@ -2887,7 +3002,7 @@ def parse_args():
     ap.add_argument(
         "--provinces",
         default="",
-        help="处理一个、多个或全部省份，例如：安徽,湖北 或 全部；全部仅遍历中国大陆31个省级地区，电信/联通自动应用优先省份顺序。",
+        help="处理一个、多个或全部省份，例如：安徽,湖北 或 全部；全部仅遍历当前脚本支持的中国大陆省级地区（排除台湾、俄罗斯、韩国），电信/联通自动应用优先省份顺序。",
     )
     ap.add_argument(
         "--carriers",
@@ -2934,6 +3049,22 @@ def parse_args():
         type=int,
         default=2,
         help="每条服务器最多抽测的频道数量（默认2）。",
+    )
+    ap.add_argument(
+        "--manual-endpoint", default="",
+        help="手动指定公网转发 endpoint，格式 IPv4:PORT；提供后进入手动 endpoint 导入模式，不搜索 cqshushu 候选服务器。",
+    )
+    ap.add_argument(
+        "--manual-endpoint-target", default="",
+        help="手动 endpoint 所属的省份+运营商，例如 浙江电信。必须存在对应 channel_templates 模板。",
+    )
+    ap.add_argument(
+        "--manual-endpoint-action", choices=("add", "replace"), default="add",
+        help="手动 endpoint 写入方式：add=添加到第一个空闲槽位；replace=替换 --manual-endpoint-slot 指定的现有槽位。",
+    )
+    ap.add_argument(
+        "--manual-endpoint-slot", default="",
+        help="replace 时必填，例如 浙江电信1、浙江电信1.m3u 或 1；主槽位可填 浙江电信 或 0。",
     )
     ap.add_argument(
         "--health-check", action="store_true",
@@ -2996,6 +3127,22 @@ def main():
     repo_root = os.path.dirname(script_dir)
     txt_output_dir = os.path.join(repo_root, "txt")
     m3u_output_dir = os.path.join(repo_root, "m3u")
+
+    if args.manual_endpoint:
+        os.makedirs(txt_output_dir, exist_ok=True)
+        os.makedirs(m3u_output_dir, exist_ok=True)
+        try:
+            changed = run_manual_endpoint_import(repo_root, args)
+        except ValueError as exc:
+            raise SystemExit(f"参数错误：{exc}") from exc
+        if changed and args.push:
+            publish_paths = sorted(set(changed + [README_FILE]))
+            if os.path.exists(os.path.join(repo_root, UPDATE_TIMES_FILE)):
+                publish_paths.append(UPDATE_TIMES_FILE)
+            push_to_github(publish_paths, province=args.manual_endpoint_target or "手动endpoint")
+        elif changed:
+            print("[+] 手动 endpoint 导入完成；未启用 --push。")
+        return
 
     if args.health_check:
         os.makedirs(txt_output_dir, exist_ok=True)
