@@ -19,6 +19,18 @@ http://39.77.161.85:4001/rtp/239.253.242.27:8000
 http://39.77.161.85:4001/rtp/239.253.242.28:8000
 #EXTINF:-1 tvg-id="四川卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%9B%9B%E5%B7%9D%E5%8D%AB%E8%A7%864K.png" group-title="山东联通",四川卫视4K
 http://39.77.161.85:4001/rtp/239.253.242.123:8000
+#EXTINF:-1 tvg-id="CGTN" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CGTN.png" group-title="山东联通",CGTN
+http://39.77.161.85:4001/rtp/239.253.254.182:8000
+#EXTINF:-1 tvg-id="CGTN" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CGTN.png" group-title="山东联通",CGTN
+http://39.77.161.85:4001/rtp/239.253.254.183:8000
+#EXTINF:-1 tvg-id="CGTN" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CGTN.png" group-title="山东联通",CGTN
+http://39.77.161.85:4001/rtp/239.253.254.184:8000
+#EXTINF:-1 tvg-id="CGTN" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CGTN.png" group-title="山东联通",CGTN
+http://39.77.161.85:4001/rtp/239.253.254.185:8000
+#EXTINF:-1 tvg-id="CGTN" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CGTN.png" group-title="山东联通",CGTN
+http://39.77.161.85:4001/rtp/239.253.254.188:8000
+#EXTINF:-1 tvg-id="CGTN" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CGTN.png" group-title="山东联通",CGTN
+http://39.77.161.85:4001/rtp/239.253.254.189:8000
 #EXTINF:-1 tvg-id="CCTV1" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV1.png" group-title="山东联通",CCTV1
 http://39.77.161.85:4001/rtp/239.253.254.77:8000
 #EXTINF:-1 tvg-id="CCTV2" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV2.png" group-title="山东联通",CCTV2
@@ -61,18 +73,6 @@ http://39.77.161.85:4001/rtp/239.253.254.168:8000
 http://39.77.161.85:4001/rtp/239.253.254.110:8000
 #EXTINF:-1 tvg-id="CETV4" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CETV4.png" group-title="山东联通",CETV4
 http://39.77.161.85:4001/rtp/239.253.254.116:8000
-#EXTINF:-1 tvg-id="CGTN" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CGTN.png" group-title="山东联通",CGTN
-http://39.77.161.85:4001/rtp/239.253.254.182:8000
-#EXTINF:-1 tvg-id="CGTN" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CGTN.png" group-title="山东联通",CGTN
-http://39.77.161.85:4001/rtp/239.253.254.183:8000
-#EXTINF:-1 tvg-id="CGTN" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CGTN.png" group-title="山东联通",CGTN
-http://39.77.161.85:4001/rtp/239.253.254.184:8000
-#EXTINF:-1 tvg-id="CGTN" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CGTN.png" group-title="山东联通",CGTN
-http://39.77.161.85:4001/rtp/239.253.254.185:8000
-#EXTINF:-1 tvg-id="CGTN" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CGTN.png" group-title="山东联通",CGTN
-http://39.77.161.85:4001/rtp/239.253.254.188:8000
-#EXTINF:-1 tvg-id="CGTN" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CGTN.png" group-title="山东联通",CGTN
-http://39.77.161.85:4001/rtp/239.253.254.189:8000
 #EXTINF:-1 tvg-id="安徽卫视" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%AE%89%E5%BE%BD%E5%8D%AB%E8%A7%86.png" group-title="山东联通",安徽卫视
 http://39.77.161.85:4001/rtp/239.253.254.87:8000
 #EXTINF:-1 tvg-id="北京卫视" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%8C%97%E4%BA%AC%E5%8D%AB%E8%A7%86.png" group-title="山东联通",北京卫视
