@@ -73,6 +73,108 @@ http://14.154.169.176:4022/rtp/239.77.1.37:5146
 http://14.154.169.176:4022/rtp/239.77.1.38:5146
 #EXTINF:-1 tvg-id="精选4k频道3" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E7%B2%BE%E9%80%894k%E9%A2%91%E9%81%933.png" group-title="广东电信",精选4k频道3
 http://14.154.169.176:4022/rtp/239.77.0.153:5146
+#EXTINF:-1 tvg-id="CCTV-1高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-1%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-1高清
+http://14.154.169.176:4022/rtp/239.77.1.144:5146
+#EXTINF:-1 tvg-id="CCTV-1高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-1%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-1高清
+http://14.154.169.176:4022/rtp/239.77.1.17:5146
+#EXTINF:-1 tvg-id="CCTV-1高清(CCTV -1综合高清)" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-1%E9%AB%98%E6%B8%85%28CCTV%20-1%E7%BB%BC%E5%90%88%E9%AB%98%E6%B8%85%29.png" group-title="广东电信",CCTV-1高清(CCTV -1综合高清)
+http://14.154.169.176:4022/rtp/239.77.0.86:5146
+#EXTINF:-1 tvg-id="CCTV-1高清4M" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-1%E9%AB%98%E6%B8%854M.png" group-title="广东电信",CCTV-1高清4M
+http://14.154.169.176:4022/rtp/239.77.0.119:5146
+#EXTINF:-1 tvg-id="CCTV-2高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-2%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-2高清
+http://14.154.169.176:4022/rtp/239.77.1.158:5146
+#EXTINF:-1 tvg-id="CCTV-2高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-2%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-2高清
+http://14.154.169.176:4022/rtp/239.253.43.17:5146
+#EXTINF:-1 tvg-id="CCTV-2高清测试(CCTV -2财经高清)" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-2%E9%AB%98%E6%B8%85%E6%B5%8B%E8%AF%95%28CCTV%20-2%E8%B4%A2%E7%BB%8F%E9%AB%98%E6%B8%85%29.png" group-title="广东电信",CCTV-2高清测试(CCTV -2财经高清)
+http://14.154.169.176:4022/rtp/239.77.0.137:5146
+#EXTINF:-1 tvg-id="CCTV-3高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-3%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-3高清
+http://14.154.169.176:4022/rtp/239.77.0.169:5146
+#EXTINF:-1 tvg-id="CCTV-4高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-4%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-4高清
+http://14.154.169.176:4022/rtp/239.77.1.163:5146
+#EXTINF:-1 tvg-id="CCTV-4高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-4%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-4高清
+http://14.154.169.176:4022/rtp/239.77.1.166:5146
+#EXTINF:-1 tvg-id="CCTV-4高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-4%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-4高清
+http://14.154.169.176:4022/rtp/239.77.0.78:5146
+#EXTINF:-1 tvg-id="CCTV4中文国际美洲高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV4%E4%B8%AD%E6%96%87%E5%9B%BD%E9%99%85%E7%BE%8E%E6%B4%B2%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV4中文国际美洲高清
+http://14.154.169.176:4022/rtp/239.253.43.121:5146
+#EXTINF:-1 tvg-id="CCTV4中文国际欧洲高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV4%E4%B8%AD%E6%96%87%E5%9B%BD%E9%99%85%E6%AC%A7%E6%B4%B2%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV4中文国际欧洲高清
+http://14.154.169.176:4022/rtp/239.253.43.120:5146
+#EXTINF:-1 tvg-id="CCTV-5高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-5%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-5高清
+http://14.154.169.176:4022/rtp/239.77.0.170:5146
+#EXTINF:-1 tvg-id="CCTV5+体育高清-测试" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV5%2B%E4%BD%93%E8%82%B2%E9%AB%98%E6%B8%85-%E6%B5%8B%E8%AF%95.png" group-title="广东电信",CCTV5+体育高清-测试
+http://14.154.169.176:4022/rtp/239.77.0.87:5146
+#EXTINF:-1 tvg-id="CCTV-5+高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-5%2B%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-5+高清
+http://14.154.169.176:4022/rtp/239.77.1.31:5146
+#EXTINF:-1 tvg-id="CCTV-6高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-6%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-6高清
+http://14.154.169.176:4022/rtp/239.77.0.171:5146
+#EXTINF:-1 tvg-id="CCTV-7高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-7%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-7高清
+http://14.154.169.176:4022/rtp/239.77.1.167:5146
+#EXTINF:-1 tvg-id="CCTV-7高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-7%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-7高清
+http://14.154.169.176:4022/rtp/239.77.1.159:5146
+#EXTINF:-1 tvg-id="CCTV-7高清测试(CCTV -7军事农业高清)" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-7%E9%AB%98%E6%B8%85%E6%B5%8B%E8%AF%95%28CCTV%20-7%E5%86%9B%E4%BA%8B%E5%86%9C%E4%B8%9A%E9%AB%98%E6%B8%85%29.png" group-title="广东电信",CCTV-7高清测试(CCTV -7军事农业高清)
+http://14.154.169.176:4022/rtp/239.77.0.138:5146
+#EXTINF:-1 tvg-id="CCTV-8高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-8%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-8高清
+http://14.154.169.176:4022/rtp/239.77.0.172:5146
+#EXTINF:-1 tvg-id="CCTV-9高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-9%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-9高清
+http://14.154.169.176:4022/rtp/239.77.1.160:5146
+#EXTINF:-1 tvg-id="CCTV-9高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-9%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-9高清
+http://14.154.169.176:4022/rtp/239.77.1.168:5146
+#EXTINF:-1 tvg-id="CCTV-9高清测试" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-9%E9%AB%98%E6%B8%85%E6%B5%8B%E8%AF%95.png" group-title="广东电信",CCTV-9高清测试
+http://14.154.169.176:4022/rtp/239.77.0.135:5146
+#EXTINF:-1 tvg-id="CCTV-10高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-10%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-10高清
+http://14.154.169.176:4022/rtp/239.77.1.113:5146
+#EXTINF:-1 tvg-id="CCTV-10高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-10%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-10高清
+http://14.154.169.176:4022/rtp/239.77.1.169:5146
+#EXTINF:-1 tvg-id="CCTV-10高清测试(CCTV-10科教高清)" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-10%E9%AB%98%E6%B8%85%E6%B5%8B%E8%AF%95%28CCTV-10%E7%A7%91%E6%95%99%E9%AB%98%E6%B8%85%29.png" group-title="广东电信",CCTV-10高清测试(CCTV-10科教高清)
+http://14.154.169.176:4022/rtp/239.77.0.134:5146
+#EXTINF:-1 tvg-id="CCTV-11高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-11%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-11高清
+http://14.154.169.176:4022/rtp/239.77.1.108:5146
+#EXTINF:-1 tvg-id="CCTV-11高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-11%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-11高清
+http://14.154.169.176:4022/rtp/239.77.1.238:5146
+#EXTINF:-1 tvg-id="CCTV-12高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-12%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-12高清
+http://14.154.169.176:4022/rtp/239.77.1.109:5146
+#EXTINF:-1 tvg-id="CCTV-12高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-12%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-12高清
+http://14.154.169.176:4022/rtp/239.77.1.170:5146
+#EXTINF:-1 tvg-id="CCTV-12高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-12%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-12高清
+http://14.154.169.176:4022/rtp/239.77.1.190:5146
+#EXTINF:-1 tvg-id="CCTV-12高清测试" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-12%E9%AB%98%E6%B8%85%E6%B5%8B%E8%AF%95.png" group-title="广东电信",CCTV-12高清测试
+http://14.154.169.176:4022/rtp/239.77.0.136:5146
+#EXTINF:-1 tvg-id="CCTV-13高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-13%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-13高清
+http://14.154.169.176:4022/rtp/239.253.43.196:5146
+#EXTINF:-1 tvg-id="CCTV-13高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-13%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-13高清
+http://14.154.169.176:4022/rtp/239.77.0.188:5146
+#EXTINF:-1 tvg-id="CCTV-14高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-14%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-14高清
+http://14.154.169.176:4022/rtp/239.77.1.161:5146
+#EXTINF:-1 tvg-id="CCTV-14高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-14%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-14高清
+http://14.154.169.176:4022/rtp/239.77.1.171:5146
+#EXTINF:-1 tvg-id="CCTV-14高清测试" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-14%E9%AB%98%E6%B8%85%E6%B5%8B%E8%AF%95.png" group-title="广东电信",CCTV-14高清测试
+http://14.154.169.176:4022/rtp/239.77.0.133:5146
+#EXTINF:-1 tvg-id="CCTV-15高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-15%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-15高清
+http://14.154.169.176:4022/rtp/239.77.1.120:5146
+#EXTINF:-1 tvg-id="CCTV-15高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-15%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-15高清
+http://14.154.169.176:4022/rtp/239.77.1.239:5146
+#EXTINF:-1 tvg-id="CCTV-16高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-16%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-16高清
+http://14.154.169.176:4022/rtp/239.77.0.165:5146
+#EXTINF:-1 tvg-id="CCTV-17高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-17%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-17高清
+http://14.154.169.176:4022/rtp/239.77.1.121:5146
+#EXTINF:-1 tvg-id="CCTV-17农业高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-17%E5%86%9C%E4%B8%9A%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-17农业高清
+http://14.154.169.176:4022/rtp/239.77.0.198:5146
+#EXTINF:-1 tvg-id="CGTN" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CGTN.png" group-title="广东电信",CGTN
+http://14.154.169.176:4022/rtp/239.77.0.45:5146
+#EXTINF:-1 tvg-id="CGTN" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CGTN.png" group-title="广东电信",CGTN
+http://14.154.169.176:4022/rtp/239.77.1.27:5146
+#EXTINF:-1 tvg-id="CGTN英语高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CGTN%E8%8B%B1%E8%AF%AD%E9%AB%98%E6%B8%85.png" group-title="广东电信",CGTN英语高清
+http://14.154.169.176:4022/rtp/239.77.0.199:5146
+#EXTINF:-1 tvg-id="CGTN英文记录高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CGTN%E8%8B%B1%E6%96%87%E8%AE%B0%E5%BD%95%E9%AB%98%E6%B8%85.png" group-title="广东电信",CGTN英文记录高清
+http://14.154.169.176:4022/rtp/239.253.43.122:5146
+#EXTINF:-1 tvg-id="CGTN西班牙语高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CGTN%E8%A5%BF%E7%8F%AD%E7%89%99%E8%AF%AD%E9%AB%98%E6%B8%85.png" group-title="广东电信",CGTN西班牙语高清
+http://14.154.169.176:4022/rtp/239.77.0.221:5146
+#EXTINF:-1 tvg-id="CGTN法语高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CGTN%E6%B3%95%E8%AF%AD%E9%AB%98%E6%B8%85.png" group-title="广东电信",CGTN法语高清
+http://14.154.169.176:4022/rtp/239.77.0.228:5146
+#EXTINF:-1 tvg-id="CGTN阿拉伯语高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CGTN%E9%98%BF%E6%8B%89%E4%BC%AF%E8%AF%AD%E9%AB%98%E6%B8%85.png" group-title="广东电信",CGTN阿拉伯语高清
+http://14.154.169.176:4022/rtp/239.253.43.200:5146
+#EXTINF:-1 tvg-id="CGTN俄语高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CGTN%E4%BF%84%E8%AF%AD%E9%AB%98%E6%B8%85.png" group-title="广东电信",CGTN俄语高清
+http://14.154.169.176:4022/rtp/239.253.43.201:5146
 #EXTINF:-1 tvg-id="广东卫视时移专用(广东卫视)" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%B9%BF%E4%B8%9C%E5%8D%AB%E8%A7%86%E6%97%B6%E7%A7%BB%E4%B8%93%E7%94%A8%28%E5%B9%BF%E4%B8%9C%E5%8D%AB%E8%A7%86%29.png" group-title="广东电信",广东卫视时移专用(广东卫视)
 http://14.154.169.176:4022/rtp/239.77.0.84:5146
 #EXTINF:-1 tvg-id="广东卫视高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%B9%BF%E4%B8%9C%E5%8D%AB%E8%A7%86%E9%AB%98%E6%B8%85.png" group-title="广东电信",广东卫视高清
@@ -243,148 +345,46 @@ http://14.154.169.176:4022/rtp/239.253.43.83:5146
 http://14.154.169.176:4022/rtp/239.77.0.14:5146
 #EXTINF:-1 tvg-id="CCTV-1综合" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-1%E7%BB%BC%E5%90%88.png" group-title="广东电信",CCTV-1综合
 http://14.154.169.176:4022/rtp/239.77.0.30:5146
-#EXTINF:-1 tvg-id="CCTV-1高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-1%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-1高清
-http://14.154.169.176:4022/rtp/239.77.1.144:5146
-#EXTINF:-1 tvg-id="CCTV-1高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-1%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-1高清
-http://14.154.169.176:4022/rtp/239.77.1.17:5146
-#EXTINF:-1 tvg-id="CCTV-1高清(CCTV -1综合高清)" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-1%E9%AB%98%E6%B8%85%28CCTV%20-1%E7%BB%BC%E5%90%88%E9%AB%98%E6%B8%85%29.png" group-title="广东电信",CCTV-1高清(CCTV -1综合高清)
-http://14.154.169.176:4022/rtp/239.77.0.86:5146
-#EXTINF:-1 tvg-id="CCTV-1高清4M" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-1%E9%AB%98%E6%B8%854M.png" group-title="广东电信",CCTV-1高清4M
-http://14.154.169.176:4022/rtp/239.77.0.119:5146
 #EXTINF:-1 tvg-id="CCTV-1超清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-1%E8%B6%85%E6%B8%85.png" group-title="广东电信",CCTV-1超清
 http://14.154.169.176:4022/rtp/239.77.0.129:5146
 #EXTINF:-1 tvg-id="CCTV-2财经" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-2%E8%B4%A2%E7%BB%8F.png" group-title="广东电信",CCTV-2财经
 http://14.154.169.176:4022/rtp/239.77.0.31:5146
-#EXTINF:-1 tvg-id="CCTV-2高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-2%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-2高清
-http://14.154.169.176:4022/rtp/239.77.1.158:5146
-#EXTINF:-1 tvg-id="CCTV-2高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-2%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-2高清
-http://14.154.169.176:4022/rtp/239.253.43.17:5146
-#EXTINF:-1 tvg-id="CCTV-2高清测试(CCTV -2财经高清)" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-2%E9%AB%98%E6%B8%85%E6%B5%8B%E8%AF%95%28CCTV%20-2%E8%B4%A2%E7%BB%8F%E9%AB%98%E6%B8%85%29.png" group-title="广东电信",CCTV-2高清测试(CCTV -2财经高清)
-http://14.154.169.176:4022/rtp/239.77.0.137:5146
 #EXTINF:-1 tvg-id="CCTV-3综艺" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-3%E7%BB%BC%E8%89%BA.png" group-title="广东电信",CCTV-3综艺
 http://14.154.169.176:4022/rtp/239.77.0.32:5146
-#EXTINF:-1 tvg-id="CCTV-3高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-3%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-3高清
-http://14.154.169.176:4022/rtp/239.77.0.169:5146
 #EXTINF:-1 tvg-id="CCTV-3超清 (CAVS)" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-3%E8%B6%85%E6%B8%85%20%28CAVS%29.png" group-title="广东电信",CCTV-3超清 (CAVS)
 http://14.154.169.176:4022/rtp/239.77.0.175:5146
 #EXTINF:-1 tvg-id="CCTV-4中文国际" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-4%E4%B8%AD%E6%96%87%E5%9B%BD%E9%99%85.png" group-title="广东电信",CCTV-4中文国际
 http://14.154.169.176:4022/rtp/239.77.0.33:5146
-#EXTINF:-1 tvg-id="CCTV-4高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-4%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-4高清
-http://14.154.169.176:4022/rtp/239.77.1.163:5146
-#EXTINF:-1 tvg-id="CCTV-4高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-4%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-4高清
-http://14.154.169.176:4022/rtp/239.77.1.166:5146
-#EXTINF:-1 tvg-id="CCTV-4高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-4%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-4高清
-http://14.154.169.176:4022/rtp/239.77.0.78:5146
-#EXTINF:-1 tvg-id="CCTV4中文国际美洲高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV4%E4%B8%AD%E6%96%87%E5%9B%BD%E9%99%85%E7%BE%8E%E6%B4%B2%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV4中文国际美洲高清
-http://14.154.169.176:4022/rtp/239.253.43.121:5146
-#EXTINF:-1 tvg-id="CCTV4中文国际欧洲高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV4%E4%B8%AD%E6%96%87%E5%9B%BD%E9%99%85%E6%AC%A7%E6%B4%B2%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV4中文国际欧洲高清
-http://14.154.169.176:4022/rtp/239.253.43.120:5146
 #EXTINF:-1 tvg-id="CCTV-5体育" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-5%E4%BD%93%E8%82%B2.png" group-title="广东电信",CCTV-5体育
 http://14.154.169.176:4022/rtp/239.77.0.34:5146
-#EXTINF:-1 tvg-id="CCTV-5高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-5%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-5高清
-http://14.154.169.176:4022/rtp/239.77.0.170:5146
 #EXTINF:-1 tvg-id="CCTV-5超清 (CAVS)" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-5%E8%B6%85%E6%B8%85%20%28CAVS%29.png" group-title="广东电信",CCTV-5超清 (CAVS)
 http://14.154.169.176:4022/rtp/239.77.0.177:5146
-#EXTINF:-1 tvg-id="CCTV5+体育高清-测试" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV5%2B%E4%BD%93%E8%82%B2%E9%AB%98%E6%B8%85-%E6%B5%8B%E8%AF%95.png" group-title="广东电信",CCTV5+体育高清-测试
-http://14.154.169.176:4022/rtp/239.77.0.87:5146
-#EXTINF:-1 tvg-id="CCTV-5+高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-5%2B%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-5+高清
-http://14.154.169.176:4022/rtp/239.77.1.31:5146
 #EXTINF:-1 tvg-id="CCTV-6电影" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-6%E7%94%B5%E5%BD%B1.png" group-title="广东电信",CCTV-6电影
 http://14.154.169.176:4022/rtp/239.77.0.35:5146
-#EXTINF:-1 tvg-id="CCTV-6高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-6%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-6高清
-http://14.154.169.176:4022/rtp/239.77.0.171:5146
 #EXTINF:-1 tvg-id="CCTV-6超清 (CAVS)" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-6%E8%B6%85%E6%B8%85%20%28CAVS%29.png" group-title="广东电信",CCTV-6超清 (CAVS)
 http://14.154.169.176:4022/rtp/239.77.0.178:5146
 #EXTINF:-1 tvg-id="CCTV-7国防军事" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-7%E5%9B%BD%E9%98%B2%E5%86%9B%E4%BA%8B.png" group-title="广东电信",CCTV-7国防军事
 http://14.154.169.176:4022/rtp/239.77.0.36:5146
-#EXTINF:-1 tvg-id="CCTV-7高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-7%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-7高清
-http://14.154.169.176:4022/rtp/239.77.1.167:5146
-#EXTINF:-1 tvg-id="CCTV-7高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-7%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-7高清
-http://14.154.169.176:4022/rtp/239.77.1.159:5146
-#EXTINF:-1 tvg-id="CCTV-7高清测试(CCTV -7军事农业高清)" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-7%E9%AB%98%E6%B8%85%E6%B5%8B%E8%AF%95%28CCTV%20-7%E5%86%9B%E4%BA%8B%E5%86%9C%E4%B8%9A%E9%AB%98%E6%B8%85%29.png" group-title="广东电信",CCTV-7高清测试(CCTV -7军事农业高清)
-http://14.154.169.176:4022/rtp/239.77.0.138:5146
 #EXTINF:-1 tvg-id="CCTV-8电视剧" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-8%E7%94%B5%E8%A7%86%E5%89%A7.png" group-title="广东电信",CCTV-8电视剧
 http://14.154.169.176:4022/rtp/239.77.0.37:5146
-#EXTINF:-1 tvg-id="CCTV-8高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-8%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-8高清
-http://14.154.169.176:4022/rtp/239.77.0.172:5146
 #EXTINF:-1 tvg-id="CCTV-8超清 (CAVS)" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-8%E8%B6%85%E6%B8%85%20%28CAVS%29.png" group-title="广东电信",CCTV-8超清 (CAVS)
 http://14.154.169.176:4022/rtp/239.77.0.181:5146
 #EXTINF:-1 tvg-id="CCTV-9纪录" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-9%E7%BA%AA%E5%BD%95.png" group-title="广东电信",CCTV-9纪录
 http://14.154.169.176:4022/rtp/239.77.0.38:5146
-#EXTINF:-1 tvg-id="CCTV-9高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-9%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-9高清
-http://14.154.169.176:4022/rtp/239.77.1.160:5146
-#EXTINF:-1 tvg-id="CCTV-9高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-9%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-9高清
-http://14.154.169.176:4022/rtp/239.77.1.168:5146
-#EXTINF:-1 tvg-id="CCTV-9高清测试" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-9%E9%AB%98%E6%B8%85%E6%B5%8B%E8%AF%95.png" group-title="广东电信",CCTV-9高清测试
-http://14.154.169.176:4022/rtp/239.77.0.135:5146
 #EXTINF:-1 tvg-id="CCTV-10科教" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-10%E7%A7%91%E6%95%99.png" group-title="广东电信",CCTV-10科教
 http://14.154.169.176:4022/rtp/239.77.0.39:5146
-#EXTINF:-1 tvg-id="CCTV-10高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-10%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-10高清
-http://14.154.169.176:4022/rtp/239.77.1.113:5146
-#EXTINF:-1 tvg-id="CCTV-10高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-10%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-10高清
-http://14.154.169.176:4022/rtp/239.77.1.169:5146
-#EXTINF:-1 tvg-id="CCTV-10高清测试(CCTV-10科教高清)" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-10%E9%AB%98%E6%B8%85%E6%B5%8B%E8%AF%95%28CCTV-10%E7%A7%91%E6%95%99%E9%AB%98%E6%B8%85%29.png" group-title="广东电信",CCTV-10高清测试(CCTV-10科教高清)
-http://14.154.169.176:4022/rtp/239.77.0.134:5146
 #EXTINF:-1 tvg-id="CCTV-11戏曲" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-11%E6%88%8F%E6%9B%B2.png" group-title="广东电信",CCTV-11戏曲
 http://14.154.169.176:4022/rtp/239.77.0.40:5146
-#EXTINF:-1 tvg-id="CCTV-11高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-11%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-11高清
-http://14.154.169.176:4022/rtp/239.77.1.108:5146
-#EXTINF:-1 tvg-id="CCTV-11高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-11%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-11高清
-http://14.154.169.176:4022/rtp/239.77.1.238:5146
 #EXTINF:-1 tvg-id="CCTV-12社会与法" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-12%E7%A4%BE%E4%BC%9A%E4%B8%8E%E6%B3%95.png" group-title="广东电信",CCTV-12社会与法
 http://14.154.169.176:4022/rtp/239.77.0.41:5146
-#EXTINF:-1 tvg-id="CCTV-12高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-12%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-12高清
-http://14.154.169.176:4022/rtp/239.77.1.109:5146
-#EXTINF:-1 tvg-id="CCTV-12高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-12%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-12高清
-http://14.154.169.176:4022/rtp/239.77.1.170:5146
-#EXTINF:-1 tvg-id="CCTV-12高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-12%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-12高清
-http://14.154.169.176:4022/rtp/239.77.1.190:5146
-#EXTINF:-1 tvg-id="CCTV-12高清测试" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-12%E9%AB%98%E6%B8%85%E6%B5%8B%E8%AF%95.png" group-title="广东电信",CCTV-12高清测试
-http://14.154.169.176:4022/rtp/239.77.0.136:5146
 #EXTINF:-1 tvg-id="CCTV-13新闻" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-13%E6%96%B0%E9%97%BB.png" group-title="广东电信",CCTV-13新闻
 http://14.154.169.176:4022/rtp/239.77.0.42:5146
-#EXTINF:-1 tvg-id="CCTV-13高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-13%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-13高清
-http://14.154.169.176:4022/rtp/239.253.43.196:5146
-#EXTINF:-1 tvg-id="CCTV-13高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-13%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-13高清
-http://14.154.169.176:4022/rtp/239.77.0.188:5146
 #EXTINF:-1 tvg-id="CCTV-14少儿" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-14%E5%B0%91%E5%84%BF.png" group-title="广东电信",CCTV-14少儿
 http://14.154.169.176:4022/rtp/239.77.0.43:5146
-#EXTINF:-1 tvg-id="CCTV-14高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-14%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-14高清
-http://14.154.169.176:4022/rtp/239.77.1.161:5146
-#EXTINF:-1 tvg-id="CCTV-14高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-14%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-14高清
-http://14.154.169.176:4022/rtp/239.77.1.171:5146
-#EXTINF:-1 tvg-id="CCTV-14高清测试" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-14%E9%AB%98%E6%B8%85%E6%B5%8B%E8%AF%95.png" group-title="广东电信",CCTV-14高清测试
-http://14.154.169.176:4022/rtp/239.77.0.133:5146
 #EXTINF:-1 tvg-id="CCTV-15音乐" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-15%E9%9F%B3%E4%B9%90.png" group-title="广东电信",CCTV-15音乐
 http://14.154.169.176:4022/rtp/239.77.0.44:5146
-#EXTINF:-1 tvg-id="CCTV-15高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-15%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-15高清
-http://14.154.169.176:4022/rtp/239.77.1.120:5146
-#EXTINF:-1 tvg-id="CCTV-15高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-15%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-15高清
-http://14.154.169.176:4022/rtp/239.77.1.239:5146
-#EXTINF:-1 tvg-id="CCTV-16高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-16%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-16高清
-http://14.154.169.176:4022/rtp/239.77.0.165:5146
 #EXTINF:-1 tvg-id="CCTV-17农业" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-17%E5%86%9C%E4%B8%9A.png" group-title="广东电信",CCTV-17农业
 http://14.154.169.176:4022/rtp/239.77.0.115:5146
-#EXTINF:-1 tvg-id="CCTV-17高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-17%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-17高清
-http://14.154.169.176:4022/rtp/239.77.1.121:5146
-#EXTINF:-1 tvg-id="CCTV-17农业高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-17%E5%86%9C%E4%B8%9A%E9%AB%98%E6%B8%85.png" group-title="广东电信",CCTV-17农业高清
-http://14.154.169.176:4022/rtp/239.77.0.198:5146
-#EXTINF:-1 tvg-id="CGTN" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CGTN.png" group-title="广东电信",CGTN
-http://14.154.169.176:4022/rtp/239.77.0.45:5146
-#EXTINF:-1 tvg-id="CGTN" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CGTN.png" group-title="广东电信",CGTN
-http://14.154.169.176:4022/rtp/239.77.1.27:5146
-#EXTINF:-1 tvg-id="CGTN英语高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CGTN%E8%8B%B1%E8%AF%AD%E9%AB%98%E6%B8%85.png" group-title="广东电信",CGTN英语高清
-http://14.154.169.176:4022/rtp/239.77.0.199:5146
-#EXTINF:-1 tvg-id="CGTN英文记录高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CGTN%E8%8B%B1%E6%96%87%E8%AE%B0%E5%BD%95%E9%AB%98%E6%B8%85.png" group-title="广东电信",CGTN英文记录高清
-http://14.154.169.176:4022/rtp/239.253.43.122:5146
-#EXTINF:-1 tvg-id="CGTN西班牙语高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CGTN%E8%A5%BF%E7%8F%AD%E7%89%99%E8%AF%AD%E9%AB%98%E6%B8%85.png" group-title="广东电信",CGTN西班牙语高清
-http://14.154.169.176:4022/rtp/239.77.0.221:5146
-#EXTINF:-1 tvg-id="CGTN法语高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CGTN%E6%B3%95%E8%AF%AD%E9%AB%98%E6%B8%85.png" group-title="广东电信",CGTN法语高清
-http://14.154.169.176:4022/rtp/239.77.0.228:5146
-#EXTINF:-1 tvg-id="CGTN阿拉伯语高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CGTN%E9%98%BF%E6%8B%89%E4%BC%AF%E8%AF%AD%E9%AB%98%E6%B8%85.png" group-title="广东电信",CGTN阿拉伯语高清
-http://14.154.169.176:4022/rtp/239.253.43.200:5146
-#EXTINF:-1 tvg-id="CGTN俄语高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CGTN%E4%BF%84%E8%AF%AD%E9%AB%98%E6%B8%85.png" group-title="广东电信",CGTN俄语高清
-http://14.154.169.176:4022/rtp/239.253.43.201:5146
 #EXTINF:-1 tvg-id="湖南卫视时移专用(湖南卫视)" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%B9%96%E5%8D%97%E5%8D%AB%E8%A7%86%E6%97%B6%E7%A7%BB%E4%B8%93%E7%94%A8%28%E6%B9%96%E5%8D%97%E5%8D%AB%E8%A7%86%29.png" group-title="广东电信",湖南卫视时移专用(湖南卫视)
 http://14.154.169.176:4022/rtp/239.77.0.88:5146
 #EXTINF:-1 tvg-id="湖南卫视高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%B9%96%E5%8D%97%E5%8D%AB%E8%A7%86%E9%AB%98%E6%B8%85.png" group-title="广东电信",湖南卫视高清
