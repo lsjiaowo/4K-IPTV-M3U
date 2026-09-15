@@ -47,15 +47,20 @@ IPTV_GIST_ID = os.environ.get("IPTV_GIST_ID", "").strip()
 
 # 可选的本地频道模板目录。模板文件名使用“省份+运营商”，例如：
 # channel_templates/天津联通.m3u 或 channel_templates/天津联通.txt
-# 来源选择：优先 .m3u，其次 .txt；若均无有效模板，则锁定使用 cqshushu。
+# 来源选择：remote_templates.txt 远程动态模板优先；失败后尝试本地 .m3u、.txt；仍无有效模板才锁定使用 cqshushu。
 # 同一“省份+运营商”一次运行中来源锁定后不再混用。
 # 模板只提供“频道名称 + 组播地址”；支持 rtp://、HTTP /rtp/ 和 udpxy 风格 HTTP /udp/。
 # /udp/ 仅作为模板输入格式兼容，最终公网播放地址仍统一输出为 HTTP /rtp/。
 # 最终 tvg-id/tvg-logo/group-title、EPG 和排序仍完全沿用本脚本现有输出逻辑。
 CHANNEL_TEMPLATE_DIR = "channel_templates"
+# 远程动态频道模板映射。每行格式：省份运营商=远程M3U/TXT地址；# 开头为注释。
+# 远程模板优先于同名本地模板；下载/解析失败时自动回退本地模板，再无本地模板才使用 cqshushu。
+REMOTE_TEMPLATE_CONFIG = os.path.join(CHANNEL_TEMPLATE_DIR, "remote_templates.txt")
+_REMOTE_TEMPLATE_CONFIG_CACHE: dict[str, str] | None = None
+_REMOTE_TEMPLATE_FETCH_CACHE: dict[str, tuple[list[tuple[str, str]], str | None]] = {}
 
 # 一次脚本运行期间按“省份+运营商”锁定频道来源并复用测速频道模板。
-# mode=template：测速和最终列表都只使用 channel_templates；cqshushu 仅用于解析候选真实 IP:PORT。
+# mode=template：测速和最终列表使用已锁定的远程/本地模板；cqshushu 仅用于解析候选真实 IP:PORT。
 # mode=cqshushu：测速和最终列表都使用 cqshushu；第一次抓到足够 CCTV 后缓存 RTP 测速模板，
 #                 后续候选只替换真实 IP:PORT，不再重复抓取 CCTV 测速频道列表。
 _CHANNEL_SOURCE_RUNTIME_CACHE: dict[str, dict] = {}
@@ -660,6 +665,92 @@ def load_local_channel_template(
     return [], None
 
 
+def load_remote_template_config(config_path: str = REMOTE_TEMPLATE_CONFIG) -> dict[str, str]:
+    """读取远程动态模板映射；格式为“省份运营商=URL”，空行和 # 注释忽略。"""
+    global _REMOTE_TEMPLATE_CONFIG_CACHE
+    if _REMOTE_TEMPLATE_CONFIG_CACHE is not None:
+        return _REMOTE_TEMPLATE_CONFIG_CACHE
+
+    mapping: dict[str, str] = {}
+    if not os.path.isfile(config_path):
+        _REMOTE_TEMPLATE_CONFIG_CACHE = mapping
+        return mapping
+    try:
+        with open(config_path, "r", encoding="utf-8-sig") as file:
+            lines = file.readlines()
+    except OSError as exc:
+        print(f"[!] 远程频道模板配置读取失败：{config_path}；{exc}")
+        _REMOTE_TEMPLATE_CONFIG_CACHE = mapping
+        return mapping
+
+    for lineno, raw_line in enumerate(lines, 1):
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" not in line:
+            print(f"[!] 远程模板配置第{lineno}行格式无效，已忽略：{line}")
+            continue
+        group_title, url = [part.strip() for part in line.split("=", 1)]
+        if not group_title or not re.fullmatch(r"https?://\S+", url, flags=re.IGNORECASE):
+            print(f"[!] 远程模板配置第{lineno}行无效，已忽略：{line}")
+            continue
+        mapping[group_title] = url
+    _REMOTE_TEMPLATE_CONFIG_CACHE = mapping
+    return mapping
+
+
+def load_remote_channel_template(group_title: str) -> tuple[list[tuple[str, str]], str | None]:
+    """按省份+运营商实时获取远程动态模板；同一脚本运行中每个组最多请求一次。"""
+    cached = _REMOTE_TEMPLATE_FETCH_CACHE.get(group_title)
+    if cached is not None:
+        return cached
+
+    url = load_remote_template_config().get(group_title, "")
+    if not url:
+        result = ([], None)
+        _REMOTE_TEMPLATE_FETCH_CACHE[group_title] = result
+        return result
+
+    print(f"[*] [{group_title}] 找到远程动态频道模板：{url}")
+    try:
+        response = requests.get(
+            url,
+            headers={"User-Agent": USER_AGENT, "Accept": "text/plain,*/*"},
+            timeout=(10, 30),
+        )
+        response.raise_for_status()
+        content = response.content.decode("utf-8-sig", errors="replace")
+    except requests.RequestException as exc:
+        print(f"[!] [{group_title}] 远程频道模板下载失败：{exc}；将尝试本地模板。")
+        result = ([], None)
+        _REMOTE_TEMPLATE_FETCH_CACHE[group_title] = result
+        return result
+
+    # 远程地址通常是 M3U；若解析不到，再兼容 TXT 的“频道名,播放地址”格式。
+    channels = parse_channel_template_m3u(content)
+    if not channels:
+        channels = parse_channel_template_txt(content)
+    if not channels:
+        print(f"[!] [{group_title}] 远程频道模板未解析到有效组播频道；将尝试本地模板。")
+        result = ([], None)
+    else:
+        print(f"[+] [{group_title}] 远程频道模板获取成功；有效RTP频道={len(channels)}条。")
+        result = (channels, url)
+    _REMOTE_TEMPLATE_FETCH_CACHE[group_title] = result
+    return result
+
+
+def load_channel_template(group_title: str) -> tuple[list[tuple[str, str]], str | None, str | None]:
+    """统一模板入口：远程动态模板 > 本地静态模板 > 调用方回退 cqshushu。"""
+    channels, source = load_remote_channel_template(group_title)
+    if channels:
+        return channels, source, "remote"
+    channels, source = load_local_channel_template(group_title)
+    if channels:
+        return channels, source, "local"
+    return [], None, None
+
+
 def resolve_relay_host_with_port(
     candidate_host: str,
     p_token: str,
@@ -1147,8 +1238,8 @@ def fetch_channel_lines_by_province(
     4. 搜索到第10页仍不足目标时，才允许已扫描页面中的旧IP兜底；新IP始终最高优先级。
     5. 每个运营商最多测试 max_per_carrier 台候选，找到 target_playable_sources 个可用源后停止。
     6. 每个“省份+运营商”在本次脚本运行中锁定唯一频道来源：
-       - 有 channel_templates：测速与最终列表都使用模板；cqshushu 仅辅助解析真实 IP:PORT。
-       - 无 channel_templates：全程使用 cqshushu；第一次找到足够 CCTV 后缓存 RTP 测速模板，
+       - 有远程/本地模板：测速与最终列表都使用模板；cqshushu 仅辅助解析真实 IP:PORT。
+       - 无远程/本地模板：全程使用 cqshushu；第一次找到足够 CCTV 后缓存 RTP 测速模板，
          后续候选只替换真实 IP:PORT，不再重复获取 CCTV 测速频道列表。
     """
     session = requests.Session()
@@ -1186,18 +1277,19 @@ def fetch_channel_lines_by_province(
         if context is not None:
             return context
 
-        template_channels, template_path = load_local_channel_template(group_title)
+        template_channels, template_path, template_kind = load_channel_template(group_title)
         if template_channels:
             context = {
                 "mode": "template",
                 "template_channels": template_channels,
                 "template_path": template_path,
+                "template_kind": template_kind,
                 "speed_template": [],
                 "candidate_meta": {},
             }
             print(
-                f"[*] [{group_title}] 频道来源锁定：channel_templates；"
-                "本轮测速与最终完整频道列表均使用本地模板，绝不切换到 cqshushu 频道内容。"
+                f"[*] [{group_title}] 频道来源锁定：{('远程动态模板' if template_kind == 'remote' else '本地 channel_templates')}；"
+                "本轮测速与最终完整频道列表均使用该模板，绝不切换到 cqshushu 频道内容。"
             )
         else:
             context = {
@@ -2345,8 +2437,8 @@ def _normalize_manual_replace_slot(value: str, group_title: str) -> str:
 def run_manual_endpoint_import(repo_root: str, args) -> list[str]:
     """
     人工指定公网 IP:PORT 导入。
-    只跳过 cqshushu 的候选服务器发现/真实端口解析；频道必须来自本地 channel_templates，
-    并继续执行正式 CCTV 随机2频道测速（1个通过即合格）、精确 endpoint 去重、TXT/M3U 输出。
+    只跳过 cqshushu 的候选服务器发现/真实端口解析；频道优先来自 remote_templates.txt 配置的远程模板，
+    远程失败时回退本地 channel_templates，并继续执行正式 CCTV 随机2频道测速（1个通过即合格）、精确 endpoint 去重、TXT/M3U 输出。
     add=写入第一个空闲槽位；replace=只覆盖明确指定且已存在的槽位。
     """
     endpoint = _validate_manual_endpoint(args.manual_endpoint)
@@ -2356,10 +2448,10 @@ def run_manual_endpoint_import(repo_root: str, args) -> list[str]:
         raise ValueError("--manual-endpoint-target 必须是有效的“省份+运营商”，例如 浙江电信")
     province, carrier, group_title, _ = identity
 
-    template_channels, template_path = load_local_channel_template(group_title)
+    template_channels, template_path, template_kind = load_channel_template(group_title)
     if not template_channels:
         raise ValueError(
-            f"{group_title} 没有可用的 channel_templates 本地模板；手动 endpoint 模式不会改用 cqshushu 频道内容"
+            f"{group_title} 没有可用的远程或本地 channel_templates 模板；手动 endpoint 模式不会改用 cqshushu 频道内容"
         )
     lines = build_template_channel_lines(template_channels, endpoint)
     if not lines:
@@ -3056,7 +3148,7 @@ def parse_args():
     )
     ap.add_argument(
         "--manual-endpoint-target", default="",
-        help="手动 endpoint 所属的省份+运营商，例如 浙江电信。必须存在对应 channel_templates 模板。",
+        help="手动 endpoint 所属的省份+运营商，例如 浙江电信。必须存在对应远程动态模板或本地 channel_templates 模板。",
     )
     ap.add_argument(
         "--manual-endpoint-action", choices=("add", "replace"), default="add",
