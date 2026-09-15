@@ -25,6 +25,10 @@ http://60.27.102.98:4022/rtp/225.1.2.106:5002
 http://60.27.102.98:4022/rtp/225.1.2.110:5002
 #EXTINF:-1 tvg-id="四川卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%9B%9B%E5%B7%9D%E5%8D%AB%E8%A7%864K.png" group-title="天津联通",四川卫视4K
 http://60.27.102.98:4022/rtp/225.1.2.111:5002
+#EXTINF:-1 tvg-id="CGTN SD" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CGTN%20SD.png" group-title="天津联通",CGTN SD
+http://60.27.102.98:4022/rtp/225.1.1.27:5002
+#EXTINF:-1 tvg-id="CGTN纪录 SD" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CGTN%E7%BA%AA%E5%BD%95%20SD.png" group-title="天津联通",CGTN纪录 SD
+http://60.27.102.98:4022/rtp/225.1.1.55:5002
 #EXTINF:-1 tvg-id="天津卫视" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%A4%A9%E6%B4%A5%E5%8D%AB%E8%A7%86.png" group-title="天津联通",天津卫视
 http://60.27.102.98:4022/rtp/225.1.1.111:5002
 #EXTINF:-1 tvg-id="天津新闻" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%A4%A9%E6%B4%A5%E6%96%B0%E9%97%BB.png" group-title="天津联通",天津新闻
@@ -91,10 +95,6 @@ http://60.27.102.98:4022/rtp/225.1.2.194:5002
 http://60.27.102.98:4022/rtp/225.1.2.237:5002
 #EXTINF:-1 tvg-id="CCTV-17农业农村" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-17%E5%86%9C%E4%B8%9A%E5%86%9C%E6%9D%91.png" group-title="天津联通",CCTV-17农业农村
 http://60.27.102.98:4022/rtp/225.1.2.52:5002
-#EXTINF:-1 tvg-id="CGTN SD" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CGTN%20SD.png" group-title="天津联通",CGTN SD
-http://60.27.102.98:4022/rtp/225.1.1.27:5002
-#EXTINF:-1 tvg-id="CGTN纪录 SD" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CGTN%E7%BA%AA%E5%BD%95%20SD.png" group-title="天津联通",CGTN纪录 SD
-http://60.27.102.98:4022/rtp/225.1.1.55:5002
 #EXTINF:-1 tvg-id="广东卫视" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%B9%BF%E4%B8%9C%E5%8D%AB%E8%A7%86.png" group-title="天津联通",广东卫视
 http://60.27.102.98:4022/rtp/225.1.1.116:5002
 #EXTINF:-1 tvg-id="甘肃卫视" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E7%94%98%E8%82%83%E5%8D%AB%E8%A7%86.png" group-title="天津联通",甘肃卫视
