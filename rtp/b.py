@@ -1901,9 +1901,27 @@ PRIORITY_CHANNEL_RULES = [
 ]
 
 
+def _normalize_channel_name_for_sort(channel_name: str) -> str:
+    """仅用于频道排序匹配的名称标准化，不修改最终输出的频道名称。
+
+    忽略大小写以及空格、连字符、下划线、长横线、间隔点等常见分隔符，
+    并兼容 CHC 常见“电影/影院”命名差异。
+    """
+    normalized = channel_name.casefold()
+    normalized = re.sub(r"[\s\-_—–·]+", "", normalized)
+    for alias, canonical in (
+        ("chc影迷影院", "chc影迷电影"),
+        ("chc高清影院", "chc高清电影"),
+        ("chc动作影院", "chc动作电影"),
+        ("chc家庭电影", "chc家庭影院"),
+    ):
+        normalized = normalized.replace(alias, canonical)
+    return normalized
+
+
 def _is_excluded_4k_channel(channel_name: str) -> bool:
     """含4K但同时标记为SD/标清的频道，不参与任何4K优先排序。"""
-    normalized = channel_name.casefold()
+    normalized = _normalize_channel_name_for_sort(channel_name)
     return "4k" in normalized and ("sd" in normalized or "标清" in normalized)
 
 
@@ -1911,15 +1929,15 @@ def sort_priority_channels(channel_lines: list[str]) -> list[str]:
     """按指定优先级提升频道，其余频道保持原始相对顺序。
 
     排序规则：
-    1. 先按 PRIORITY_CHANNEL_RULES 的固定顺序提升指定频道；
+    1. 先按 PRIORITY_CHANNEL_RULES 的固定顺序提升指定频道；排序匹配忽略常见分隔符，
+       并兼容 CHC“电影/影院”别名；
     2. 未命中固定规则、但名称含4K的频道统一归入“其他4K”；
     3. 之后提升名称同时包含 CCTV 和“高清”的非4K、非SD/标清频道；
     4. 再提升名称包含 CGTN 的频道；
-    5. CCTV4KSD、CCTV4K SD、CCTV4K标清等含SD/标清的4K名称，
-       既不进入CCTV4K，也不进入“其他4K”；除非另行命中非4K优先规则，否则按普通频道处理；
-    6. 同一优先级内及所有普通频道均依赖Python稳定排序保持原始相对顺序。
+    5. CCTV4KSD、CCTV-4K SD、CCTV4K标清等含SD/标清的4K名称不参与4K优先；
+    6. 名称标准化仅用于排序判断，最终频道名称和播放地址保持模板原样；
+    7. 同一优先级内及普通频道依赖 Python 稳定排序保持原始相对顺序。
     """
-
     other_4k_priority = len(PRIORITY_CHANNEL_RULES)
     cctv_hd_priority = other_4k_priority + 1
     cgtn_priority = cctv_hd_priority + 1
@@ -1927,39 +1945,29 @@ def sort_priority_channels(channel_lines: list[str]) -> list[str]:
 
     def priority_key(line: str) -> int:
         channel_name = line.split(",", 1)[0].strip()
-        normalized_name = channel_name.casefold()
-
-        # 这是所有4K优先规则的统一排除条件。
-        # 例如 CCTV4KSD / CCTV4K SD / CCTV4K标清：
-        # 不进入 CCTV4K，也不进入最后的“其他4K”。
+        normalized_name = _normalize_channel_name_for_sort(channel_name)
         excluded_4k = _is_excluded_4k_channel(channel_name)
 
         for index, required_keywords in enumerate(PRIORITY_CHANNEL_RULES):
-            rule_is_4k = any("4k" in keyword.casefold() for keyword in required_keywords)
+            normalized_keywords = tuple(_normalize_channel_name_for_sort(k) for k in required_keywords)
+            rule_is_4k = any("4k" in k for k in normalized_keywords)
             if excluded_4k and rule_is_4k:
                 continue
-            if all(
-                keyword.casefold() in normalized_name
-                for keyword in required_keywords
-            ):
+            if all(k in normalized_name for k in normalized_keywords):
                 return index
 
-        # 所有明确列出的4K频道之后，再统一提升其他名称的合格4K频道。
         if "4k" in normalized_name and not excluded_4k:
             return other_4k_priority
 
-        # 其他4K之后，提升名称同时包含 CCTV 和“高清”的频道。
-        # 明确排除4K、SD、标清，避免把标清/4K频道误归入CCTV高清。
         if (
             "cctv" in normalized_name
-            and "高清" in channel_name
+            and "高清" in normalized_name
             and "4k" not in normalized_name
             and "sd" not in normalized_name
-            and "标清" not in channel_name
+            and "标清" not in normalized_name
         ):
             return cctv_hd_priority
 
-        # CCTV高清之后，提升所有名称包含CGTN的频道。
         if "cgtn" in normalized_name:
             return cgtn_priority
 
