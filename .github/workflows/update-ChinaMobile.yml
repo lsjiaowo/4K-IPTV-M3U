@@ -10,6 +10,30 @@ on:
         options:
           - "测速检查"
           - "省份抓取"
+          - "手动指定 IP:PORT"
+      manual_endpoint_target:
+        description: "手动IP模式：省份+运营商，例如 浙江电信"
+        required: false
+        default: ""
+        type: string
+      manual_endpoint:
+        description: "手动IP模式：公网 IP:PORT，例如 122.246.149.196:8188"
+        required: false
+        default: ""
+        type: string
+      manual_endpoint_action:
+        description: "手动IP模式：写入方式"
+        required: true
+        default: "添加新槽位"
+        type: choice
+        options:
+          - "添加新槽位"
+          - "替换指定槽位"
+      manual_endpoint_slot:
+        description: "手动IP模式：替换时填写槽位，例如 浙江电信1 或 1；添加时留空"
+        required: false
+        default: ""
+        type: string
       health_file_1:
         description: "指定播放列表1（仅测速检查有效；留空=按原逻辑检查全部）"
         required: false
@@ -188,7 +212,7 @@ jobs:
     timeout-minutes: 180
     env:
       # 自动定时模式三选一：health=测速检查；full=全部省份抓取；disabled=关闭所有自动运行（仅允许手动 Run workflow）。
-      # 只需修改下面 SCHEDULE_MODE 一行即可切换；手动 workflow_dispatch 不受此设置限制：可选择“测速检查”或“省份抓取”；测速检查时省份/运营商输入全部忽略。
+      # 只需修改下面 SCHEDULE_MODE 一行即可切换；手动 workflow_dispatch 不受此设置限制：可选择“测速检查”“省份抓取”或“手动指定 IP:PORT”；测速检查时省份/运营商输入全部忽略。
       SCHEDULE_MODE: "disabled"
       # full 模式固定抓取中国大陆全部省份的移动；优先省份顺序由 rtp/b.py 统一控制。
     steps:
@@ -223,8 +247,10 @@ jobs:
               MODE="health"
             elif [ "$MANUAL_MODE" = "省份抓取" ]; then
               MODE="full"
+            elif [ "$MANUAL_MODE" = "手动指定 IP:PORT" ]; then
+              MODE="manual_endpoint"
             else
-              echo "::error::手动运行模式只能是 测速检查 或 省份抓取，当前=$MANUAL_MODE"
+              echo "::error::手动运行模式只能是 测速检查、省份抓取 或 手动指定 IP:PORT，当前=$MANUAL_MODE"
               exit 1
             fi
           elif [ "${{ github.event_name }}" = "repository_dispatch" ]; then
@@ -305,7 +331,7 @@ jobs:
         run: |
           ACTIVE=false
           if [ "${{ steps.mode.outputs.run }}" = "true" ]; then
-            if [ "${{ steps.mode.outputs.mode }}" = "health" ]; then
+            if [ "${{ steps.mode.outputs.mode }}" = "health" ] || [ "${{ steps.mode.outputs.mode }}" = "manual_endpoint" ]; then
               ACTIVE=true
             elif [ "${{ steps.mode.outputs.use_full_lock }}" != "true" ] || [ "${{ steps.hourly-cache.outputs.cache-hit }}" != "true" ]; then
               ACTIVE=true
@@ -356,8 +382,42 @@ jobs:
           HEALTH_FILE_2: "${{ github.event.inputs.health_file_2 }}"
           HEALTH_FILE_3: "${{ github.event.inputs.health_file_3 }}"
           HEALTH_FILE_MODE: "${{ github.event.inputs.health_file_mode }}"
+          MANUAL_ENDPOINT_TARGET: "${{ github.event.inputs.manual_endpoint_target }}"
+          MANUAL_ENDPOINT: "${{ github.event.inputs.manual_endpoint }}"
+          MANUAL_ENDPOINT_ACTION: "${{ github.event.inputs.manual_endpoint_action }}"
+          MANUAL_ENDPOINT_SLOT: "${{ github.event.inputs.manual_endpoint_slot }}"
         shell: bash
         run: |
+          if [ "${{ steps.mode.outputs.mode }}" = "manual_endpoint" ]; then
+            if [ -z "$MANUAL_ENDPOINT_TARGET" ]; then
+              echo "::error::手动指定 IP:PORT 模式必须填写省份+运营商，例如 浙江电信。"
+              exit 1
+            fi
+            if [ -z "$MANUAL_ENDPOINT" ]; then
+              echo "::error::手动指定 IP:PORT 模式必须填写公网 IP:PORT。"
+              exit 1
+            fi
+            if [ "$MANUAL_ENDPOINT_ACTION" = "替换指定槽位" ]; then
+              ENDPOINT_ACTION="replace"
+              if [ -z "$MANUAL_ENDPOINT_SLOT" ]; then
+                echo "::error::选择替换指定槽位时必须填写槽位，例如 浙江电信1 或 1。"
+                exit 1
+              fi
+            else
+              ENDPOINT_ACTION="add"
+            fi
+            echo "[*] 手动 endpoint 导入：目标=$MANUAL_ENDPOINT_TARGET；endpoint=$MANUAL_ENDPOINT；方式=$MANUAL_ENDPOINT_ACTION；槽位=${MANUAL_ENDPOINT_SLOT:-自动选择空闲槽位}"
+            python -u rtp/b.py \
+              --manual-endpoint-target "$MANUAL_ENDPOINT_TARGET" \
+              --manual-endpoint "$MANUAL_ENDPOINT" \
+              --manual-endpoint-action "$ENDPOINT_ACTION" \
+              --manual-endpoint-slot "$MANUAL_ENDPOINT_SLOT" \
+              --max-pages 10 \
+              --max-per-carrier 20 \
+              --push
+            exit 0
+          fi
+
           if [ "${{ steps.mode.outputs.mode }}" = "health" ]; then
             HEALTH_ARGS=()
             if [ -n "$HEALTH_FILE_1" ]; then HEALTH_ARGS+=(--health-file-1 "$HEALTH_FILE_1"); fi
