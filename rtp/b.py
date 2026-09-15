@@ -49,8 +49,9 @@ IPTV_GIST_ID = os.environ.get("IPTV_GIST_ID", "").strip()
 # channel_templates/天津联通.m3u 或 channel_templates/天津联通.txt
 # 来源选择：优先 .m3u，其次 .txt；若均无有效模板，则锁定使用 cqshushu。
 # 同一“省份+运营商”一次运行中来源锁定后不再混用。
-# 模板只提供“频道名称 + RTP组播地址”；最终 tvg-id/tvg-logo/group-title、EPG 和排序
-# 仍完全沿用本脚本现有输出逻辑。
+# 模板只提供“频道名称 + 组播地址”；支持 rtp://、HTTP /rtp/ 和 udpxy 风格 HTTP /udp/。
+# /udp/ 仅作为模板输入格式兼容，最终公网播放地址仍统一输出为 HTTP /rtp/。
+# 最终 tvg-id/tvg-logo/group-title、EPG 和排序仍完全沿用本脚本现有输出逻辑。
 CHANNEL_TEMPLATE_DIR = "channel_templates"
 
 # 一次脚本运行期间按“省份+运营商”锁定频道来源并复用测速频道模板。
@@ -555,9 +556,10 @@ def _parse_rtp_target(value: str) -> str | None:
 def parse_channel_template_m3u(content: str) -> list[tuple[str, str]]:
     """解析 M3U 模板，仅保留“显示频道名 + RTP组播地址”。
 
-    同时兼容 rtp://239.x.x.x:port 与
-    http://任意IP:任意端口/rtp/239.x.x.x:port 两种模板地址；HTTP 地址中的
-    公网/局域网转发 IP:PORT 仅作为占位，最终会替换为当前候选的真实 endpoint。
+    同时兼容 rtp://239.x.x.x:port、HTTP/HTTPS /rtp/ 与 /udp/ 模板地址；
+    HTTP 主机既可是真实 IP:PORT，也可使用 {{your_udpxy_address}} 等占位符。
+    /udp/ 只用于读取模板中的组播目标，最终输出仍统一生成 HTTP /rtp/ 地址；
+    模板中的转发主机仅作为占位，最终会替换为当前候选的真实 endpoint。
     模板中的 tvg-name/tvg-logo/group-title 等元数据不继承；最终 M3U 仍由
     txt_to_m3u_format() 按现有规则重新生成。
     """
@@ -636,7 +638,10 @@ def load_local_channel_template(
         if channels:
             print(f"[+] [{group_title}] 找到本地频道模板：{path}；有效RTP频道={len(channels)}条。")
             return channels, path
-        print(f"[!] [{group_title}] 本地频道模板存在但未解析到有效RTP频道：{path}")
+        print(
+            f"[!] [{group_title}] 本地频道模板存在但未解析到有效组播频道：{path}；"
+            "支持 rtp://、HTTP /rtp/、HTTP /udp/ 模板地址。"
+        )
 
     return [], None
 
@@ -733,7 +738,12 @@ def build_template_channel_lines(
 
 
 def _parse_rtp_target_from_play_url(value: str) -> str | None:
-    """从 cqshushu 的 HTTP /rtp/ 播放地址或标准 rtp:// 地址提取 IPv4:port。"""
+    """从模板/播放地址中提取 IPv4:port 组播目标。
+
+    支持标准 rtp:// 地址，以及 HTTP/HTTPS 转发地址中的 /rtp/ 或 /udp/ 路径。
+    /udp/ 仅作为 channel_templates 输入格式兼容；最终生成的公网播放地址仍统一使用 /rtp/。
+    HTTP 主机部分可以是真实 IP:PORT，也可以是 {{your_udpxy_address}} 之类的模板占位符。
+    """
     direct = _parse_rtp_target(value)
     if direct:
         return direct
@@ -741,7 +751,7 @@ def _parse_rtp_target_from_play_url(value: str) -> str | None:
     text = (value or "").strip()
     parsed = urlparse(text)
     match = re.search(
-        r"(?i)(?:^|/)rtp/(\d{1,3}(?:\.\d{1,3}){3}):(\d{1,5})(?:/|$)",
+        r"(?i)(?:^|/)(?:rtp|udp)/(\d{1,3}(?:\.\d{1,3}){3}):(\d{1,5})(?:/|$)",
         parsed.path or "",
     )
     if not match:
