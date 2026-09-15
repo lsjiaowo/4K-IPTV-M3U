@@ -9,7 +9,7 @@ on:
         type: choice
         options:
           - "测速检查"
-          - "全部省份抓取"
+          - "省份抓取"
       health_file_1:
         description: "指定播放列表1（仅测速检查有效；留空=按原逻辑检查全部）"
         required: false
@@ -33,12 +33,145 @@ on:
         options:
           - "先测速，失败才重新抓取"
           - "不测速旧源，直接重新抓取"
-  # 可选外部整点触发入口；移动工作流使用独立事件类型，避免两个工作流被同一个 dispatch 同时触发。
+      province_1:
+        description: "省份1（仅省份抓取有效；选择全部时忽略省份2/3）"
+        required: true
+        default: "全部"
+        type: choice
+        options:
+          - "全部"
+          - "北京"
+          - "天津"
+          - "河北"
+          - "山西"
+          - "内蒙古"
+          - "辽宁"
+          - "吉林"
+          - "黑龙江"
+          - "上海"
+          - "江苏"
+          - "浙江"
+          - "安徽"
+          - "福建"
+          - "江西"
+          - "山东"
+          - "河南"
+          - "湖北"
+          - "湖南"
+          - "广东"
+          - "广西"
+          - "海南"
+          - "重庆"
+          - "四川"
+          - "贵州"
+          - "云南"
+          - "陕西"
+          - "甘肃"
+          - "青海"
+          - "宁夏"
+          - "新疆"
+          - "台湾"
+          - "俄罗斯"
+          - "韩国"
+      province_2:
+        description: "省份2（仅省份抓取有效；测速检查时忽略）"
+        required: true
+        default: "不选择"
+        type: choice
+        options:
+          - "不选择"
+          - "北京"
+          - "天津"
+          - "河北"
+          - "山西"
+          - "内蒙古"
+          - "辽宁"
+          - "吉林"
+          - "黑龙江"
+          - "上海"
+          - "江苏"
+          - "浙江"
+          - "安徽"
+          - "福建"
+          - "江西"
+          - "山东"
+          - "河南"
+          - "湖北"
+          - "湖南"
+          - "广东"
+          - "广西"
+          - "海南"
+          - "重庆"
+          - "四川"
+          - "贵州"
+          - "云南"
+          - "陕西"
+          - "甘肃"
+          - "青海"
+          - "宁夏"
+          - "新疆"
+          - "台湾"
+          - "俄罗斯"
+          - "韩国"
+      province_3:
+        description: "省份3（仅省份抓取有效；测速检查时忽略）"
+        required: true
+        default: "不选择"
+        type: choice
+        options:
+          - "不选择"
+          - "北京"
+          - "天津"
+          - "河北"
+          - "山西"
+          - "内蒙古"
+          - "辽宁"
+          - "吉林"
+          - "黑龙江"
+          - "上海"
+          - "江苏"
+          - "浙江"
+          - "安徽"
+          - "福建"
+          - "江西"
+          - "山东"
+          - "河南"
+          - "湖北"
+          - "湖南"
+          - "广东"
+          - "广西"
+          - "海南"
+          - "重庆"
+          - "四川"
+          - "贵州"
+          - "云南"
+          - "陕西"
+          - "甘肃"
+          - "青海"
+          - "宁夏"
+          - "新疆"
+          - "台湾"
+          - "俄罗斯"
+          - "韩国"
+      carriers:
+        description: "选择运营商组合（仅省份抓取有效；测速检查时忽略）"
+        required: true
+        default: "全部"
+        type: choice
+        options:
+          - "全部"
+          - "电信"
+          - "联通"
+          - "移动"
+          - "电信,联通"
+          - "电信,移动"
+          - "联通,移动"
+  # 可选外部触发入口；移动工作流使用独立事件类型，避免三个工作流被同一个 dispatch 同时触发。
   repository_dispatch:
     types: [daily_iptv_mobile_update]
 
   schedule:
-    # 移动自动定时触发；实际执行 health 还是 full 由下方 SCHEDULE_MODE 一行控制。
+    # 移动自动定时触发；当前 SCHEDULE_MODE=full，即自动抓取全部省份；以后改为 health 即自动测速检查。
     - cron: "11 2 * * *"
 
 # 三个运营商工作流共用固定并发组：健康检查、完整定时抓取和手动抓取均串行执行，避免同时修改仓库。
@@ -54,11 +187,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
-      # 自动定时任务运行模式：以后只需修改下一行即可切换。
-      # health = 测速检查：检查现有移动播放列表，失效后定向修复。
-      # full   = 全部省份抓取：遍历中国大陆全部省份，仅抓取移动。
-      # 手动 workflow_dispatch 不受此设置限制，可自由选择“测速检查”或“全部省份抓取”。
+      # 自动定时模式只能二选一：health=测速检查；full=全部省份抓取。
+      # 手动 workflow_dispatch 不受此设置限制：可选择“测速检查”或“省份抓取”；测速检查时省份/运营商输入全部忽略。
       SCHEDULE_MODE: "full"
+      # full 模式固定抓取中国大陆全部省份的移动；优先省份顺序由 rtp/b.py 统一控制。
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -89,10 +221,10 @@ jobs:
             if [ "$MANUAL_MODE" = "测速检查" ]; then
               # 测速检查固定按当前工作流运营商执行；省份1/2/3和运营商组合输入全部忽略。
               MODE="health"
-            elif [ "$MANUAL_MODE" = "全部省份抓取" ]; then
+            elif [ "$MANUAL_MODE" = "省份抓取" ]; then
               MODE="full"
             else
-              echo "::error::手动运行模式只能是 测速检查 或 全部省份抓取，当前=$MANUAL_MODE"
+              echo "::error::手动运行模式只能是 测速检查 或 省份抓取，当前=$MANUAL_MODE"
               exit 1
             fi
           elif [ "${{ github.event_name }}" = "repository_dispatch" ]; then
@@ -204,6 +336,10 @@ jobs:
         env:
           PYTHONUNBUFFERED: "1"
           IPTV_GIST_ID: ${{ secrets.IPTV_GIST_ID }}
+          PROVINCE_1: "${{ github.event.inputs.province_1 }}"
+          PROVINCE_2: "${{ github.event.inputs.province_2 }}"
+          PROVINCE_3: "${{ github.event.inputs.province_3 }}"
+          SELECTED_CARRIERS: "${{ github.event.inputs.carriers }}"
           HEALTH_FILE_1: "${{ github.event.inputs.health_file_1 }}"
           HEALTH_FILE_2: "${{ github.event.inputs.health_file_2 }}"
           HEALTH_FILE_3: "${{ github.event.inputs.health_file_3 }}"
@@ -225,7 +361,7 @@ jobs:
             if [ ${#HEALTH_ARGS[@]} -gt 0 ]; then
               echo "[*] 移动指定播放列表模式：文件=${HEALTH_FILE_1:-空},${HEALTH_FILE_2:-空},${HEALTH_FILE_3:-空}；处理方式=$HEALTH_FILE_MODE。"
             else
-              echo "[*] 移动测速检查：未指定播放列表，按原逻辑检查全部现有移动 M3U；两轮失败才定向修复失效槽位。"
+              echo "[*] 移动测速检查：未指定播放列表，按原逻辑检查全部现有电信 M3U；两轮失败才定向修复失效槽位。"
             fi
 
             python -u rtp/b.py \
@@ -239,13 +375,34 @@ jobs:
             exit 0
           fi
 
-          echo "[*] 移动全部省份抓取：遍历中国大陆全部省份；电信/联通优先省份顺序由 b.py 统一控制。"
-          python -u rtp/b.py \
-            --provinces "全部" \
-            --carriers "移动" \
-            --max-pages 10 \
-            --max-per-carrier 20 \
-            --push
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            SELECTED_PROVINCES="$PROVINCE_1"
+            if [ -z "$SELECTED_PROVINCES" ]; then SELECTED_PROVINCES="全部"; fi
+            if [ "$SELECTED_PROVINCES" != "全部" ]; then
+              if [ -n "$PROVINCE_2" ] && [ "$PROVINCE_2" != "不选择" ]; then
+                SELECTED_PROVINCES="$SELECTED_PROVINCES,$PROVINCE_2"
+              fi
+              if [ -n "$PROVINCE_3" ] && [ "$PROVINCE_3" != "不选择" ]; then
+                SELECTED_PROVINCES="$SELECTED_PROVINCES,$PROVINCE_3"
+              fi
+            fi
+            if [ -z "$SELECTED_CARRIERS" ]; then SELECTED_CARRIERS="全部"; fi
+            echo "[*] 手动省份抓取：省份=$SELECTED_PROVINCES；运营商=$SELECTED_CARRIERS"
+            python -u rtp/b.py \
+              --provinces "$SELECTED_PROVINCES" \
+              --carriers "$SELECTED_CARRIERS" \
+              --max-pages 10 \
+              --max-per-carrier 20 \
+              --push
+          else
+            echo "[*] 移动自动定时 full 模式：抓取中国大陆全部省份；运营商=移动；优先顺序由 b.py 统一控制。"
+            python -u rtp/b.py \
+              --provinces "全部" \
+              --carriers "移动" \
+              --max-pages 10 \
+              --max-per-carrier 20 \
+              --push
+          fi
       - name: Sync M3U playlists to Secret Gist
         if: steps.active.outputs.active == 'true'
         env:
