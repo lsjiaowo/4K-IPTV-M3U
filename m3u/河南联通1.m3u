@@ -63,6 +63,20 @@ http://115.58.52.130:7001/rtp/225.1.5.46:1356
 http://115.58.52.130:7001/rtp/225.1.4.226:2506
 #EXTINF:-1 tvg-id="CCTV-5＋高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-5%EF%BC%8B%E9%AB%98%E6%B8%85.png" group-title="河南联通",CCTV-5＋高清
 http://115.58.52.130:7001/rtp/225.1.4.75:1104
+#EXTINF:-1 tvg-id="CGTN" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CGTN.png" group-title="河南联通",CGTN
+http://115.58.52.130:7001/rtp/225.1.4.16:1045
+#EXTINF:-1 tvg-id="CGTN英语" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CGTN%E8%8B%B1%E8%AF%AD.png" group-title="河南联通",CGTN英语
+http://115.58.52.130:7001/rtp/225.1.5.34:1344
+#EXTINF:-1 tvg-id="CGTN英文纪录" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CGTN%E8%8B%B1%E6%96%87%E7%BA%AA%E5%BD%95.png" group-title="河南联通",CGTN英文纪录
+http://115.58.52.130:7001/rtp/225.1.5.35:1345
+#EXTINF:-1 tvg-id="CGTN西班牙语" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CGTN%E8%A5%BF%E7%8F%AD%E7%89%99%E8%AF%AD.png" group-title="河南联通",CGTN西班牙语
+http://115.58.52.130:7001/rtp/225.1.5.36:1346
+#EXTINF:-1 tvg-id="CGTN法语" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CGTN%E6%B3%95%E8%AF%AD.png" group-title="河南联通",CGTN法语
+http://115.58.52.130:7001/rtp/225.1.5.37:1347
+#EXTINF:-1 tvg-id="CGTN阿拉伯语" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CGTN%E9%98%BF%E6%8B%89%E4%BC%AF%E8%AF%AD.png" group-title="河南联通",CGTN阿拉伯语
+http://115.58.52.130:7001/rtp/225.1.5.38:1348
+#EXTINF:-1 tvg-id="CGTN俄语" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CGTN%E4%BF%84%E8%AF%AD.png" group-title="河南联通",CGTN俄语
+http://115.58.52.130:7001/rtp/225.1.5.39:1349
 #EXTINF:-1 tvg-id="CCTV-1" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-1.png" group-title="河南联通",CCTV-1
 http://115.58.52.130:7001/rtp/225.1.4.1:1030
 #EXTINF:-1 tvg-id="CCTV-2" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-2.png" group-title="河南联通",CCTV-2
@@ -91,20 +105,6 @@ http://115.58.52.130:7001/rtp/225.1.4.227:2507
 http://115.58.52.130:7001/rtp/225.1.5.31:1342
 #EXTINF:-1 tvg-id="CCTV4中文国际美洲" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV4%E4%B8%AD%E6%96%87%E5%9B%BD%E9%99%85%E7%BE%8E%E6%B4%B2.png" group-title="河南联通",CCTV4中文国际美洲
 http://115.58.52.130:7001/rtp/225.1.5.32:1343
-#EXTINF:-1 tvg-id="CGTN" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CGTN.png" group-title="河南联通",CGTN
-http://115.58.52.130:7001/rtp/225.1.4.16:1045
-#EXTINF:-1 tvg-id="CGTN英语" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CGTN%E8%8B%B1%E8%AF%AD.png" group-title="河南联通",CGTN英语
-http://115.58.52.130:7001/rtp/225.1.5.34:1344
-#EXTINF:-1 tvg-id="CGTN英文纪录" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CGTN%E8%8B%B1%E6%96%87%E7%BA%AA%E5%BD%95.png" group-title="河南联通",CGTN英文纪录
-http://115.58.52.130:7001/rtp/225.1.5.35:1345
-#EXTINF:-1 tvg-id="CGTN西班牙语" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CGTN%E8%A5%BF%E7%8F%AD%E7%89%99%E8%AF%AD.png" group-title="河南联通",CGTN西班牙语
-http://115.58.52.130:7001/rtp/225.1.5.36:1346
-#EXTINF:-1 tvg-id="CGTN法语" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CGTN%E6%B3%95%E8%AF%AD.png" group-title="河南联通",CGTN法语
-http://115.58.52.130:7001/rtp/225.1.5.37:1347
-#EXTINF:-1 tvg-id="CGTN阿拉伯语" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CGTN%E9%98%BF%E6%8B%89%E4%BC%AF%E8%AF%AD.png" group-title="河南联通",CGTN阿拉伯语
-http://115.58.52.130:7001/rtp/225.1.5.38:1348
-#EXTINF:-1 tvg-id="CGTN俄语" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CGTN%E4%BF%84%E8%AF%AD.png" group-title="河南联通",CGTN俄语
-http://115.58.52.130:7001/rtp/225.1.5.39:1349
 #EXTINF:-1 tvg-id="中国教育-1高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E4%B8%AD%E5%9B%BD%E6%95%99%E8%82%B2-1%E9%AB%98%E6%B8%85.png" group-title="河南联通",中国教育-1高清
 http://115.58.52.130:7001/rtp/225.1.4.173:1712
 #EXTINF:-1 tvg-id="中国教育-2" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E4%B8%AD%E5%9B%BD%E6%95%99%E8%82%B2-2.png" group-title="河南联通",中国教育-2
