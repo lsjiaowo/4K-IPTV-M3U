@@ -1,0 +1,24 @@
+# ============================================
+# IPTV 远程动态频道模板
+#
+# 格式：
+# 省份运营商=远程M3U或TXT的直链地址
+#
+# 规则：
+# 1. 每次脚本运行时，配置了远程模板的省份+运营商优先获取远程最新版。
+# 2. 同一“省份+运营商”在一次 b.py 运行中最多下载一次，后续候选 IP:PORT 复用内存缓存。
+# 3. 远程下载失败或无法解析有效组播地址时，自动回退 channel_templates/同名.m3u 或 .txt。
+# 4. 本地模板也不存在/无效时，普通省份抓取才回退 cqshushu 频道内容。
+# 5. 手动 endpoint 模式不会回退 cqshushu 频道内容：远程失败后必须有可用本地模板。
+# 6. 空行和以 # 开头的行忽略；需要暂时停用某条配置时，在该行前加 # 即可。
+# 7. 建议使用 raw.githubusercontent.com 等可直接返回 M3U/TXT 内容的地址，不要使用 GitHub /blob/ 网页地址。
+# 8. 模板可包含 rtp://、HTTP /rtp/ 或 HTTP /udp/；最终公网播放地址统一输出为：
+#    http://IP:PORT/rtp/组播IP:PORT
+# ============================================
+
+# 广东电信：Tzwcard 持续维护的广东电信完整 RTP 列表
+广东电信=https://raw.githubusercontent.com/Tzwcard/ChinaTelecom-GuangdongIPTV-RTP-List/master/GuangdongIPTV_rtp_all.m3u
+
+# 以后增加其它省份时直接追加，例如：
+# 天津电信=https://example.com/TianjinTelecom.m3u
+# 四川电信=https://example.com/SichuanTelecom.m3u
