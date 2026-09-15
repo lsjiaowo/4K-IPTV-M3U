@@ -173,7 +173,7 @@ on:
     types: [hourly_iptv_unicom_update]
 
   schedule:
-    # 联通自动定时触发；实际执行 health 还是 full 由 SCHEDULE_MODE 控制。
+    # 联通定时触发入口保留；实际执行 health / full / disabled 由 SCHEDULE_MODE 控制。
     - cron: "31,36,41,46,51,56 * * * *"
 
 # 三个运营商工作流共用固定并发组：健康检查、完整定时抓取和手动抓取均串行执行，避免同时修改仓库。
@@ -189,8 +189,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
-      # 自动定时模式只能二选一：health=测速检查；full=全部省份抓取。
-      # 手动 workflow_dispatch 不受此设置限制：可选择“测速检查”或“省份抓取”；测速检查时省份/运营商输入全部忽略。
+      # 自动定时模式三选一：health=测速检查；full=全部省份抓取；disabled=关闭所有自动运行（仅允许手动 Run workflow）。
+      # 只需修改下面 SCHEDULE_MODE 一行即可切换；手动 workflow_dispatch 不受此设置限制：可选择“测速检查”或“省份抓取”；测速检查时省份/运营商输入全部忽略。
       SCHEDULE_MODE: "health"
       # full 模式固定抓取中国大陆全部省份的联通；优先省份顺序由 rtp/b.py 统一控制。
 
@@ -232,10 +232,20 @@ jobs:
               exit 1
             fi
           elif [ "${{ github.event_name }}" = "repository_dispatch" ]; then
-            if [ "$SCHEDULE_MODE" = "full" ]; then
+            # 外部自动触发与 schedule 使用同一 SCHEDULE_MODE；disabled 时只记录并跳过，不执行任何任务。
+            if [ "$SCHEDULE_MODE" = "health" ]; then
+              RUN=true
+              MODE="health"
+              USE_FULL_LOCK=true
+            elif [ "$SCHEDULE_MODE" = "full" ]; then
               RUN=true
               MODE="full"
               USE_FULL_LOCK=true
+            elif [ "$SCHEDULE_MODE" = "disabled" ]; then
+              echo "[*] SCHEDULE_MODE=disabled：已关闭自动运行，本次 repository_dispatch 跳过；手动 Run workflow 仍可使用。"
+            else
+              echo "::error::SCHEDULE_MODE 只能是 health、full 或 disabled，当前=$SCHEDULE_MODE"
+              exit 1
             fi
           elif [ "${{ github.event_name }}" = "schedule" ]; then
             if [ "$SCHEDULE_MODE" = "health" ]; then
@@ -246,8 +256,10 @@ jobs:
               RUN=true
               MODE="full"
               USE_FULL_LOCK=true
+            elif [ "$SCHEDULE_MODE" = "disabled" ]; then
+              echo "[*] SCHEDULE_MODE=disabled：已关闭自动运行，本次 schedule 跳过；手动 Run workflow 仍可使用。"
             else
-              echo "::error::SCHEDULE_MODE 只能是 health 或 full，当前=$SCHEDULE_MODE"
+              echo "::error::SCHEDULE_MODE 只能是 health、full 或 disabled，当前=$SCHEDULE_MODE"
               exit 1
             fi
           fi
