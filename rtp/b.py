@@ -3180,6 +3180,84 @@ def push_to_github(files, province=""):
     except Exception as e:
         raise RuntimeError(f"GitHub 同步异常: {e}") from e
 
+
+def sync_m3u_to_secret_gist(province: str = "") -> bool:
+    """把当前 m3u/*.m3u 全量同步到 Secret Gist，并验证本地文件均出现在 API 返回文件列表中。
+
+    设计目的：全国/多省份抓取时，每个省份成功生成并 Git push 后立即发布 Gist，
+    不必等待全部省份处理完成。Workflow 末尾仍保留一次全量同步作为最终兜底。
+
+    所需环境变量：
+    - GIST_TOKEN：具有目标 Gist 写权限的 token；
+    - IPTV_GIST_ID：目标 Secret Gist ID。
+    """
+    token = os.environ.get("GIST_TOKEN", "").strip()
+    gist_id = os.environ.get("IPTV_GIST_ID", "").strip()
+    label = f"[{province}] " if province else ""
+
+    if not token:
+        raise RuntimeError("GIST_TOKEN is empty，无法即时同步 Secret Gist。")
+    if not gist_id:
+        raise RuntimeError("IPTV_GIST_ID is empty，无法即时同步 Secret Gist。")
+
+    m3u_dir = Path("m3u")
+    files: dict[str, dict[str, str]] = {}
+    for path in sorted(m3u_dir.glob("*.m3u")):
+        if path.is_file():
+            files[path.name] = {"content": path.read_text(encoding="utf-8")}
+
+    if not files:
+        raise RuntimeError("m3u/ 下没有可同步的 .m3u 文件。")
+
+    print(
+        f"\n[*] {label}正在即时同步 Secret Gist："
+        f"本地共 {len(files)} 个 M3U；本省发布完成后立即同步，不等待其它省份。"
+    )
+
+    response = requests.patch(
+        f"https://api.github.com/gists/{gist_id}",
+        headers={
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {token}",
+            "X-GitHub-Api-Version": "2022-11-28",
+            "Content-Type": "application/json",
+            "User-Agent": "4K-IPTV-M3U-Gist-Sync",
+        },
+        json={"files": files},
+        timeout=120,
+    )
+    if response.status_code != 200:
+        raise RuntimeError(
+            f"Secret Gist 同步失败：HTTP {response.status_code}: "
+            f"{response.text[:1000]}"
+        )
+
+    try:
+        result = response.json()
+    except ValueError as exc:
+        raise RuntimeError("Secret Gist 同步返回 HTTP 200，但响应不是有效 JSON。") from exc
+
+    remote_files = result.get("files") or {}
+    missing = [name for name in files if name not in remote_files]
+    if missing:
+        raise RuntimeError(
+            "Secret Gist PATCH 返回成功，但 API 返回文件列表缺少："
+            + ", ".join(missing)
+        )
+
+    province_files = [
+        name for name in files
+        if province and name.startswith(province)
+    ]
+    print(
+        f"[+] {label}Secret Gist 即时同步成功并验证完成："
+        f"{len(files)}/{len(files)} 个本地 M3U 均存在于 Gist。"
+    )
+    if province_files:
+        print(f"[+] {label}本省 Gist 文件：" + ", ".join(province_files))
+    return True
+
+
 def split_selection(value: str) -> list[str]:
     """拆分英文/中文逗号或分号分隔的选择项，并保持原顺序去重。"""
     result = []
@@ -3633,7 +3711,13 @@ def main():
                 if os.path.exists(os.path.join(repo_root, USABLE_ENDPOINT_HISTORY_FILE)):
                     publish_paths.append(USABLE_ENDPOINT_HISTORY_FILE)
                 push_to_github(publish_paths, province=province)
-                print(f"[+] [{province}] 已发布，继续处理下一个省份。")
+                # GitHub 仓库发布成功后立即同步 Secret Gist。
+                # 全国/多省份抓取时不等待后续省份，确保刚生成的 M3U RAW 链接马上建立。
+                sync_m3u_to_secret_gist(province=province)
+                print(
+                    f"[+] [{province}] GitHub + Secret Gist 均已发布，"
+                    "继续处理下一个省份。"
+                )
         else:
             print(
                 f"[*] [{province}] 本次没有新的列表需要发布；"
