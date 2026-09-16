@@ -44,6 +44,14 @@ on:
           - "全部槽位（默认）"
           - "槽位"
           - "槽位1"
+      existing_complete_mode:
+        description: "已有完整槽位处理（仅“全部省份抓取”+“全部槽位”有效）"
+        required: true
+        default: "全部重新抓取（默认）"
+        type: choice
+        options:
+          - "全部重新抓取（默认）"
+          - "跳过已有完整槽位"
       province_1:
         description: "省份1（仅省份抓取有效；选择全部时忽略省份2/3）"
         required: true
@@ -396,6 +404,7 @@ jobs:
           HEALTH_FILE_3: "${{ github.event.inputs.health_file_3 }}"
           HEALTH_FILE_MODE: "${{ github.event.inputs.health_file_mode }}"
           UPDATE_SLOT: "${{ github.event.inputs.update_slot }}"
+          EXISTING_COMPLETE_MODE: "${{ github.event.inputs.existing_complete_mode }}"
           MANUAL_ENDPOINT_TARGET: "${{ github.event.inputs.manual_endpoint_target }}"
           MANUAL_ENDPOINT: "${{ github.event.inputs.manual_endpoint }}"
           MANUAL_ENDPOINT_ACTION: "${{ github.event.inputs.manual_endpoint_action }}"
@@ -476,11 +485,17 @@ jobs:
             fi
             if [ -z "$SELECTED_CARRIERS" ]; then SELECTED_CARRIERS="全部"; fi
             if [ -z "$UPDATE_SLOT" ]; then UPDATE_SLOT="全部槽位（默认）"; fi
-            echo "[*] 手动省份抓取：省份=$SELECTED_PROVINCES；运营商=$SELECTED_CARRIERS；更新槽位=$UPDATE_SLOT"
+            if [ "$EXISTING_COMPLETE_MODE" = "跳过已有完整槽位" ]; then
+              EXISTING_MODE="skip"
+            else
+              EXISTING_MODE="all"
+            fi
+            echo "[*] 手动省份抓取：省份=$SELECTED_PROVINCES；运营商=$SELECTED_CARRIERS；更新槽位=$UPDATE_SLOT；已有完整槽位处理=${EXISTING_COMPLETE_MODE:-全部重新抓取（默认）}"
             python -u rtp/b.py \
               --provinces "$SELECTED_PROVINCES" \
               --carriers "$SELECTED_CARRIERS" \
               --update-slot "$UPDATE_SLOT" \
+              --existing-complete-mode "$EXISTING_MODE" \
               --max-pages 10 \
               --max-per-carrier 20 \
               --min-stream-speed 0.5859375 \
