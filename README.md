@@ -60,6 +60,7 @@ GitHub README 不支持可执行脚本，`onclick` 复制按钮会失效，因�
 </tr>
 </thead>
 <tbody>
+<tr><td style="white-space:nowrap;">上海电信.m3u</td><td style="white-space:nowrap;"><a href="https://gist.githubusercontent.com/lsjiaowo/151462a1b2deeb3816e2f4ce3b3b44b1/raw/%E4%B8%8A%E6%B5%B7%E7%94%B5%E4%BF%A1.m3u">播放链接</a></td><td style="white-space:nowrap;">2026-09-16 16:37:30</td><td><code>https://gist.githubusercontent.com/lsjiaowo/151462a1b2deeb3816e2f4ce3b3b44b1/raw/上海电信.m3u</code></td></tr>
 <tr><td style="white-space:nowrap;">北京电信.m3u</td><td style="white-space:nowrap;"><a href="https://gist.githubusercontent.com/lsjiaowo/151462a1b2deeb3816e2f4ce3b3b44b1/raw/%E5%8C%97%E4%BA%AC%E7%94%B5%E4%BF%A1.m3u">播放链接</a></td><td style="white-space:nowrap;">2026-09-16 16:14:31</td><td><code>https://gist.githubusercontent.com/lsjiaowo/151462a1b2deeb3816e2f4ce3b3b44b1/raw/北京电信.m3u</code></td></tr>
 <tr><td style="white-space:nowrap;">四川电信.m3u</td><td style="white-space:nowrap;"><a href="https://gist.githubusercontent.com/lsjiaowo/151462a1b2deeb3816e2f4ce3b3b44b1/raw/%E5%9B%9B%E5%B7%9D%E7%94%B5%E4%BF%A1.m3u">播放链接</a></td><td style="white-space:nowrap;">2026-09-14 09:02:41</td><td><code>https://gist.githubusercontent.com/lsjiaowo/151462a1b2deeb3816e2f4ce3b3b44b1/raw/四川电信.m3u</code></td></tr>
 <tr><td style="white-space:nowrap;">四川电信1.m3u</td><td style="white-space:nowrap;"><a href="https://gist.githubusercontent.com/lsjiaowo/151462a1b2deeb3816e2f4ce3b3b44b1/raw/%E5%9B%9B%E5%B7%9D%E7%94%B5%E4%BF%A11.m3u">播放链接</a></td><td style="white-space:nowrap;">2026-09-16 06:08:51</td><td><code>https://gist.githubusercontent.com/lsjiaowo/151462a1b2deeb3816e2f4ce3b3b44b1/raw/四川电信1.m3u</code></td></tr>
@@ -141,6 +142,7 @@ GitHub README 不支持可执行脚本，`onclick` 复制按钮会失效，因�
 </tr>
 </thead>
 <tbody>
+<tr><td style="white-space:nowrap;">上海电信.txt</td><td style="white-space:nowrap;"><a href="https://github.com/lsjiaowo/4K-IPTV-M3U/blob/main/txt/%E4%B8%8A%E6%B5%B7%E7%94%B5%E4%BF%A1.txt">查看文件</a></td><td style="white-space:nowrap;">2026-09-16 16:37:30</td><td><code>https://github.com/lsjiaowo/4K-IPTV-M3U/blob/main/txt/上海电信.txt</code></td></tr>
 <tr><td style="white-space:nowrap;">北京电信.txt</td><td style="white-space:nowrap;"><a href="https://github.com/lsjiaowo/4K-IPTV-M3U/blob/main/txt/%E5%8C%97%E4%BA%AC%E7%94%B5%E4%BF%A1.txt">查看文件</a></td><td style="white-space:nowrap;">2026-09-16 16:14:31</td><td><code>https://github.com/lsjiaowo/4K-IPTV-M3U/blob/main/txt/北京电信.txt</code></td></tr>
 <tr><td style="white-space:nowrap;">四川电信.txt</td><td style="white-space:nowrap;"><a href="https://github.com/lsjiaowo/4K-IPTV-M3U/blob/main/txt/%E5%9B%9B%E5%B7%9D%E7%94%B5%E4%BF%A1.txt">查看文件</a></td><td style="white-space:nowrap;">2026-09-14 09:02:41</td><td><code>https://github.com/lsjiaowo/4K-IPTV-M3U/blob/main/txt/四川电信.txt</code></td></tr>
 <tr><td style="white-space:nowrap;">四川电信1.txt</td><td style="white-space:nowrap;"><a href="https://github.com/lsjiaowo/4K-IPTV-M3U/blob/main/txt/%E5%9B%9B%E5%B7%9D%E7%94%B5%E4%BF%A11.txt">查看文件</a></td><td style="white-space:nowrap;">2026-09-16 06:08:51</td><td><code>https://github.com/lsjiaowo/4K-IPTV-M3U/blob/main/txt/四川电信1.txt</code></td></tr>
