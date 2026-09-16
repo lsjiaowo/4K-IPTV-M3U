@@ -3324,6 +3324,12 @@ def parse_args():
         help="省份抓取更新槽位：all=全部槽位（默认）；base=只更新无数字后缀的槽位；1=只更新槽位1。也接受中文：全部槽位（默认）/槽位/槽位1。",
     )
     ap.add_argument(
+        "--existing-complete-mode",
+        choices=("all", "skip"),
+        default="all",
+        help="仅“--provinces 全部 + --update-slot all”有效：all=全部重新抓取（默认）；skip=若某省份+运营商已同时存在主槽位.m3u和槽位1.m3u且文件非空，则全国补全时跳过该组，不测速、不重抓、不更新时间。",
+    )
+    ap.add_argument(
         "--manual-endpoint", default="",
         help="手动指定公网转发 endpoint，格式 IPv4:PORT；提供后进入手动 endpoint 导入模式，不搜索 cqshushu 候选服务器。",
     )
@@ -3463,6 +3469,61 @@ def main():
                         "按统一大陆省份顺序执行。"
                     )
             execution_plan = {province: selected_carriers for province in provinces}
+
+        # “全部省份 + 全部槽位”可选择全国补全模式：
+        # 已同时存在主槽位和槽位1的省份+运营商组直接跳过。
+        # 这里只检查两个标准 M3U 是否存在且非空，不对旧源做测速；
+        # 因此不会修改被跳过组的 M3U/TXT、更新时间或历史记录。
+        is_all_provinces_request = (
+            not args.targets
+            and not args.only_province
+            and "全部" in split_selection(args.provinces)
+        )
+        normalized_update_slot = _normalize_update_slot(args.update_slot)
+        if args.existing_complete_mode == "skip":
+            if is_all_provinces_request and normalized_update_slot == "all":
+                filtered_plan: dict[str, tuple[str, ...]] = {}
+                skipped_groups: list[str] = []
+                for province, carriers in execution_plan.items():
+                    remaining_carriers: list[str] = []
+                    for carrier in carriers:
+                        group_title = f"{province}{carrier}"
+                        base_path = Path(m3u_output_dir) / f"{group_title}.m3u"
+                        slot1_path = Path(m3u_output_dir) / f"{group_title}1.m3u"
+                        base_ready = base_path.is_file() and base_path.stat().st_size > 0
+                        slot1_ready = slot1_path.is_file() and slot1_path.stat().st_size > 0
+                        if base_ready and slot1_ready:
+                            skipped_groups.append(group_title)
+                            print(
+                                f"[>>] [{group_title}] 全国补全跳过："
+                                f"{base_path.name} 和 {slot1_path.name} 均已存在且非空；"
+                                "不测速、不重抓、不修改更新时间。"
+                            )
+                        else:
+                            missing = []
+                            if not base_ready:
+                                missing.append(base_path.name)
+                            if not slot1_ready:
+                                missing.append(slot1_path.name)
+                            print(
+                                f"[*] [{group_title}] 全国补全继续抓取："
+                                f"尚未完整具备两个标准槽位；缺少/空文件={','.join(missing)}。"
+                            )
+                            remaining_carriers.append(carrier)
+                    if remaining_carriers:
+                        filtered_plan[province] = tuple(remaining_carriers)
+                execution_plan = filtered_plan
+                print(
+                    f"[*] 全国补全过滤完成：跳过 {len(skipped_groups)} 个已有完整槽位组；"
+                    f"剩余 {sum(len(v) for v in execution_plan.values())} 个省份运营商组需要抓取。"
+                )
+                if skipped_groups:
+                    print(f"[*] 已跳过：{','.join(skipped_groups)}")
+            else:
+                print(
+                    "[*] 已选择“跳过已有完整槽位”，但该选项仅在"
+                    "“省份=全部 + 更新槽位=全部槽位（默认）”时生效；本次按原逻辑执行。"
+                )
     except ValueError as exc:
         raise SystemExit(f"参数错误：{exc}") from exc
 
