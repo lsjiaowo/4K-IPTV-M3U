@@ -394,6 +394,8 @@ jobs:
         if: steps.active.outputs.active == 'true'
         env:
           PYTHONUNBUFFERED: "1"
+          # b.py 在每个成功省份 Git push 后立即同步 Secret Gist；Workflow 末尾仍保留一次全量同步兜底。
+          GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
           IPTV_GIST_ID: ${{ secrets.IPTV_GIST_ID }}
           PROVINCE_1: "${{ github.event.inputs.province_1 }}"
           PROVINCE_2: "${{ github.event.inputs.province_2 }}"
@@ -510,7 +512,7 @@ jobs:
               --min-stream-speed 0.5859375 \
               --push
           fi
-      - name: Sync M3U playlists to Secret Gist
+      - name: Final fallback sync all M3U playlists to Secret Gist
         if: steps.active.outputs.active == 'true'
         env:
           GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
@@ -568,7 +570,7 @@ jobs:
                       f"Gist sync failed: HTTP {response.status}: {body}"
                   )
 
-          print(f"[*] Secret Gist sync successful: {len(files)} M3U files uploaded.")
+          print(f"[*] Final fallback Secret Gist sync successful: {len(files)} M3U files uploaded.")
           for name in sorted(files):
               print(f"    - {name}")
           PY
