@@ -1,0 +1,175 @@
+#EXTM3U x-tvg-url="https://epg.catvod.com/epg.xml"
+#EXTINF:-1 tvg-id="CCTV4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV4K.png" group-title="青海电信",CCTV4K
+http://220.167.170.184:4000/rtp/239.120.1.154:9882
+#EXTINF:-1 tvg-id="北京卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%8C%97%E4%BA%AC%E5%8D%AB%E8%A7%864K.png" group-title="青海电信",北京卫视4K
+http://220.167.170.184:4000/rtp/239.120.1.158:9888
+#EXTINF:-1 tvg-id="广东卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%B9%BF%E4%B8%9C%E5%8D%AB%E8%A7%864K.png" group-title="青海电信",广东卫视4K
+http://220.167.170.184:4000/rtp/239.120.1.115:9870
+#EXTINF:-1 tvg-id="深圳卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%B7%B1%E5%9C%B3%E5%8D%AB%E8%A7%864K.png" group-title="青海电信",深圳卫视4K
+http://220.167.170.184:4000/rtp/239.120.1.152:9874
+#EXTINF:-1 tvg-id="东方卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E4%B8%9C%E6%96%B9%E5%8D%AB%E8%A7%864K.png" group-title="青海电信",东方卫视4K
+http://220.167.170.184:4000/rtp/239.120.1.109:9862
+#EXTINF:-1 tvg-id="江苏卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%B1%9F%E8%8B%8F%E5%8D%AB%E8%A7%864K.png" group-title="青海电信",江苏卫视4K
+http://220.167.170.184:4000/rtp/239.120.1.106:9854
+#EXTINF:-1 tvg-id="浙江卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%B5%99%E6%B1%9F%E5%8D%AB%E8%A7%864K.png" group-title="青海电信",浙江卫视4K
+http://220.167.170.184:4000/rtp/239.120.1.107:9858
+#EXTINF:-1 tvg-id="山东卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%B1%B1%E4%B8%9C%E5%8D%AB%E8%A7%864K.png" group-title="青海电信",山东卫视4K
+http://220.167.170.184:4000/rtp/239.120.1.104:9846
+#EXTINF:-1 tvg-id="湖南卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%B9%96%E5%8D%97%E5%8D%AB%E8%A7%864K.png" group-title="青海电信",湖南卫视4K
+http://220.167.170.184:4000/rtp/239.120.1.105:9850
+#EXTINF:-1 tvg-id="四川卫视4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%9B%9B%E5%B7%9D%E5%8D%AB%E8%A7%864K.png" group-title="青海电信",四川卫视4K
+http://220.167.170.184:4000/rtp/239.120.1.90:9866
+#EXTINF:-1 tvg-id="CGTN" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CGTN.png" group-title="青海电信",CGTN
+http://220.167.170.184:4000/rtp/239.120.1.161:9024
+#EXTINF:-1 tvg-id="CCTV1" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV1.png" group-title="青海电信",CCTV1
+http://220.167.170.184:4000/rtp/239.120.1.120:8778
+#EXTINF:-1 tvg-id="CCTV2" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV2.png" group-title="青海电信",CCTV2
+http://220.167.170.184:4000/rtp/239.120.1.223:9484
+#EXTINF:-1 tvg-id="CCTV3" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV3.png" group-title="青海电信",CCTV3
+http://220.167.170.184:4000/rtp/239.120.1.88:9420
+#EXTINF:-1 tvg-id="CCTV4" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV4.png" group-title="青海电信",CCTV4
+http://220.167.170.184:4000/rtp/239.120.1.159:9012
+#EXTINF:-1 tvg-id="CCTV5" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV5.png" group-title="青海电信",CCTV5
+http://220.167.170.184:4000/rtp/239.120.1.46:8248
+#EXTINF:-1 tvg-id="CCTV5+" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV5%2B.png" group-title="青海电信",CCTV5+
+http://220.167.170.184:4000/rtp/239.120.1.245:9428
+#EXTINF:-1 tvg-id="CCTV6" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV6.png" group-title="青海电信",CCTV6
+http://220.167.170.184:4000/rtp/239.120.1.49:8252
+#EXTINF:-1 tvg-id="CCTV7" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV7.png" group-title="青海电信",CCTV7
+http://220.167.170.184:4000/rtp/239.120.1.224:9490
+#EXTINF:-1 tvg-id="CCTV8" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV8.png" group-title="青海电信",CCTV8
+http://220.167.170.184:4000/rtp/239.120.1.50:8308
+#EXTINF:-1 tvg-id="CCTV9" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV9.png" group-title="青海电信",CCTV9
+http://220.167.170.184:4000/rtp/239.120.1.227:9496
+#EXTINF:-1 tvg-id="CCTV10" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV10.png" group-title="青海电信",CCTV10
+http://220.167.170.184:4000/rtp/239.120.1.250:9448
+#EXTINF:-1 tvg-id="CCTV11" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV11.png" group-title="青海电信",CCTV11
+http://220.167.170.184:4000/rtp/239.120.1.163:9036
+#EXTINF:-1 tvg-id="CCTV12" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV12.png" group-title="青海电信",CCTV12
+http://220.167.170.184:4000/rtp/239.120.1.230:9502
+#EXTINF:-1 tvg-id="CCTV13" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV13.png" group-title="青海电信",CCTV13
+http://220.167.170.184:4000/rtp/239.120.1.165:9048
+#EXTINF:-1 tvg-id="CCTV14" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV14.png" group-title="青海电信",CCTV14
+http://220.167.170.184:4000/rtp/239.120.1.193:8284
+#EXTINF:-1 tvg-id="CCTV15" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV15.png" group-title="青海电信",CCTV15
+http://220.167.170.184:4000/rtp/239.120.1.167:9060
+#EXTINF:-1 tvg-id="CCTV16" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV16.png" group-title="青海电信",CCTV16
+http://220.167.170.184:4000/rtp/239.120.1.252:9554
+#EXTINF:-1 tvg-id="CCTV16" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV16.png" group-title="青海电信",CCTV16
+http://220.167.170.184:4000/rtp/239.120.1.153:9878
+#EXTINF:-1 tvg-id="CCTV17" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV17.png" group-title="青海电信",CCTV17
+http://220.167.170.184:4000/rtp/239.120.1.68:8370
+#EXTINF:-1 tvg-id="金鹰纪实" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E9%87%91%E9%B9%B0%E7%BA%AA%E5%AE%9E.png" group-title="青海电信",金鹰纪实
+http://220.167.170.184:4000/rtp/239.120.1.73:8412
+#EXTINF:-1 tvg-id="重庆卫视" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E9%87%8D%E5%BA%86%E5%8D%AB%E8%A7%86.png" group-title="青海电信",重庆卫视
+http://220.167.170.184:4000/rtp/239.120.1.146:8934
+#EXTINF:-1 tvg-id="江苏卫视" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%B1%9F%E8%8B%8F%E5%8D%AB%E8%A7%86.png" group-title="青海电信",江苏卫视
+http://220.167.170.184:4000/rtp/239.120.1.125:8808
+#EXTINF:-1 tvg-id="浙江卫视" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%B5%99%E6%B1%9F%E5%8D%AB%E8%A7%86.png" group-title="青海电信",浙江卫视
+http://220.167.170.184:4000/rtp/239.120.1.128:8826
+#EXTINF:-1 tvg-id="东方卫视" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E4%B8%9C%E6%96%B9%E5%8D%AB%E8%A7%86.png" group-title="青海电信",东方卫视
+http://220.167.170.184:4000/rtp/239.120.1.121:8784
+#EXTINF:-1 tvg-id="深圳卫视" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%B7%B1%E5%9C%B3%E5%8D%AB%E8%A7%86.png" group-title="青海电信",深圳卫视
+http://220.167.170.184:4000/rtp/239.120.1.137:8880
+#EXTINF:-1 tvg-id="北京卫视" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%8C%97%E4%BA%AC%E5%8D%AB%E8%A7%86.png" group-title="青海电信",北京卫视
+http://220.167.170.184:4000/rtp/239.120.1.122:8790
+#EXTINF:-1 tvg-id="山东卫视" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%B1%B1%E4%B8%9C%E5%8D%AB%E8%A7%86.png" group-title="青海电信",山东卫视
+http://220.167.170.184:4000/rtp/239.120.1.211:9294
+#EXTINF:-1 tvg-id="天津卫视" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%A4%A9%E6%B4%A5%E5%8D%AB%E8%A7%86.png" group-title="青海电信",天津卫视
+http://220.167.170.184:4000/rtp/239.120.1.233:9514
+#EXTINF:-1 tvg-id="贵州卫视" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E8%B4%B5%E5%B7%9E%E5%8D%AB%E8%A7%86.png" group-title="青海电信",贵州卫视
+http://220.167.170.184:4000/rtp/239.120.1.142:8910
+#EXTINF:-1 tvg-id="四川卫视" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%9B%9B%E5%B7%9D%E5%8D%AB%E8%A7%86.png" group-title="青海电信",四川卫视
+http://220.167.170.184:4000/rtp/239.120.1.147:8940
+#EXTINF:-1 tvg-id="云南卫视" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E4%BA%91%E5%8D%97%E5%8D%AB%E8%A7%86.png" group-title="青海电信",云南卫视
+http://220.167.170.184:4000/rtp/239.120.1.156:8994
+#EXTINF:-1 tvg-id="广西卫视" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%B9%BF%E8%A5%BF%E5%8D%AB%E8%A7%86.png" group-title="青海电信",广西卫视
+http://220.167.170.184:4000/rtp/239.120.1.155:8988
+#EXTINF:-1 tvg-id="黑龙江卫视" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E9%BB%91%E9%BE%99%E6%B1%9F%E5%8D%AB%E8%A7%86.png" group-title="青海电信",黑龙江卫视
+http://220.167.170.184:4000/rtp/239.120.1.124:8802
+#EXTINF:-1 tvg-id="安徽卫视" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%AE%89%E5%BE%BD%E5%8D%AB%E8%A7%86.png" group-title="青海电信",安徽卫视
+http://220.167.170.184:4000/rtp/239.120.1.226:9348
+#EXTINF:-1 tvg-id="山西卫视" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%B1%B1%E8%A5%BF%E5%8D%AB%E8%A7%86.png" group-title="青海电信",山西卫视
+http://220.167.170.184:4000/rtp/239.120.1.143:8916
+#EXTINF:-1 tvg-id="江西卫视" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%B1%9F%E8%A5%BF%E5%8D%AB%E8%A7%86.png" group-title="青海电信",江西卫视
+http://220.167.170.184:4000/rtp/239.120.1.228:9356
+#EXTINF:-1 tvg-id="湖北卫视" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%B9%96%E5%8C%97%E5%8D%AB%E8%A7%86.png" group-title="青海电信",湖北卫视
+http://220.167.170.184:4000/rtp/239.120.1.129:8832
+#EXTINF:-1 tvg-id="旅游卫视" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%97%85%E6%B8%B8%E5%8D%AB%E8%A7%86.png" group-title="青海电信",旅游卫视
+http://220.167.170.184:4000/rtp/239.120.1.141:8904
+#EXTINF:-1 tvg-id="陕西卫视" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E9%99%95%E8%A5%BF%E5%8D%AB%E8%A7%86.png" group-title="青海电信",陕西卫视
+http://220.167.170.184:4000/rtp/239.120.1.117:8694
+#EXTINF:-1 tvg-id="东南卫视" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E4%B8%9C%E5%8D%97%E5%8D%AB%E8%A7%86.png" group-title="青海电信",东南卫视
+http://220.167.170.184:4000/rtp/239.120.1.232:9372
+#EXTINF:-1 tvg-id="吉林卫视" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%90%89%E6%9E%97%E5%8D%AB%E8%A7%86.png" group-title="青海电信",吉林卫视
+http://220.167.170.184:4000/rtp/239.120.1.151:8964
+#EXTINF:-1 tvg-id="辽宁卫视" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E8%BE%BD%E5%AE%81%E5%8D%AB%E8%A7%86.png" group-title="青海电信",辽宁卫视
+http://220.167.170.184:4000/rtp/239.120.1.229:9360
+#EXTINF:-1 tvg-id="内蒙古卫视" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%86%85%E8%92%99%E5%8F%A4%E5%8D%AB%E8%A7%86.png" group-title="青海电信",内蒙古卫视
+http://220.167.170.184:4000/rtp/239.120.1.135:8868
+#EXTINF:-1 tvg-id="湖南卫视" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%B9%96%E5%8D%97%E5%8D%AB%E8%A7%86.png" group-title="青海电信",湖南卫视
+http://220.167.170.184:4000/rtp/239.120.1.127:8820
+#EXTINF:-1 tvg-id="广东卫视" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%B9%BF%E4%B8%9C%E5%8D%AB%E8%A7%86.png" group-title="青海电信",广东卫视
+http://220.167.170.184:4000/rtp/239.120.1.126:8814
+#EXTINF:-1 tvg-id="河南卫视" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%B2%B3%E5%8D%97%E5%8D%AB%E8%A7%86.png" group-title="青海电信",河南卫视
+http://220.167.170.184:4000/rtp/239.120.1.148:8946
+#EXTINF:-1 tvg-id="河北卫视" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%B2%B3%E5%8C%97%E5%8D%AB%E8%A7%86.png" group-title="青海电信",河北卫视
+http://220.167.170.184:4000/rtp/239.120.1.212:9300
+#EXTINF:-1 tvg-id="宁夏卫视" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%AE%81%E5%A4%8F%E5%8D%AB%E8%A7%86.png" group-title="青海电信",宁夏卫视
+http://220.167.170.184:4000/rtp/239.120.1.130:8838
+#EXTINF:-1 tvg-id="甘肃卫视" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E7%94%98%E8%82%83%E5%8D%AB%E8%A7%86.png" group-title="青海电信",甘肃卫视
+http://220.167.170.184:4000/rtp/239.120.1.118:8700
+#EXTINF:-1 tvg-id="青海卫视" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E9%9D%92%E6%B5%B7%E5%8D%AB%E8%A7%86.png" group-title="青海电信",青海卫视
+http://220.167.170.184:4000/rtp/239.120.1.64:8332
+#EXTINF:-1 tvg-id="新疆卫视" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%96%B0%E7%96%86%E5%8D%AB%E8%A7%86.png" group-title="青海电信",新疆卫视
+http://220.167.170.184:4000/rtp/239.120.1.134:8862
+#EXTINF:-1 tvg-id="西藏卫视" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E8%A5%BF%E8%97%8F%E5%8D%AB%E8%A7%86.png" group-title="青海电信",西藏卫视
+http://220.167.170.184:4000/rtp/239.120.1.136:8874
+#EXTINF:-1 tvg-id="兵团卫视" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%85%B5%E5%9B%A2%E5%8D%AB%E8%A7%86.png" group-title="青海电信",兵团卫视
+http://220.167.170.184:4000/rtp/239.120.1.240:9404
+#EXTINF:-1 tvg-id="三沙卫视" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E4%B8%89%E6%B2%99%E5%8D%AB%E8%A7%86.png" group-title="青海电信",三沙卫视
+http://220.167.170.184:4000/rtp/239.120.1.180:9926
+#EXTINF:-1 tvg-id="金鹰卡通" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E9%87%91%E9%B9%B0%E5%8D%A1%E9%80%9A.png" group-title="青海电信",金鹰卡通
+http://220.167.170.184:4000/rtp/239.120.1.139:8892
+#EXTINF:-1 tvg-id="嘉佳卡通" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%98%89%E4%BD%B3%E5%8D%A1%E9%80%9A.png" group-title="青海电信",嘉佳卡通
+http://220.167.170.184:4000/rtp/239.120.1.108:8640
+#EXTINF:-1 tvg-id="卡酷少儿" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%8D%A1%E9%85%B7%E5%B0%91%E5%84%BF.png" group-title="青海电信",卡酷少儿
+http://220.167.170.184:4000/rtp/239.120.1.138:8886
+#EXTINF:-1 tvg-id="山东教育卫视" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%B1%B1%E4%B8%9C%E6%95%99%E8%82%B2%E5%8D%AB%E8%A7%86.png" group-title="青海电信",山东教育卫视
+http://220.167.170.184:4000/rtp/239.120.1.177:8272
+#EXTINF:-1 tvg-id="求索记录" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%B1%82%E7%B4%A2%E8%AE%B0%E5%BD%95.png" group-title="青海电信",求索记录
+http://220.167.170.184:4000/rtp/239.120.1.89:9834
+#EXTINF:-1 tvg-id="精彩影视" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E7%B2%BE%E5%BD%A9%E5%BD%B1%E8%A7%86.png" group-title="青海电信",精彩影视
+http://220.167.170.184:4000/rtp/239.120.1.101:9838
+#EXTINF:-1 tvg-id="中国教育1台" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E4%B8%AD%E5%9B%BD%E6%95%99%E8%82%B21%E5%8F%B0.png" group-title="青海电信",中国教育1台
+http://220.167.170.184:4000/rtp/239.120.1.133:8856
+#EXTINF:-1 tvg-id="中国教育2台" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E4%B8%AD%E5%9B%BD%E6%95%99%E8%82%B22%E5%8F%B0.png" group-title="青海电信",中国教育2台
+http://220.167.170.184:4000/rtp/239.120.1.44:8238
+#EXTINF:-1 tvg-id="中国教育4台" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E4%B8%AD%E5%9B%BD%E6%95%99%E8%82%B24%E5%8F%B0.png" group-title="青海电信",中国教育4台
+http://220.167.170.184:4000/rtp/239.120.1.45:8244
+#EXTINF:-1 tvg-id="安多卫视" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%AE%89%E5%A4%9A%E5%8D%AB%E8%A7%86.png" group-title="青海电信",安多卫视
+http://220.167.170.184:4000/rtp/239.120.1.40:8214
+#EXTINF:-1 tvg-id="新闻综合" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%96%B0%E9%97%BB%E7%BB%BC%E5%90%88.png" group-title="青海电信",新闻综合
+http://220.167.170.184:4000/rtp/239.120.1.249:9444
+#EXTINF:-1 tvg-id="果洛" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%9E%9C%E6%B4%9B.png" group-title="青海电信",果洛
+http://220.167.170.184:4000/rtp/239.120.1.92:8218
+#EXTINF:-1 tvg-id="海东综合" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%B5%B7%E4%B8%9C%E7%BB%BC%E5%90%88.png" group-title="青海电信",海东综合
+http://220.167.170.184:4000/rtp/239.120.1.102:8328
+#EXTINF:-1 tvg-id="海北台" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%B5%B7%E5%8C%97%E5%8F%B0.png" group-title="青海电信",海北台
+http://220.167.170.184:4000/rtp/239.120.1.200:8404
+#EXTINF:-1 tvg-id="海南州" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%B5%B7%E5%8D%97%E5%B7%9E.png" group-title="青海电信",海南州
+http://220.167.170.184:4000/rtp/239.120.1.247:9436
+#EXTINF:-1 tvg-id="海西州台" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%B5%B7%E8%A5%BF%E5%B7%9E%E5%8F%B0.png" group-title="青海电信",海西州台
+http://220.167.170.184:4000/rtp/239.120.1.184:9160
+#EXTINF:-1 tvg-id="生活服务" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E7%94%9F%E6%B4%BB%E6%9C%8D%E5%8A%A1.png" group-title="青海电信",生活服务
+http://220.167.170.184:4000/rtp/239.120.1.248:9440
+#EXTINF:-1 tvg-id="矿区生活" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E7%9F%BF%E5%8C%BA%E7%94%9F%E6%B4%BB.png" group-title="青海电信",矿区生活
+http://220.167.170.184:4000/rtp/239.120.1.145:8420
+#EXTINF:-1 tvg-id="青海油田" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E9%9D%92%E6%B5%B7%E6%B2%B9%E7%94%B0.png" group-title="青海电信",青海油田
+http://220.167.170.184:4000/rtp/239.120.1.144:8416
+#EXTINF:-1 tvg-id="青海经视" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E9%9D%92%E6%B5%B7%E7%BB%8F%E8%A7%86.png" group-title="青海电信",青海经视
+http://220.167.170.184:4000/rtp/239.120.1.42:8226
+#EXTINF:-1 tvg-id="青海都市" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E9%9D%92%E6%B5%B7%E9%83%BD%E5%B8%82.png" group-title="青海电信",青海都市
+http://220.167.170.184:4000/rtp/239.120.1.41:8220
+#EXTINF:-1 tvg-id="黄南" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E9%BB%84%E5%8D%97.png" group-title="青海电信",黄南
+http://220.167.170.184:4000/rtp/239.120.1.100:9128
