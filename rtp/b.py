@@ -99,7 +99,7 @@ PROVINCE_CODES = {
     "新疆": "xj", "台湾": "tw", "俄罗斯": "ru", "韩国": "kr",
 }
 
-# “全部省份抓取”仅遍历中国大陆31个省级地区；台湾、俄罗斯、韩国不进入自动全国扫描。
+# “全部省份抓取”仅遍历当前脚本支持的中国大陆省级地区；台湾、俄罗斯、韩国不进入自动全国扫描。
 ALL_MAINLAND_PROVINCES = [
     province for province in PROVINCE_CODES
     if province not in {"台湾", "俄罗斯", "韩国"}
@@ -135,6 +135,70 @@ def check_and_clear_existing(txt_file, m3u_file):
 # 历史列表保护策略：不提供“运行前清空/删除旧源”的函数。
 # 只有对应运营商本次成功生成新的有效列表后，才精确覆盖同名文件；
 # 未抓到新源、请求/测速失败、未选择的运营商及未补足的源序号均保留上一版文件和原更新时间。
+
+USABLE_ENDPOINT_HISTORY_FILE = os.path.join("history", "usable_endpoints.txt")
+_USABLE_ENDPOINT_HISTORY_PATH: str | None = None
+
+
+def _candidate_ip_for_history(value: str) -> str:
+    """从页面候选 host 中提取候选公网 IP；历史记录左侧只保存 IP，不保存页面候选端口。"""
+    host = normalize_source_host(value)
+    if not host:
+        return ""
+    parsed = urlparse("//" + host)
+    return parsed.hostname or host.split(":", 1)[0]
+
+
+def record_usable_endpoint_mapping(group_title: str, candidate_host: str, relay_host: str) -> bool:
+    """记录“页面候选 IP → 正式测速通过的实际 IP:PORT”，按省份+运营商永久累积并去重。
+
+    仅在正式频道测速通过后调用。相同完整映射不重复；同候选 IP 对应不同实际端口分别保留。
+    手动 endpoint 没有独立页面候选时，记录为“实际IP → 实际IP:PORT”。
+    """
+    global _USABLE_ENDPOINT_HISTORY_PATH
+    if not _USABLE_ENDPOINT_HISTORY_PATH:
+        return False
+    candidate_ip = _candidate_ip_for_history(candidate_host) or _endpoint_ip(relay_host)
+    relay = normalize_source_host(relay_host)
+    if not group_title or not candidate_ip or not relay:
+        return False
+
+    path = Path(_USABLE_ENDPOINT_HISTORY_PATH)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    mapping_line = f"{candidate_ip}  →  {relay}"
+
+    groups: dict[str, list[str]] = {}
+    order: list[str] = []
+    if path.exists():
+        current = ""
+        for raw in path.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if not line:
+                continue
+            if "→" not in line:
+                current = line
+                if current not in groups:
+                    groups[current] = []
+                    order.append(current)
+                continue
+            if current and line not in groups[current]:
+                groups[current].append(line)
+
+    if group_title not in groups:
+        groups[group_title] = []
+        order.append(group_title)
+    if mapping_line in groups[group_title]:
+        print(f"[*] [{group_title}] 可用 endpoint 历史已存在：{mapping_line}")
+        return False
+    groups[group_title].append(mapping_line)
+
+    blocks = []
+    for group in order:
+        blocks.append(group + "\n" + "\n".join(groups[group]))
+    path.write_text("\n\n".join(blocks).rstrip() + "\n", encoding="utf-8")
+    print(f"[+] [{group_title}] 已记录可用 endpoint：{mapping_line}")
+    return True
+
 
 def normalize_source_host(value: str) -> str:
     """统一服务器地址为小写的 host:port，便于识别新旧源。"""
@@ -1457,6 +1521,7 @@ def fetch_channel_lines_by_province(
                 ):
                     return False
 
+                record_usable_endpoint_mapping(group_title, candidate_host, relay_host)
                 selected_ops.append(group_title)
                 group_to_sources.setdefault(group_title, []).append(lines)
                 playable_counts[carrier] = playable_counts.get(carrier, 0) + 1
@@ -1660,6 +1725,7 @@ def fetch_channel_lines_by_province(
                 print(f"[-] [{source_label}] cqshushu 完整频道列表抓取失败，跳过该源。")
                 return False
 
+            record_usable_endpoint_mapping(group_title, candidate_host, relay_host)
             selected_ops.append(group_title)
             group_to_sources.setdefault(group_title, []).append(lines)
             playable_counts[carrier] = playable_counts.get(carrier, 0) + 1
@@ -2524,6 +2590,7 @@ def run_manual_endpoint_import(repo_root: str, args) -> list[str]:
         print(f"[-] [{group_title}] 手动 endpoint {endpoint} 未通过正式测速，不写入任何播放列表。")
         return []
 
+    record_usable_endpoint_mapping(group_title, endpoint, endpoint)
     paths = _write_single_playlist_slot(repo_root, group_title, suffix, lines)
     record_province_update_times(repo_root, province, paths)
     update_readme_file_list(repo_root)
@@ -2873,6 +2940,19 @@ def run_health_check_and_repair(repo_root: str, args) -> list[str]:
         update_readme_file_list(repo_root)
     return changed
 
+def _normalize_update_slot(value: str) -> str:
+    """省份抓取槽位选择：all=全部槽位，base=无数字后缀的“槽位”，1=“槽位1”。"""
+    text = (value or "all").strip()
+    aliases = {
+        "all": "all", "全部": "all", "全部槽位": "all", "全部槽位（默认）": "all",
+        "base": "base", "槽位": "base", "0": "base",
+        "1": "1", "槽位1": "1",
+    }
+    if text not in aliases:
+        raise ValueError("--update-slot 只支持：全部槽位（默认）/槽位/槽位1（或 all/base/1）")
+    return aliases[text]
+
+
 def process_province(
     province,
     txt_output_dir,
@@ -2884,17 +2964,49 @@ def process_province(
     min_stream_speed_mb_s=DEFAULT_MIN_STREAM_SPEED_MB_S,
     stream_test_seconds=3.0,
     test_channels_per_source=2,
+    update_slot="all",
 ):
-    """单一省份核心流水线"""
+    """单一省份核心流水线；可选择全部槽位、仅“槽位”或仅“槽位1”。"""
+    update_slot = _normalize_update_slot(update_slot)
     group_title = province
     out_txt = os.path.join(txt_output_dir, f"{group_title}.txt")
     out_m3u = os.path.join(m3u_output_dir, f"{group_title}.m3u")
-    # 1. 检测历史文件。禁止在抓取前清空：本次失败时必须保留上一版列表及原更新时间。
     check_and_clear_existing(out_txt, out_m3u)
-    # 2. 直接从频道列表提取 频道名+播放地址
-    previous_hosts_by_carrier = load_previous_source_hosts(
-        province, carriers, txt_output_dir
-    )
+
+    previous_hosts_by_carrier = load_previous_source_hosts(province, carriers, txt_output_dir)
+    target_sources = TARGET_PLAYABLE_SOURCES_PER_CARRIER
+    excluded_by_carrier: dict[str, set[str]] | None = None
+
+    if update_slot != "all":
+        suffix = "" if update_slot == "base" else "1"
+        slot_label = "槽位" if suffix == "" else "槽位1"
+        target_sources = 1
+        excluded_by_carrier = {}
+        for carrier in carriers:
+            current_group = f"{province}{carrier}"
+            target_path = Path(m3u_output_dir) / f"{current_group}{suffix}.m3u"
+            if not target_path.exists():
+                raise ValueError(
+                    f"指定更新{slot_label}，但 {target_path.name} 不存在；"
+                    "为避免误建新槽位，已停止本省抓取。"
+                )
+            occupied = set()
+            for path in sorted(Path(m3u_output_dir).glob(f"{current_group}*.m3u")):
+                ident = _playlist_identity(path.name)
+                if not ident or ident[2] != current_group or path.resolve() == target_path.resolve():
+                    continue
+                endpoint = normalize_source_host(_source_host_from_m3u(str(path)))
+                if endpoint:
+                    occupied.add(endpoint)
+            excluded_by_carrier[carrier] = occupied
+            print(
+                f"[*] [{current_group}] 省份抓取指定更新：{slot_label} -> {target_path.name}；"
+                f"只寻找1个合格新源；同组其它槽位仅用于 endpoint 去重，不测速、不覆盖、不更新时间。"
+            )
+            print(f"[*] [{current_group}] 同组其它槽位 endpoint 去重：{sorted(occupied) or ['无']}")
+    else:
+        print(f"[*] [{province}] 省份抓取更新槽位：全部槽位（默认）；保持原有每运营商目标2个可用源的行为。")
+
     grouped_sources, status, _ = fetch_channel_lines_by_province(
         province,
         carriers=carriers,
@@ -2905,51 +3017,43 @@ def process_province(
         stream_test_seconds=stream_test_seconds,
         test_channels_per_source=test_channels_per_source,
         previous_hosts_by_carrier=previous_hosts_by_carrier,
+        target_playable_sources=target_sources,
+        excluded_endpoints_by_carrier=excluded_by_carrier,
     )
     if not grouped_sources:
         print(f"[-] [{province}] 频道提取失败: {status}")
-        print(
-            f"[*] [{province}] 本次未获取到新的可用直播源；"
-            "保留上一版成功列表及其原更新时间，不删除、不覆盖。"
-        )
+        print(f"[*] [{province}] 本次未获取到新的可用直播源；保留上一版成功列表及其原更新时间，不删除、不覆盖。")
         return []
-    # 3. 按运营商和源序号逐个覆盖；本次未补足的序号保留上一版文件。
-    #    例：山东电信.m3u、山东电信1.m3u、山东电信2.m3u ...
+
     total_channels = 0
     exported_sources = 0
     generated_relative_paths = []
-    for group_title, sources in grouped_sources.items():
+    for current_group, sources in grouped_sources.items():
         for idx, channel_lines in enumerate(sources):
             if not channel_lines:
                 continue
-
             channel_lines = sort_priority_channels(channel_lines)
-            suffix = "" if idx == 0 else str(idx)
-            file_stem = f"{group_title}{suffix}"
+            if update_slot == "all":
+                suffix = "" if idx == 0 else str(idx)
+            else:
+                suffix = "" if update_slot == "base" else "1"
+            file_stem = f"{current_group}{suffix}"
             out_txt = os.path.join(txt_output_dir, f"{file_stem}.txt")
             out_m3u = os.path.join(m3u_output_dir, f"{file_stem}.m3u")
             txt_content = "\n".join(channel_lines)
             with open(out_txt, 'w', encoding='utf-8') as f_txt, open(out_m3u, 'w', encoding='utf-8') as f_m3u:
                 f_txt.write(txt_content + "\n")
                 f_m3u.write(f'#EXTM3U x-tvg-url="{EPG_URL}"\n')
-                f_m3u.write(txt_to_m3u_format(txt_content, group_title) + "\n")
-            generated_relative_paths.extend([
-                f"txt/{file_stem}.txt",
-                f"m3u/{file_stem}.m3u",
-            ])
+                f_m3u.write(txt_to_m3u_format(txt_content, current_group) + "\n")
+            generated_relative_paths.extend([f"txt/{file_stem}.txt", f"m3u/{file_stem}.m3u"])
             exported_sources += 1
             total_channels += len(channel_lines)
+
     if exported_sources == 0:
         print(f"[-] [{province}] 频道提取失败: channel_lines_empty")
-        print(
-            f"[*] [{province}] 本次没有生成新的有效列表；"
-            "保留上一版成功列表及其原更新时间，不删除、不覆盖。"
-        )
+        print(f"[*] [{province}] 本次没有生成新的有效列表；保留上一版成功列表及其原更新时间，不删除、不覆盖。")
         return []
-    print(
-        f"[+] 完美！[{province}] 更新完成，导出 {total_channels} 条频道，"
-        f"生成 {exported_sources} 条源文件（每运营商多条）。"
-    )
+    print(f"[+] 完美！[{province}] 更新完成，导出 {total_channels} 条频道，生成 {exported_sources} 条源文件（每运营商多条）。")
     return generated_relative_paths
 
 def push_to_github(files, province=""):
@@ -3041,7 +3145,7 @@ def split_selection(value: str) -> list[str]:
 
 
 def parse_province_selection(value: str) -> list[str]:
-    """解析省份选择；“全部”仅返回中国大陆31个省级地区。"""
+    """解析省份选择；“全部”仅返回当前脚本支持的中国大陆省级地区。"""
     items = split_selection(value)
     if not items:
         return list(PROVINCES)
@@ -3170,6 +3274,10 @@ def parse_args():
         help="每条服务器最多抽测的频道数量（默认2）。",
     )
     ap.add_argument(
+        "--update-slot", default="all",
+        help="省份抓取更新槽位：all=全部槽位（默认）；base=只更新无数字后缀的槽位；1=只更新槽位1。也接受中文：全部槽位（默认）/槽位/槽位1。",
+    )
+    ap.add_argument(
         "--manual-endpoint", default="",
         help="手动指定公网转发 endpoint，格式 IPv4:PORT；提供后进入手动 endpoint 导入模式，不搜索 cqshushu 候选服务器。",
     )
@@ -3244,6 +3352,8 @@ def main():
         args.max_per_carrier = 20
     script_dir = os.path.dirname(os.path.abspath(__file__))
     repo_root = os.path.dirname(script_dir)
+    global _USABLE_ENDPOINT_HISTORY_PATH
+    _USABLE_ENDPOINT_HISTORY_PATH = os.path.join(repo_root, USABLE_ENDPOINT_HISTORY_FILE)
     txt_output_dir = os.path.join(repo_root, "txt")
     m3u_output_dir = os.path.join(repo_root, "m3u")
 
@@ -3258,6 +3368,8 @@ def main():
             publish_paths = sorted(set(changed + [README_FILE]))
             if os.path.exists(os.path.join(repo_root, UPDATE_TIMES_FILE)):
                 publish_paths.append(UPDATE_TIMES_FILE)
+            if os.path.exists(os.path.join(repo_root, USABLE_ENDPOINT_HISTORY_FILE)):
+                publish_paths.append(USABLE_ENDPOINT_HISTORY_FILE)
             push_to_github(publish_paths, province=args.manual_endpoint_target or "手动endpoint")
         elif changed:
             print("[+] 手动 endpoint 导入完成；未启用 --push。")
@@ -3272,6 +3384,8 @@ def main():
                 publish_paths = sorted(set(changed + [README_FILE]))
                 if os.path.exists(os.path.join(repo_root, UPDATE_TIMES_FILE)):
                     publish_paths.append(UPDATE_TIMES_FILE)
+                if os.path.exists(os.path.join(repo_root, USABLE_ENDPOINT_HISTORY_FILE)):
+                    publish_paths.append(USABLE_ENDPOINT_HISTORY_FILE)
                 push_to_github(publish_paths, province="健康检查修复")
             else:
                 print(f"[+] 健康检查完成：成功修复 {len(changed)//2} 个失效播放列表；未启用 --push。")
@@ -3392,6 +3506,7 @@ def main():
             min_stream_speed_mb_s=province_min_speed,
             stream_test_seconds=args.stream_test_seconds,
             test_channels_per_source=args.test_channels_per_source,
+            update_slot=args.update_slot,
         )
 
         if generated_relative_paths:
@@ -3408,6 +3523,8 @@ def main():
                 publish_paths = ["txt", "m3u", README_FILE]
                 if os.path.exists(os.path.join(repo_root, UPDATE_TIMES_FILE)):
                     publish_paths.append(UPDATE_TIMES_FILE)
+                if os.path.exists(os.path.join(repo_root, USABLE_ENDPOINT_HISTORY_FILE)):
+                    publish_paths.append(USABLE_ENDPOINT_HISTORY_FILE)
                 push_to_github(publish_paths, province=province)
                 print(f"[+] [{province}] 已发布，继续处理下一个省份。")
         else:
