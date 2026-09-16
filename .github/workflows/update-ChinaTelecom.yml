@@ -175,7 +175,8 @@ on:
           - "移动"
           - "电信,联通"
           - "电信,移动"
-          - "联通,移动"      manual_endpoint_target:
+          - "联通,移动"
+      manual_endpoint_target:
         description: "省份+运营商（仅手动指定 IP:PORT 有效，例如 浙江电信）"
         required: false
         default: ""
