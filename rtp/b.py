@@ -2966,7 +2966,7 @@ def process_province(
     test_channels_per_source=2,
     update_slot="all",
 ):
-    """单一省份核心流水线；可选择全部槽位、仅“槽位”或仅“槽位1”。"""
+    """单一省份核心流水线；可选择全部槽位、仅“槽位”或仅“槽位1”。指定单槽位时必须找到不同于该槽位当前 IP:PORT 的新 endpoint 才允许覆盖。"""
     update_slot = _normalize_update_slot(update_slot)
     group_title = province
     out_txt = os.path.join(txt_output_dir, f"{group_title}.txt")
@@ -2990,6 +2990,12 @@ def process_province(
                     f"指定更新{slot_label}，但 {target_path.name} 不存在；"
                     "为避免误建新槽位，已停止本省抓取。"
                 )
+            # 指定更新单个槽位时，“更新”必须得到不同于该槽位当前值的新 endpoint。
+            # 因此本轮硬排除两类地址：
+            # 1) 当前目标槽位正在使用的 IP:PORT；
+            # 2) 同组其它槽位正在使用的 IP:PORT。
+            # 这里按完整 IP:PORT 精确比较；同 IP 不同端口仍属于新的 endpoint，可以采用。
+            current_endpoint = normalize_source_host(_source_host_from_m3u(str(target_path)))
             occupied = set()
             for path in sorted(Path(m3u_output_dir).glob(f"{current_group}*.m3u")):
                 ident = _playlist_identity(path.name)
@@ -2998,12 +3004,24 @@ def process_province(
                 endpoint = normalize_source_host(_source_host_from_m3u(str(path)))
                 if endpoint:
                     occupied.add(endpoint)
-            excluded_by_carrier[carrier] = occupied
+
+            excluded = set(occupied)
+            if current_endpoint:
+                excluded.add(current_endpoint)
+            excluded_by_carrier[carrier] = excluded
+
             print(
                 f"[*] [{current_group}] 省份抓取指定更新：{slot_label} -> {target_path.name}；"
-                f"只寻找1个合格新源；同组其它槽位仅用于 endpoint 去重，不测速、不覆盖、不更新时间。"
+                "只寻找1个与目标槽位当前 endpoint 不同的合格新源。"
             )
-            print(f"[*] [{current_group}] 同组其它槽位 endpoint 去重：{sorted(occupied) or ['无']}")
+            print(
+                f"[*] [{current_group}] 目标槽位当前 endpoint：{current_endpoint or '未识别'}；"
+                "本轮禁止重新采用该完整 IP:PORT。"
+            )
+            print(
+                f"[*] [{current_group}] 同组其它槽位 endpoint 去重：{sorted(occupied) or ['无']}；"
+                f"本轮总排除 endpoint：{sorted(excluded) or ['无']}。"
+            )
     else:
         print(f"[*] [{province}] 省份抓取更新槽位：全部槽位（默认）；保持原有每运营商目标2个可用源的行为。")
 
