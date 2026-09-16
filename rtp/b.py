@@ -150,14 +150,21 @@ def _candidate_ip_for_history(value: str) -> str:
 
 
 def record_usable_endpoint_mapping(group_title: str, candidate_host: str, relay_host: str) -> bool:
-    """记录“页面候选 IP → 正式测速通过的实际 IP:PORT”，按省份+运营商永久累积并去重。
+    """记录“获取时间 + 页面候选 IP → 正式测速通过的实际 IP:PORT”，按省份+运营商永久累积并去重。
 
-    仅在正式频道测速通过后调用。相同完整映射不重复；同候选 IP 对应不同实际端口分别保留。
+    仅在正式频道测速通过后调用。去重只比较“候选 IP → 实际 IP:PORT”映射本身，
+    不把时间作为去重条件，因此同一完整映射再次测速通过也不会重复追加。
+    新记录时间使用脚本当前本地时间，格式固定为：[YYYY/MM/DD  HH:MM:SS]。
     手动 endpoint 没有独立页面候选时，记录为“实际IP → 实际IP:PORT”。
+
+    兼容旧版 history/usable_endpoints.txt：
+    旧记录若没有时间戳会原样保留，因为无法准确还原其历史获取时间；
+    后续新发现的映射统一使用带时间戳的新格式。
     """
     global _USABLE_ENDPOINT_HISTORY_PATH
     if not _USABLE_ENDPOINT_HISTORY_PATH:
         return False
+
     candidate_ip = _candidate_ip_for_history(candidate_host) or _endpoint_ip(relay_host)
     relay = normalize_source_host(relay_host)
     if not group_title or not candidate_ip or not relay:
@@ -165,32 +172,54 @@ def record_usable_endpoint_mapping(group_title: str, candidate_host: str, relay_
 
     path = Path(_USABLE_ENDPOINT_HISTORY_PATH)
     path.parent.mkdir(parents=True, exist_ok=True)
-    mapping_line = f"{candidate_ip}  →  {relay}"
+
+    mapping_key = f"{candidate_ip} → {relay}"
+    timestamp = datetime.now().strftime("%Y/%m/%d  %H:%M:%S")
+    mapping_line = f"[{timestamp}]  {candidate_ip} → {relay}"
 
     groups: dict[str, list[str]] = {}
+    mapping_keys: dict[str, set[str]] = {}
     order: list[str] = []
+
     if path.exists():
         current = ""
         for raw in path.read_text(encoding="utf-8").splitlines():
             line = raw.strip()
             if not line:
                 continue
+
             if "→" not in line:
                 current = line
                 if current not in groups:
                     groups[current] = []
+                    mapping_keys[current] = set()
                     order.append(current)
                 continue
-            if current and line not in groups[current]:
-                groups[current].append(line)
+
+            if current:
+                # 同时兼容旧格式和带时间戳的新格式；时间不参与映射去重。
+                key_line = re.sub(
+                    r"^\[\d{4}/\d{2}/\d{2}\s{2}\d{2}:\d{2}:\d{2}\]\s*",
+                    "",
+                    line,
+                )
+                left, right = key_line.split("→", 1)
+                existing_key = f"{left.strip()} → {right.strip()}"
+                if existing_key not in mapping_keys[current]:
+                    groups[current].append(line)
+                    mapping_keys[current].add(existing_key)
 
     if group_title not in groups:
         groups[group_title] = []
+        mapping_keys[group_title] = set()
         order.append(group_title)
-    if mapping_line in groups[group_title]:
-        print(f"[*] [{group_title}] 可用 endpoint 历史已存在：{mapping_line}")
+
+    if mapping_key in mapping_keys[group_title]:
+        print(f"[*] [{group_title}] 可用 endpoint 历史已存在：{mapping_key}")
         return False
+
     groups[group_title].append(mapping_line)
+    mapping_keys[group_title].add(mapping_key)
 
     blocks = []
     for group in order:
@@ -198,7 +227,6 @@ def record_usable_endpoint_mapping(group_title: str, candidate_host: str, relay_
     path.write_text("\n\n".join(blocks).rstrip() + "\n", encoding="utf-8")
     print(f"[+] [{group_title}] 已记录可用 endpoint：{mapping_line}")
     return True
-
 
 def normalize_source_host(value: str) -> str:
     """统一服务器地址为小写的 host:port，便于识别新旧源。"""
