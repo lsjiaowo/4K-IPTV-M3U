@@ -154,12 +154,12 @@ def record_usable_endpoint_mapping(group_title: str, candidate_host: str, relay_
 
     仅在正式频道测速通过后调用。去重只比较“候选 IP → 实际 IP:PORT”映射本身，
     不把时间作为去重条件，因此同一完整映射再次测速通过也不会重复追加。
-    新记录时间使用脚本当前本地时间，格式固定为：[YYYY/MM/DD  HH:MM:SS]。
+    新记录时间固定换算为 GMT+8，不依赖运行机器系统时区，格式固定为：[YYYY/MM/DD  HH:MM:SS GMT+8]。
     手动 endpoint 没有独立页面候选时，记录为“实际IP → 实际IP:PORT”。
 
     兼容旧版 history/usable_endpoints.txt：
     旧记录若没有时间戳会原样保留，因为无法准确还原其历史获取时间；
-    后续新发现的映射统一使用带时间戳的新格式。
+    后续新发现的映射统一使用带 GMT+8 标识的时间戳新格式。
     """
     global _USABLE_ENDPOINT_HISTORY_PATH
     if not _USABLE_ENDPOINT_HISTORY_PATH:
@@ -174,8 +174,9 @@ def record_usable_endpoint_mapping(group_title: str, candidate_host: str, relay_
     path.parent.mkdir(parents=True, exist_ok=True)
 
     mapping_key = f"{candidate_ip} → {relay}"
-    timestamp = datetime.now().strftime("%Y/%m/%d  %H:%M:%S")
-    mapping_line = f"[{timestamp}]  {candidate_ip} → {relay}"
+    gmt8 = timezone(timedelta(hours=8))
+    timestamp = datetime.now(gmt8).strftime("%Y/%m/%d  %H:%M:%S")
+    mapping_line = f"[{timestamp} GMT+8]  {candidate_ip} → {relay}"
 
     groups: dict[str, list[str]] = {}
     mapping_keys: dict[str, set[str]] = {}
@@ -197,9 +198,9 @@ def record_usable_endpoint_mapping(group_title: str, candidate_host: str, relay_
                 continue
 
             if current:
-                # 同时兼容旧格式和带时间戳的新格式；时间不参与映射去重。
+                # 同时兼容旧无时间格式、旧时间戳格式和新版 GMT+8 时间戳格式；时间不参与映射去重。
                 key_line = re.sub(
-                    r"^\[\d{4}/\d{2}/\d{2}\s{2}\d{2}:\d{2}:\d{2}\]\s*",
+                    r"^\[\d{4}/\d{2}/\d{2}\s{2}\d{2}:\d{2}:\d{2}(?:\s+GMT\+8)?\]\s*",
                     "",
                     line,
                 )
