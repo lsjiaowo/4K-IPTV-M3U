@@ -36,7 +36,7 @@ on:
           - "先测速，失败才重新抓取"
           - "不测速旧源，直接重新抓取"
       update_slot:
-        description: "更新槽位（仅省份抓取有效；全部槽位=保持原逻辑；槽位/槽位1=只更新指定现有槽位）"
+        description: "更新槽位（仅省份抓取有效）"
         required: true
         default: "全部槽位（默认）"
         type: choice
@@ -44,29 +44,6 @@ on:
           - "全部槽位（默认）"
           - "槽位"
           - "槽位1"
-      manual_endpoint_target:
-        description: "省份+运营商（仅手动指定 IP:PORT 有效，例如 浙江电信）"
-        required: false
-        default: ""
-        type: string
-      manual_endpoint:
-        description: "公网 IP:PORT（仅手动指定 IP:PORT 有效，例如 122.246.149.196:8188）"
-        required: false
-        default: ""
-        type: string
-      manual_endpoint_action:
-        description: "写入方式（仅手动指定 IP:PORT 有效）"
-        required: true
-        default: "添加新槽位"
-        type: choice
-        options:
-          - "添加新槽位"
-          - "替换指定槽位"
-      manual_endpoint_slot:
-        description: "替换槽位（仅“替换指定槽位”时填写，例如 浙江电信1；添加新槽位时留空）"
-        required: false
-        default: ""
-        type: string
       province_1:
         description: "省份1（仅省份抓取有效；选择全部时忽略省份2/3）"
         required: true
@@ -200,6 +177,29 @@ on:
           - "电信,联通"
           - "电信,移动"
           - "联通,移动"
+      manual_endpoint_target:
+        description: "省份+运营商（仅手动指定 IP:PORT 有效，例如 浙江电信）"
+        required: false
+        default: ""
+        type: string
+      manual_endpoint:
+        description: "公网 IP:PORT（仅手动指定 IP:PORT 有效，例如 122.246.149.196:8188）"
+        required: false
+        default: ""
+        type: string
+      manual_endpoint_action:
+        description: "槽位操作（仅手动指定 IP:PORT 有效）"
+        required: true
+        default: "添加新槽位"
+        type: choice
+        options:
+          - "添加新槽位"
+          - "替换指定槽位"
+      manual_endpoint_slot:
+        description: "替换槽位（仅“替换指定槽位”时填写，例如 浙江电信1；添加新槽位时留空）"
+        required: false
+        default: ""
+        type: string
 
   # 可选外部整点触发入口；联通工作流使用独立事件类型，避免三个工作流被同一个 dispatch 同时触发。
   repository_dispatch:
@@ -452,7 +452,7 @@ jobs:
               MANUAL_ACTION="add"
             fi
 
-            echo "[*] 联通手动 endpoint：目标=$MANUAL_ENDPOINT_TARGET；endpoint=$MANUAL_ENDPOINT；写入方式=$MANUAL_ENDPOINT_ACTION；槽位=${MANUAL_ENDPOINT_SLOT:-空}"
+            echo "[*] 联通手动 endpoint：目标=$MANUAL_ENDPOINT_TARGET；endpoint=$MANUAL_ENDPOINT；槽位操作=$MANUAL_ENDPOINT_ACTION；槽位=${MANUAL_ENDPOINT_SLOT:-空}"
             python -u rtp/b.py \
               --manual-endpoint-target "$MANUAL_ENDPOINT_TARGET" \
               --manual-endpoint "$MANUAL_ENDPOINT" \
