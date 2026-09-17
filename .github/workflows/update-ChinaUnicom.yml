@@ -12,31 +12,91 @@ on:
           - "测速检查"
           - "省份抓取"
           - "手动指定 IP:PORT"
+
+      health_scope:
+        description: "━━━━━━ ① 测速检查 ━━━━━━ 测速检查范围"
+        required: true
+        default: "指定省份+运营商"
+        type: choice
+        options:
+          - "指定省份+运营商"
+          - "指定播放列表"
+      health_province:
+        description: "测速省份（仅测速检查→指定省份+运营商有效；全部=检查现有全部对应运营商）"
+        required: true
+        default: "全部"
+        type: choice
+        options:
+          - "全部"
+          - "北京"
+          - "天津"
+          - "河北"
+          - "山西"
+          - "内蒙古"
+          - "辽宁"
+          - "吉林"
+          - "黑龙江"
+          - "上海"
+          - "江苏"
+          - "浙江"
+          - "安徽"
+          - "福建"
+          - "江西"
+          - "山东"
+          - "河南"
+          - "湖北"
+          - "湖南"
+          - "广东"
+          - "广西"
+          - "海南"
+          - "重庆"
+          - "四川"
+          - "贵州"
+          - "云南"
+          - "陕西"
+          - "甘肃"
+          - "青海"
+          - "宁夏"
+          - "新疆"
+          - "台湾"
+          - "俄罗斯"
+          - "韩国"
+      health_carrier:
+        description: "测速运营商（仅测速检查→指定省份+运营商有效）"
+        required: true
+        default: "联通"
+        type: choice
+        options:
+          - "联通"
+          - "电信"
+          - "移动"
+          - "全部"
       health_file_1:
-        description: "指定播放列表1（仅测速检查有效；留空=按原逻辑检查全部）"
+        description: "指定播放列表1（仅测速检查→指定播放列表有效；例如 山西电信.m3u）"
         required: false
         default: ""
         type: string
       health_file_2:
-        description: "指定播放列表2（仅测速检查有效；留空忽略）"
+        description: "指定播放列表2（仅测速检查→指定播放列表有效；留空忽略）"
         required: false
         default: ""
         type: string
       health_file_3:
-        description: "指定播放列表3（仅测速检查有效；留空忽略）"
+        description: "指定播放列表3（仅测速检查→指定播放列表有效；留空忽略）"
         required: false
         default: ""
         type: string
       health_file_mode:
-        description: "指定播放列表处理方式（仅指定播放列表时有效）"
+        description: "指定播放列表处理方式（仅测速检查→指定播放列表有效）"
         required: true
         default: "先测速，失败才重新抓取"
         type: choice
         options:
           - "先测速，失败才重新抓取"
           - "不测速旧源，直接重新抓取"
+
       update_slot:
-        description: "更新槽位（仅省份抓取有效）"
+        description: "━━━━━━ ② 省份抓取 ━━━━━━ 更新槽位"
         required: true
         default: "全部槽位（默认）"
         type: choice
@@ -45,7 +105,7 @@ on:
           - "槽位"
           - "槽位1"
       existing_complete_mode:
-        description: "已有完整槽位处理（仅“全部省份抓取”+“全部槽位”有效）"
+        description: "已有完整槽位处理（仅‘全部省份抓取’+‘全部槽位’有效）"
         required: true
         default: "全部重新抓取（默认）"
         type: choice
@@ -93,7 +153,7 @@ on:
           - "俄罗斯"
           - "韩国"
       province_2:
-        description: "省份2（仅省份抓取有效；测速检查时忽略）"
+        description: "省份2（仅省份抓取有效）"
         required: true
         default: "不选择"
         type: choice
@@ -133,7 +193,7 @@ on:
           - "俄罗斯"
           - "韩国"
       province_3:
-        description: "省份3（仅省份抓取有效；测速检查时忽略）"
+        description: "省份3（仅省份抓取有效）"
         required: true
         default: "不选择"
         type: choice
@@ -173,7 +233,7 @@ on:
           - "俄罗斯"
           - "韩国"
       carriers:
-        description: "选择运营商组合（仅省份抓取有效；测速检查时忽略）"
+        description: "选择运营商组合（仅省份抓取有效）"
         required: true
         default: "全部"
         type: choice
@@ -185,8 +245,9 @@ on:
           - "电信,联通"
           - "电信,移动"
           - "联通,移动"
+
       manual_endpoint_target:
-        description: "省份+运营商（仅手动指定 IP:PORT 有效，例如 浙江电信）"
+        description: "━━━━━━ ③ 手动指定 IP:PORT ━━━━━━ 省份+运营商（例如 浙江电信）"
         required: false
         default: ""
         type: string
@@ -204,20 +265,16 @@ on:
           - "添加新槽位"
           - "替换指定槽位"
       manual_endpoint_slot:
-        description: "替换槽位（仅“替换指定槽位”时填写，例如 浙江电信1；添加新槽位时留空）"
+        description: "替换槽位（仅‘替换指定槽位’时填写；例如 浙江电信1；添加新槽位时留空）"
         required: false
         default: ""
         type: string
 
-  # 可选外部整点触发入口；联通工作流使用独立事件类型，避免三个工作流被同一个 dispatch 同时触发。
   repository_dispatch:
     types: [hourly_iptv_unicom_update]
-
   schedule:
-    # 联通定时触发入口保留；实际执行 health / full / disabled 由 SCHEDULE_MODE 控制。
     - cron: "31,36,41,46,51,56 * * * *"
 
-# 三个运营商工作流共用固定并发组：健康检查、完整定时抓取和手动抓取均串行执行，避免同时修改仓库。
 concurrency:
   group: iptv-source-update
   cancel-in-progress: false
@@ -230,17 +287,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
-      # 自动定时模式三选一：health=测速检查；full=全部省份抓取；disabled=关闭所有自动运行（仅允许手动 Run workflow）。
-      # 只需修改下面 SCHEDULE_MODE 一行即可切换；手动 workflow_dispatch 不受此设置限制：可选择“测速检查”“省份抓取”或“手动指定 IP:PORT”；省份抓取可选择全部槽位/槽位/槽位1。
+      # 自动定时模式：health=测速检查；full=全国本运营商抓取；disabled=关闭自动运行。
+      # 手动 Run workflow 不受该设置限制。
       SCHEDULE_MODE: "health"
-      # full 模式固定抓取中国大陆全部省份的联通；优先省份顺序由 rtp/b.py 统一控制。
-
     steps:
       - name: Checkout
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
-          # 明确在任务真正获得并发锁、开始执行时检出最新 main，避免排队期间 GITHUB_SHA 变旧。
           ref: main
 
       - name: Sync latest main after concurrency wait
@@ -248,329 +302,159 @@ jobs:
         run: |
           git fetch origin main
           git checkout -B main origin/main
-          echo "[*] 已同步到任务实际开始时的最新 origin/main，避免并发排队导致旧基线。"
+          echo "[*] 已同步到任务实际开始时的最新 origin/main。"
 
       - name: Resolve requested mode
         id: mode
         shell: bash
         env:
           MANUAL_MODE: "${{ github.event.inputs.run_mode }}"
-          SCHEDULE_EXPR: "${{ github.event.schedule }}"
         run: |
           RUN=false
           MODE=""
-          USE_FULL_LOCK=false
-
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             RUN=true
-            if [ "$MANUAL_MODE" = "测速检查" ]; then
-              # 测速检查固定按当前工作流运营商执行；省份1/2/3和运营商组合输入全部忽略。
-              MODE="health"
-            elif [ "$MANUAL_MODE" = "省份抓取" ]; then
-              MODE="full"
-            elif [ "$MANUAL_MODE" = "手动指定 IP:PORT" ]; then
-              MODE="manual_endpoint"
-            else
-              echo "::error::手动运行模式只能是 测速检查、省份抓取 或 手动指定 IP:PORT，当前=$MANUAL_MODE"
-              exit 1
-            fi
-          elif [ "${{ github.event_name }}" = "repository_dispatch" ]; then
-            # 外部自动触发与 schedule 使用同一 SCHEDULE_MODE；disabled 时只记录并跳过，不执行任何任务。
-            if [ "$SCHEDULE_MODE" = "health" ]; then
+            case "$MANUAL_MODE" in
+              "测速检查") MODE="health" ;;
+              "省份抓取") MODE="full" ;;
+              "手动指定 IP:PORT") MODE="manual_endpoint" ;;
+              *) echo "::error::未知手动运行模式：$MANUAL_MODE"; exit 1 ;;
+            esac
+          elif [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            if [ "$SCHEDULE_MODE" = "health" ] || [ "$SCHEDULE_MODE" = "full" ]; then
               RUN=true
-              MODE="health"
-              USE_FULL_LOCK=true
-            elif [ "$SCHEDULE_MODE" = "full" ]; then
-              RUN=true
-              MODE="full"
-              USE_FULL_LOCK=true
+              MODE="$SCHEDULE_MODE"
             elif [ "$SCHEDULE_MODE" = "disabled" ]; then
-              echo "[*] SCHEDULE_MODE=disabled：已关闭自动运行，本次 repository_dispatch 跳过；手动 Run workflow 仍可使用。"
+              echo "[*] 自动运行已关闭。"
             else
-              echo "::error::SCHEDULE_MODE 只能是 health、full 或 disabled，当前=$SCHEDULE_MODE"
-              exit 1
-            fi
-          elif [ "${{ github.event_name }}" = "schedule" ]; then
-            if [ "$SCHEDULE_MODE" = "health" ]; then
-              RUN=true
-              MODE="health"
-              USE_FULL_LOCK=true
-            elif [ "$SCHEDULE_MODE" = "full" ]; then
-              RUN=true
-              MODE="full"
-              USE_FULL_LOCK=true
-            elif [ "$SCHEDULE_MODE" = "disabled" ]; then
-              echo "[*] SCHEDULE_MODE=disabled：已关闭自动运行，本次 schedule 跳过；手动 Run workflow 仍可使用。"
-            else
-              echo "::error::SCHEDULE_MODE 只能是 health、full 或 disabled，当前=$SCHEDULE_MODE"
+              echo "::error::SCHEDULE_MODE 只能是 health/full/disabled，当前=$SCHEDULE_MODE"
               exit 1
             fi
           fi
-
           echo "run=$RUN" >> "$GITHUB_OUTPUT"
           echo "mode=$MODE" >> "$GITHUB_OUTPUT"
-          echo "use_full_lock=$USE_FULL_LOCK" >> "$GITHUB_OUTPUT"
-          echo "[*] event=${{ github.event_name }} schedule=$SCHEDULE_EXPR default=$SCHEDULE_MODE selected=$MODE run=$RUN"
+          echo "[*] event=${{ github.event_name }} mode=$MODE run=$RUN"
 
-      - name: Build hourly scheduled-run lock key
-        id: hourly-slot
-        if: steps.mode.outputs.run == 'true' && steps.mode.outputs.use_full_lock == 'true'
-        shell: bash
-        run: |
-          echo "cache_key=update-chinaunicom-scheduled-hour-$(date -u +'%Y%m%d%H')" >> "$GITHUB_OUTPUT"
-
-      - name: Check whether this hour already ran scheduled task
-        id: hourly-cache
-        if: steps.mode.outputs.run == 'true' && steps.mode.outputs.use_full_lock == 'true'
-        uses: actions/cache/restore@v4
-        with:
-          path: .github-hourly-run-unicom-scheduled
-          key: ${{ steps.hourly-slot.outputs.cache_key }}
-          lookup-only: true
-
-      - name: Explain skipped duplicate scheduled task
-        if: steps.mode.outputs.run == 'true' && steps.mode.outputs.use_full_lock == 'true' && steps.hourly-cache.outputs.cache-hit == 'true'
-        run: echo "[*] 联通定时任务本小时已经领取过运行时段，跳过本次候选触发。"
-
-      - name: Claim hourly scheduled-run slot
-        if: steps.mode.outputs.run == 'true' && steps.mode.outputs.use_full_lock == 'true' && steps.hourly-cache.outputs.cache-hit != 'true'
-        shell: bash
-        run: |
-          mkdir -p .github-hourly-run-unicom-scheduled
-          date -u +'%Y-%m-%dT%H:%M:%SZ' > .github-hourly-run-unicom-scheduled/claimed-at.txt
-
-      - name: Save hourly full-scrape claim
-        if: steps.mode.outputs.run == 'true' && steps.mode.outputs.use_full_lock == 'true' && steps.hourly-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: .github-hourly-run-unicom-scheduled
-          key: ${{ steps.hourly-slot.outputs.cache_key }}
-
-      - name: Decide whether execution is active
-        id: active
-        shell: bash
-        run: |
-          ACTIVE=false
-          if [ "${{ steps.mode.outputs.run }}" = "true" ]; then
-            if [ "${{ steps.mode.outputs.mode }}" = "health" ]; then
-              ACTIVE=true
-            elif [ "${{ steps.mode.outputs.use_full_lock }}" != "true" ] || [ "${{ steps.hourly-cache.outputs.cache-hit }}" != "true" ]; then
-              ACTIVE=true
-            fi
-          fi
-          echo "active=$ACTIVE" >> "$GITHUB_OUTPUT"
-
-      - name: Set up Python
-        if: steps.active.outputs.active == 'true'
+      - name: Setup Python
+        if: steps.mode.outputs.run == 'true'
         uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
-      - name: Debug workspace
-        if: steps.active.outputs.active == 'true'
-        run: |
-          pwd
-          ls -la
-          ls -la "${{ github.workspace }}"
-
       - name: Install dependencies
-        if: steps.active.outputs.active == 'true'
-        run: |
-          python -m pip install --upgrade pip
-          if [ -f "${{ github.workspace }}/requirements.txt" ]; then
-            pip install -r "${{ github.workspace }}/requirements.txt"
-          else
-            echo "requirements.txt not found, fallback to direct install."
-            pip install "requests>=2.31.0"
-          fi
-
-      - name: Configure Git for incremental publishing
-        if: steps.active.outputs.active == 'true'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        if: steps.mode.outputs.run == 'true'
+        run: pip install requests beautifulsoup4
 
       - name: Run updater
-        if: steps.active.outputs.active == 'true'
+        if: steps.mode.outputs.run == 'true'
+        shell: bash
         env:
-          PYTHONUNBUFFERED: "1"
-          # b.py 在每个成功省份 Git push 后立即同步 Secret Gist；Workflow 末尾仍保留一次全量同步兜底。
           GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
           IPTV_GIST_ID: ${{ secrets.IPTV_GIST_ID }}
-          PROVINCE_1: "${{ github.event.inputs.province_1 }}"
-          PROVINCE_2: "${{ github.event.inputs.province_2 }}"
-          PROVINCE_3: "${{ github.event.inputs.province_3 }}"
-          SELECTED_CARRIERS: "${{ github.event.inputs.carriers }}"
+          HEALTH_SCOPE: "${{ github.event.inputs.health_scope }}"
+          HEALTH_PROVINCE: "${{ github.event.inputs.health_province }}"
+          HEALTH_CARRIER: "${{ github.event.inputs.health_carrier }}"
           HEALTH_FILE_1: "${{ github.event.inputs.health_file_1 }}"
           HEALTH_FILE_2: "${{ github.event.inputs.health_file_2 }}"
           HEALTH_FILE_3: "${{ github.event.inputs.health_file_3 }}"
           HEALTH_FILE_MODE: "${{ github.event.inputs.health_file_mode }}"
           UPDATE_SLOT: "${{ github.event.inputs.update_slot }}"
           EXISTING_COMPLETE_MODE: "${{ github.event.inputs.existing_complete_mode }}"
+          PROVINCE_1: "${{ github.event.inputs.province_1 }}"
+          PROVINCE_2: "${{ github.event.inputs.province_2 }}"
+          PROVINCE_3: "${{ github.event.inputs.province_3 }}"
+          SELECTED_CARRIERS: "${{ github.event.inputs.carriers }}"
           MANUAL_ENDPOINT_TARGET: "${{ github.event.inputs.manual_endpoint_target }}"
           MANUAL_ENDPOINT: "${{ github.event.inputs.manual_endpoint }}"
           MANUAL_ENDPOINT_ACTION: "${{ github.event.inputs.manual_endpoint_action }}"
           MANUAL_ENDPOINT_SLOT: "${{ github.event.inputs.manual_endpoint_slot }}"
-        shell: bash
         run: |
-          if [ "${{ steps.mode.outputs.mode }}" = "health" ]; then
+          set -euo pipefail
+          MODE="${{ steps.mode.outputs.mode }}"
+
+          if [ "$MODE" = "health" ]; then
             HEALTH_ARGS=()
-            if [ -n "$HEALTH_FILE_1" ]; then HEALTH_ARGS+=(--health-file-1 "$HEALTH_FILE_1"); fi
-            if [ -n "$HEALTH_FILE_2" ]; then HEALTH_ARGS+=(--health-file-2 "$HEALTH_FILE_2"); fi
-            if [ -n "$HEALTH_FILE_3" ]; then HEALTH_ARGS+=(--health-file-3 "$HEALTH_FILE_3"); fi
+            HEALTH_MODE="check"
+            if [ "$HEALTH_FILE_MODE" = "不测速旧源，直接重新抓取" ]; then HEALTH_MODE="refresh"; fi
 
-            if [ "$HEALTH_FILE_MODE" = "不测速旧源，直接重新抓取" ]; then
-              HEALTH_MODE="refresh"
-            else
-              HEALTH_MODE="check"
-            fi
-
-            if [ ${#HEALTH_ARGS[@]} -gt 0 ]; then
-              echo "[*] 联通指定播放列表模式：文件=${HEALTH_FILE_1:-空},${HEALTH_FILE_2:-空},${HEALTH_FILE_3:-空}；处理方式=$HEALTH_FILE_MODE。"
-            else
-              echo "[*] 联通测速检查：未指定播放列表，按原逻辑检查全部现有联通 M3U；两轮失败才定向修复失效槽位。"
-            fi
-
-            python -u rtp/b.py \
-              --health-check \
-              --health-carriers "联通" \
-              "${HEALTH_ARGS[@]}" \
-              --health-file-mode "$HEALTH_MODE" \
-              --max-pages 10 \
-              --max-per-carrier 20 \
-              --min-stream-speed 0.5859375 \
-              --push
-            exit 0
-          fi
-
-          if [ "${{ steps.mode.outputs.mode }}" = "manual_endpoint" ]; then
-            if [ -z "$MANUAL_ENDPOINT_TARGET" ]; then
-              echo "::error::手动指定 IP:PORT 模式必须填写“省份+运营商”。"
-              exit 1
-            fi
-            if [ -z "$MANUAL_ENDPOINT" ]; then
-              echo "::error::手动指定 IP:PORT 模式必须填写“公网 IP:PORT”。"
-              exit 1
-            fi
-
-            if [ "$MANUAL_ENDPOINT_ACTION" = "替换指定槽位" ]; then
-              MANUAL_ACTION="replace"
-              if [ -z "$MANUAL_ENDPOINT_SLOT" ]; then
-                echo "::error::选择“替换指定槽位”时必须填写替换槽位。"
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "$HEALTH_SCOPE" = "指定播放列表" ]; then
+              [ -n "$HEALTH_FILE_1" ] && HEALTH_ARGS+=(--health-file-1 "$HEALTH_FILE_1")
+              [ -n "$HEALTH_FILE_2" ] && HEALTH_ARGS+=(--health-file-2 "$HEALTH_FILE_2")
+              [ -n "$HEALTH_FILE_3" ] && HEALTH_ARGS+=(--health-file-3 "$HEALTH_FILE_3")
+              if [ ${#HEALTH_ARGS[@]} -eq 0 ]; then
+                echo "::error::选择‘指定播放列表’后，至少填写一个指定播放列表。"
                 exit 1
               fi
+              echo "[*] 测速检查范围=指定播放列表；文件=$HEALTH_FILE_1,$HEALTH_FILE_2,$HEALTH_FILE_3；处理方式=$HEALTH_FILE_MODE。"
+              python -u rtp/b.py --health-check --health-carriers "全部" "${HEALTH_ARGS[@]}" --health-file-mode "$HEALTH_MODE" --max-pages 10 --max-per-carrier 20 --min-stream-speed 0.5859375 --push
             else
-              MANUAL_ACTION="add"
+              if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+                HP="${HEALTH_PROVINCE:-全部}"
+                HC="${HEALTH_CARRIER:-联通}"
+              else
+                HP="全部"
+                HC="联通"
+              fi
+              echo "[*] 测速检查范围=指定省份+运营商；省份=$HP；运营商=$HC。只处理现有对应组；组内仅允许主槽位和槽位1，缺1个时自动尝试补齐。"
+              python -u rtp/b.py --health-check --health-provinces "$HP" --health-carriers "$HC" --health-file-mode check --max-pages 10 --max-per-carrier 20 --min-stream-speed 0.5859375 --push
             fi
-
-            echo "[*] 联通手动 endpoint：目标=$MANUAL_ENDPOINT_TARGET；endpoint=$MANUAL_ENDPOINT；槽位操作=$MANUAL_ENDPOINT_ACTION；槽位=${MANUAL_ENDPOINT_SLOT:-空}"
-            python -u rtp/b.py \
-              --manual-endpoint-target "$MANUAL_ENDPOINT_TARGET" \
-              --manual-endpoint "$MANUAL_ENDPOINT" \
-              --manual-endpoint-action "$MANUAL_ACTION" \
-              --manual-endpoint-slot "$MANUAL_ENDPOINT_SLOT" \
-              --min-stream-speed 0.5859375 \
-              --push
             exit 0
           fi
 
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            SELECTED_PROVINCES="$PROVINCE_1"
-            if [ -z "$SELECTED_PROVINCES" ]; then SELECTED_PROVINCES="全部"; fi
-            if [ "$SELECTED_PROVINCES" != "全部" ]; then
-              if [ -n "$PROVINCE_2" ] && [ "$PROVINCE_2" != "不选择" ]; then
-                SELECTED_PROVINCES="$SELECTED_PROVINCES,$PROVINCE_2"
-              fi
-              if [ -n "$PROVINCE_3" ] && [ "$PROVINCE_3" != "不选择" ]; then
-                SELECTED_PROVINCES="$SELECTED_PROVINCES,$PROVINCE_3"
-              fi
+          if [ "$MODE" = "manual_endpoint" ]; then
+            if [ -z "$MANUAL_ENDPOINT_TARGET" ] || [ -z "$MANUAL_ENDPOINT" ]; then
+              echo "::error::手动指定 IP:PORT 模式必须填写‘省份+运营商’和‘公网 IP:PORT’。"
+              exit 1
             fi
-            if [ -z "$SELECTED_CARRIERS" ]; then SELECTED_CARRIERS="全部"; fi
-            if [ -z "$UPDATE_SLOT" ]; then UPDATE_SLOT="全部槽位（默认）"; fi
-            if [ "$EXISTING_COMPLETE_MODE" = "跳过已有完整槽位" ]; then
-              EXISTING_MODE="skip"
+            if [ "$MANUAL_ENDPOINT_ACTION" = "替换指定槽位" ]; then
+              [ -n "$MANUAL_ENDPOINT_SLOT" ] || { echo "::error::替换指定槽位时必须填写替换槽位。"; exit 1; }
+              ACTION="replace"
             else
-              EXISTING_MODE="all"
+              ACTION="add"
             fi
-            echo "[*] 手动省份抓取：省份=$SELECTED_PROVINCES；运营商=$SELECTED_CARRIERS；更新槽位=$UPDATE_SLOT；已有完整槽位处理=${EXISTING_COMPLETE_MODE:-全部重新抓取（默认）}"
-            python -u rtp/b.py \
-              --provinces "$SELECTED_PROVINCES" \
-              --carriers "$SELECTED_CARRIERS" \
-              --update-slot "$UPDATE_SLOT" \
-              --existing-complete-mode "$EXISTING_MODE" \
-              --max-pages 10 \
-              --max-per-carrier 20 \
-              --min-stream-speed 0.5859375 \
-              --push
-          else
-            echo "[*] 联通自动定时 full 模式：抓取中国大陆全部省份；运营商=联通；优先顺序由 b.py 统一控制。"
-            python -u rtp/b.py \
-              --provinces "全部" \
-              --carriers "联通" \
-              --max-pages 10 \
-              --max-per-carrier 20 \
-              --min-stream-speed 0.5859375 \
-              --push
+            ARGS=(--manual-endpoint-target "$MANUAL_ENDPOINT_TARGET" --manual-endpoint "$MANUAL_ENDPOINT" --manual-endpoint-action "$ACTION")
+            [ "$ACTION" = "replace" ] && ARGS+=(--manual-endpoint-slot "$MANUAL_ENDPOINT_SLOT")
+            python -u rtp/b.py "${ARGS[@]}" --max-pages 10 --max-per-carrier 20 --min-stream-speed 0.5859375 --push
+            exit 0
           fi
+
+          # 省份抓取
+          SLOT="all"
+          [ "$UPDATE_SLOT" = "槽位" ] && SLOT="base"
+          [ "$UPDATE_SLOT" = "槽位1" ] && SLOT="1"
+          COMPLETE_MODE="all"
+          [ "$EXISTING_COMPLETE_MODE" = "跳过已有完整槽位" ] && COMPLETE_MODE="skip"
+          SELECTED_PROVINCES="$PROVINCE_1"
+          if [ "$PROVINCE_1" != "全部" ]; then
+            [ -n "$PROVINCE_2" ] && [ "$PROVINCE_2" != "不选择" ] && SELECTED_PROVINCES="$SELECTED_PROVINCES,$PROVINCE_2"
+            [ -n "$PROVINCE_3" ] && [ "$PROVINCE_3" != "不选择" ] && SELECTED_PROVINCES="$SELECTED_PROVINCES,$PROVINCE_3"
+          fi
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "[*] 省份抓取：省份=$SELECTED_PROVINCES；运营商=$SELECTED_CARRIERS；更新槽位=$UPDATE_SLOT；已有完整槽位处理=$EXISTING_COMPLETE_MODE。"
+            python -u rtp/b.py --provinces "$SELECTED_PROVINCES" --carriers "$SELECTED_CARRIERS" --update-slot "$SLOT" --existing-complete-mode "$COMPLETE_MODE" --max-pages 10 --max-per-carrier 20 --min-stream-speed 0.5859375 --push
+          else
+            echo "[*] 自动全国抓取：全部省份；运营商=联通。"
+            python -u rtp/b.py --provinces "全部" --carriers "联通" --update-slot all --existing-complete-mode all --max-pages 10 --max-per-carrier 20 --min-stream-speed 0.5859375 --push
+          fi
+
       - name: Final fallback sync all M3U playlists to Secret Gist
-        if: steps.active.outputs.active == 'true'
+        if: steps.mode.outputs.run == 'true' && success()
+        shell: bash
         env:
           GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
           GIST_ID: ${{ secrets.IPTV_GIST_ID }}
-        shell: bash
         run: |
-          python - <<'PY'
-          import json
-          import os
-          import urllib.request
-          from pathlib import Path
-
-          token = os.environ["GIST_TOKEN"].strip()
-          gist_id = os.environ["GIST_ID"].strip()
-
-          if not token:
-              raise RuntimeError("GIST_TOKEN is empty")
-          if not gist_id:
-              raise RuntimeError("IPTV_GIST_ID is empty")
-
-          m3u_dir = Path("m3u")
-          files = {}
-
-          for path in sorted(m3u_dir.glob("*.m3u")):
-              if path.is_file():
-                  files[path.name] = {
-                      "content": path.read_text(encoding="utf-8")
-                  }
-
-          if not files:
-              raise RuntimeError("No .m3u files found under m3u/")
-
-          payload = json.dumps(
-              {"files": files},
-              ensure_ascii=False
-          ).encode("utf-8")
-
-          req = urllib.request.Request(
-              f"https://api.github.com/gists/{gist_id}",
-              data=payload,
-              method="PATCH",
-              headers={
-                  "Accept": "application/vnd.github+json",
-                  "Authorization": f"Bearer {token}",
-                  "X-GitHub-Api-Version": "2022-11-28",
-                  "Content-Type": "application/json",
-                  "User-Agent": "4K-IPTV-M3U-Gist-Sync",
-              },
-          )
-
-          with urllib.request.urlopen(req, timeout=120) as response:
-              body = response.read().decode("utf-8", errors="replace")
-              if response.status != 200:
-                  raise RuntimeError(
-                      f"Gist sync failed: HTTP {response.status}: {body}"
-                  )
-
-          print(f"[*] Final fallback Secret Gist sync successful: {len(files)} M3U files uploaded.")
-          for name in sorted(files):
-              print(f"    - {name}")
-          PY
+          python - <<'PY2'
+          import glob, os, requests
+          token=os.environ.get("GIST_TOKEN", "").strip(); gist_id=os.environ.get("GIST_ID", "").strip()
+          if not token or not gist_id:
+              raise SystemExit("GIST_TOKEN / IPTV_GIST_ID 未配置")
+          files={os.path.basename(p): {"content": open(p, encoding="utf-8").read()} for p in sorted(glob.glob("m3u/*.m3u"))}
+          if not files: raise SystemExit("没有可同步的 m3u/*.m3u")
+          r=requests.patch(f"https://api.github.com/gists/{gist_id}", headers={"Authorization":f"Bearer {token}","Accept":"application/vnd.github+json"}, json={"files":files}, timeout=120)
+          r.raise_for_status()
+          returned=set(r.json().get("files", {}))
+          missing=set(files)-returned
+          if missing: raise SystemExit("Gist 返回缺少文件: "+", ".join(sorted(missing)))
+          print(f"[+] Secret Gist 最终兜底同步完成：{len(files)} 个 M3U。")
+          PY2
