@@ -442,7 +442,7 @@ def signed_get(
                     )
                     print(
                         f"[!] 省份服务器列表接口提示请求频繁，"
-                        f"额外额外随机冷却 {wait:.1f} 秒后重新抓取当前页 "
+                        f"随机冷却 {wait:.1f} 秒后重新抓取当前页 "
                         f"({attempt + 1}/{REQUEST_MAX_RETRIES})。"
                     )
                     time.sleep(wait)
@@ -483,7 +483,7 @@ def signed_get(
                 )
                 print(
                     f"[!] 省份服务器列表第{region_page_num}页触发 HTTP 429，"
-                    f"额外额外随机冷却 {wait:.1f} 秒后重新抓取当前页 "
+                    f"随机冷却 {wait:.1f} 秒后重新抓取当前页 "
                     f"({attempt + 1}/{REQUEST_MAX_RETRIES})。"
                 )
                 time.sleep(wait)
@@ -1539,9 +1539,8 @@ def fetch_channel_lines_by_province(
         group_title = f"{province}{carrier}"
 
         print(
-            f"[*] [{province}] 候选开始：{picked.get('type', '')} {candidate_host}；"
-            f"时间={candidate_started_at.strftime('%Y-%m-%d %H:%M:%S')}；"
-            f"测试序号={tested_counts[carrier]}/{max_per_carrier}"
+            f"\n[候选 {tested_counts[carrier]}/{max_per_carrier}] "
+            f"{candidate_host}｜{candidate_status}"
         )
 
         try:
@@ -1825,11 +1824,7 @@ def fetch_channel_lines_by_province(
         finally:
             candidate_finished_at = datetime.now()
             candidate_elapsed = time.monotonic() - candidate_started_clock
-            print(
-                f"[*] [{province}] 候选结束：{picked.get('type', '')} {candidate_host}；"
-                f"时间={candidate_finished_at.strftime('%Y-%m-%d %H:%M:%S')}；"
-                f"耗时={candidate_elapsed:.1f}秒"
-            )
+            print(f"[*] 候选处理结束｜耗时 {candidate_elapsed:.1f} 秒")
 
     def _test_available_candidates(allow_old: bool) -> None:
         """
@@ -1852,23 +1847,22 @@ def fetch_channel_lines_by_province(
                 if row.get("p_token") not in tested_tokens_by_carrier[carrier]
             ]
 
-            # 完整打印当前筛选后的候选池，便于Action日志直接核对新/旧IP。
+            # 候选池日志只在有候选时展开地址；没有候选时压缩成单行，避免深分页重复刷屏。
             new_hosts = [row.get("host", "") for row in untested_new if row.get("host", "")]
             old_hosts = [row.get("host", "") for row in untested_old if row.get("host", "")]
-            print(
-                f"[*] [{province}{carrier}] 新IP候选：["
-                + ", ".join(new_hosts)
-                + "] / 旧IP候选：["
-                + ", ".join(old_hosts)
-                + "]"
-            )
-
-            print(
-                f"[*] [{province}{carrier}] 当前候选："
-                f"新IP未测试 {len(untested_new)} 条，"
-                f"旧IP未测试 {len(untested_old)} 条；"
-                f"{'允许旧IP兜底' if allow_old else '仅测试新IP'}。"
-            )
+            if not untested_new and (not allow_old or not untested_old):
+                print(
+                    f"[*] [{province}{carrier}] 当前无未测试候选｜"
+                    f"新IP=0｜旧IP={len(untested_old)}｜"
+                    f"{'允许旧IP兜底' if allow_old else '仅测试新IP'}"
+                )
+            else:
+                print(
+                    f"[*] [{province}{carrier}] 候选池｜新IP {len(untested_new)}："
+                    f"{', '.join(new_hosts) if new_hosts else '无'}｜旧IP {len(untested_old)}："
+                    f"{', '.join(old_hosts) if old_hosts else '无'}｜"
+                    f"{'允许旧IP兜底' if allow_old else '仅测试新IP'}"
+                )
 
             candidates = untested_new + (untested_old if allow_old else [])
             for picked in candidates:
@@ -2986,17 +2980,19 @@ def run_health_check_and_repair(repo_root: str, args) -> list[str]:
         group_files = grouped_files[group_title]
         province = group_files[0][1][0]
         carrier = group_files[0][1][1]
+        # 每个“省份+运营商”只保留一个最高视觉层级标题；同时使用 GitHub Actions 可折叠分组。
+        print(f"::group::【{group_title}】健康检查")
         if targeted_mode:
-            print(
-                f"\n[*] ===== 开始处理 {group_title}：本轮指定 {len(group_files)} 个槽位；"
-                f"同组其它槽位仅用于 endpoint 去重 ====="
-            )
+            print("\n" + "=" * 80)
+            print(f"【{group_title}】指定播放列表检查开始｜本轮指定 {len(group_files)} 个槽位")
+            print("=" * 80)
+            print("[*] 同组其它槽位仅用于 endpoint 去重，不测速、不修改。")
         else:
             standard_existing = [(n, i) for n, i in group_files if i[3] in {"", "1"}]
-            print(
-                f"\n[*] ===== 开始处理 {group_title}：现有 {len(standard_existing)} 个标准播放列表槽位"
-                "（最多2个） ====="
-            )
+            print("\n" + "=" * 80)
+            print(f"【{group_title}】健康检查开始｜现有槽位 {len(standard_existing)}/2")
+            print("=" * 80)
+            print("\n── ① 检查现有槽位 ──")
 
         health_status: dict[str, str] = {}
         hosts: dict[str, str] = {}
@@ -3060,7 +3056,7 @@ def run_health_check_and_repair(repo_root: str, args) -> list[str]:
                     health_status[missing_name] = "missing"
                     repair_items.append((missing_name, missing_ident, "missing"))
 
-            print(f"\n[*] ===== {group_title} 健康检查汇总 =====")
+            print("\n── 检查结果 ──")
             for suffix in ("", "1"):
                 name = f"{group_title}{suffix}.m3u"
                 status = health_status.get(name, "missing")
@@ -3083,9 +3079,9 @@ def run_health_check_and_repair(repo_root: str, args) -> list[str]:
                 readable_parts.extend(f"{name} 失效" for name in failed_names)
                 readable_parts.extend(f"{name} 正常" for name in normal_names)
                 readable_parts.extend(f"{name} 缺失" for name in missing_standard_names)
-                print(f"[*] [{group_title}] 检查结论：检测到 " + "，".join(readable_parts) + "。")
+                print(f"[*] 结论：" + "，".join(readable_parts) + "。")
             else:
-                print(f"[+] [{group_title}] 检查结论：两个标准槽位均正常/保留，无需处理。")
+                print("[+] 结论：两个标准槽位均正常/保留，无需处理。")
 
         if not repair_items:
             if targeted_mode:
@@ -3094,7 +3090,7 @@ def run_health_check_and_repair(repo_root: str, args) -> list[str]:
                     "指定文件及同组其它文件、更新时间全部保持不变。"
                 )
             else:
-                print(f"\n[*] ===== {group_title} 本轮最终结果 =====")
+                print("\n── ③ 最终结果 ──")
                 for suffix in ("", "1"):
                     name = f"{group_title}{suffix}.m3u"
                     status = health_status.get(name)
@@ -3102,9 +3098,11 @@ def run_health_check_and_repair(repo_root: str, args) -> list[str]:
                         print(f"[+] {name}：健康检查正常，不做变更。")
                     elif status == "untestable":
                         print(f"[!] {name}：可测试 CCTV 不足，本轮保留上一版，不做变更。")
-                print(f"[+] [{group_title}] 最终状态：2/2 个标准播放列表槽位均保留；本轮没有文件发生变更。")
+                print(f"\n【{group_title}】最终：2/2 个槽位｜本轮无文件变更")
+            print("::endgroup::")
             continue
 
+        print("\n── ② 补齐/修复槽位 ──")
         if targeted_mode and file_mode == "refresh":
             print(
                 f"[*] [{group_title}] 将直接重抓 {len(repair_items)} 个指定槽位；"
@@ -3209,9 +3207,10 @@ def run_health_check_and_repair(repo_root: str, args) -> list[str]:
                     f"[!] [{group_title}] 本轮需要重抓的指定槽位均未找到合格替代源；"
                     "保留原 M3U/TXT 和原更新时间，不写入新的完成时间。"
                 )
+            print("::endgroup::")
             continue
 
-        print(f"\n[*] ===== {group_title} 本轮最终结果 =====")
+        print("\n── ③ 最终结果 ──")
         for suffix in ("", "1"):
             name = f"{group_title}{suffix}.m3u"
             status = health_status.get(name, "missing")
@@ -3246,6 +3245,13 @@ def run_health_check_and_repair(repo_root: str, args) -> list[str]:
                 f"[*] [{group_title}] 最终状态：保留现有 {final_existing}/2 个标准播放列表槽位；"
                 "本轮没有文件发生变更。"
             )
+
+        change_text = (
+            f"本轮修复 {repaired_slots} 个、补齐 {created_slots} 个"
+            if group_changed else "本轮无文件变更"
+        )
+        print(f"\n【{group_title}】最终：{final_existing}/2 个槽位｜{change_text}")
+        print("::endgroup::")
 
     if changed:
         update_readme_file_list(repo_root)
