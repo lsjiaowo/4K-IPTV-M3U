@@ -320,6 +320,14 @@ jobs:
           git checkout -B main origin/main
           echo "[*] 已同步到任务实际开始时的最新 origin/main。"
 
+      - name: Configure Git identity
+        shell: bash
+        run: |
+          # push_to_github() 会在 b.py 内执行 git commit；Actions runner 必须先有提交者身份。
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          echo "[*] Git 提交身份已配置为 github-actions[bot]。"
+
       - name: Resolve requested mode
         id: mode
         shell: bash
