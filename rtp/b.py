@@ -149,16 +149,107 @@ def _candidate_ip_for_history(value: str) -> str:
     return parsed.hostname or host.split(":", 1)[0]
 
 
-def record_usable_endpoint_mapping(group_title: str, candidate_host: str, relay_host: str) -> bool:
-    """记录“获取时间 + 页面候选 IP → 正式测速通过的实际 IP:PORT”，按省份+运营商永久累积并去重。
+def _history_carrier(group_title: str) -> str:
+    """根据“省份+运营商”分组名识别历史记录所属运营商。"""
+    for carrier in ("电信", "联通", "移动"):
+        if group_title.endswith(carrier):
+            return carrier
+    return "其他"
 
+
+def _load_usable_endpoint_history(path: Path) -> tuple[dict[str, list[str]], dict[str, set[str]], list[str]]:
+    """读取新旧 usable_endpoints.txt；兼容无运营商大标题的旧文件，并忽略新版大标题。"""
+    groups: dict[str, list[str]] = {}
+    mapping_keys: dict[str, set[str]] = {}
+    order: list[str] = []
+    if not path.exists():
+        return groups, mapping_keys, order
+
+    section_re = re.compile(r"^=+\s*(电信|联通|移动|其他)\s*=+$")
+    current = ""
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if section_re.fullmatch(line):
+            current = ""
+            continue
+        if "→" not in line:
+            current = line
+            if current not in groups:
+                groups[current] = []
+                mapping_keys[current] = set()
+                order.append(current)
+            continue
+        if not current:
+            continue
+
+        # 同时兼容旧无时间格式、旧时间戳格式和新版 GMT+8 时间戳格式；时间不参与映射去重。
+        key_line = re.sub(
+            r"^\[\d{4}/\d{2}/\d{2}\s{2}\d{2}:\d{2}:\d{2}(?:\s+GMT\+8)?\]\s*",
+            "",
+            line,
+        )
+        if "→" not in key_line:
+            continue
+        left, right = key_line.split("→", 1)
+        existing_key = f"{left.strip()} → {right.strip()}"
+        if existing_key not in mapping_keys[current]:
+            groups[current].append(line)
+            mapping_keys[current].add(existing_key)
+
+    return groups, mapping_keys, order
+
+
+def _write_usable_endpoint_history(path: Path, groups: dict[str, list[str]], order: list[str]) -> None:
+    """按运营商大区重排全部历史：电信 → 联通 → 移动 → 其他；组内保持原有出现顺序。"""
+    carrier_order = ("电信", "联通", "移动", "其他")
+    blocks: list[str] = []
+    for carrier in carrier_order:
+        carrier_groups = [group for group in order if _history_carrier(group) == carrier and group in groups]
+        if not carrier_groups:
+            continue
+        blocks.append(f"========{carrier}========")
+        for group in carrier_groups:
+            lines = groups[group]
+            block = group
+            if lines:
+                block += "\n" + "\n".join(lines)
+            blocks.append(block)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n\n".join(blocks).rstrip() + "\n", encoding="utf-8")
+
+
+def reorganize_usable_endpoint_history() -> bool:
+    """把已有历史记录重新划分为电信/联通/移动区块；只重排，不改写历史记录内容和时间戳。"""
+    if not _USABLE_ENDPOINT_HISTORY_PATH:
+        return False
+    path = Path(_USABLE_ENDPOINT_HISTORY_PATH)
+    if not path.exists():
+        return False
+    groups, _mapping_keys, order = _load_usable_endpoint_history(path)
+    if not groups:
+        return False
+    before = path.read_text(encoding="utf-8")
+    _write_usable_endpoint_history(path, groups, order)
+    after = path.read_text(encoding="utf-8")
+    if before != after:
+        print("[+] 已重新整理 history/usable_endpoints.txt：按 电信 → 联通 → 移动 分区排列，旧记录内容保持不变。")
+        return True
+    return False
+
+
+def record_usable_endpoint_mapping(group_title: str, candidate_host: str, relay_host: str) -> bool:
+    """记录“获取时间 + 页面候选 IP → 正式测速通过的实际 IP:PORT”，按运营商大区及省份组永久累积并去重。
+
+    文件固定按“电信 → 联通 → 移动 → 其他”大区排列；每个大区内保留各省份组原有出现顺序。
+    旧版文件中已经混排的电信/联通/移动记录会在读取后重新归类，历史记录行本身原样保留。
     仅在正式频道测速通过后调用。去重只比较“候选 IP → 实际 IP:PORT”映射本身，
     不把时间作为去重条件，因此同一完整映射再次测速通过也不会重复追加。
     新记录时间固定换算为 GMT+8，不依赖运行机器系统时区，格式固定为：[YYYY/MM/DD  HH:MM:SS GMT+8]。
     手动 endpoint 没有独立页面候选时，记录为“实际IP → 实际IP:PORT”。
 
-    兼容旧版 history/usable_endpoints.txt：
-    旧记录若没有时间戳会原样保留，因为无法准确还原其历史获取时间；
+    兼容旧版 history/usable_endpoints.txt：旧记录的原时间格式与内容均保持不变；
     后续新发现的映射统一使用带 GMT+8 标识的时间戳新格式。
     """
     global _USABLE_ENDPOINT_HISTORY_PATH
@@ -172,60 +263,26 @@ def record_usable_endpoint_mapping(group_title: str, candidate_host: str, relay_
 
     path = Path(_USABLE_ENDPOINT_HISTORY_PATH)
     path.parent.mkdir(parents=True, exist_ok=True)
-
     mapping_key = f"{candidate_ip} → {relay}"
     gmt8 = timezone(timedelta(hours=8))
     timestamp = datetime.now(gmt8).strftime("%Y/%m/%d  %H:%M:%S")
     mapping_line = f"[{timestamp} GMT+8]  {candidate_ip} → {relay}"
 
-    groups: dict[str, list[str]] = {}
-    mapping_keys: dict[str, set[str]] = {}
-    order: list[str] = []
-
-    if path.exists():
-        current = ""
-        for raw in path.read_text(encoding="utf-8").splitlines():
-            line = raw.strip()
-            if not line:
-                continue
-
-            if "→" not in line:
-                current = line
-                if current not in groups:
-                    groups[current] = []
-                    mapping_keys[current] = set()
-                    order.append(current)
-                continue
-
-            if current:
-                # 同时兼容旧无时间格式、旧时间戳格式和新版 GMT+8 时间戳格式；时间不参与映射去重。
-                key_line = re.sub(
-                    r"^\[\d{4}/\d{2}/\d{2}\s{2}\d{2}:\d{2}:\d{2}(?:\s+GMT\+8)?\]\s*",
-                    "",
-                    line,
-                )
-                left, right = key_line.split("→", 1)
-                existing_key = f"{left.strip()} → {right.strip()}"
-                if existing_key not in mapping_keys[current]:
-                    groups[current].append(line)
-                    mapping_keys[current].add(existing_key)
-
+    groups, mapping_keys, order = _load_usable_endpoint_history(path)
     if group_title not in groups:
         groups[group_title] = []
         mapping_keys[group_title] = set()
         order.append(group_title)
 
     if mapping_key in mapping_keys[group_title]:
+        # 即使本次映射已经存在，也把旧版混排文件整理成运营商分区格式。
+        _write_usable_endpoint_history(path, groups, order)
         print(f"[*] [{group_title}] 可用 endpoint 历史已存在：{mapping_key}")
         return False
 
     groups[group_title].append(mapping_line)
     mapping_keys[group_title].add(mapping_key)
-
-    blocks = []
-    for group in order:
-        blocks.append(group + "\n" + "\n".join(groups[group]))
-    path.write_text("\n\n".join(blocks).rstrip() + "\n", encoding="utf-8")
+    _write_usable_endpoint_history(path, groups, order)
     print(f"[+] [{group_title}] 已记录可用 endpoint：{mapping_line}")
     return True
 
@@ -2635,9 +2692,10 @@ def repair_failed_playlist_slot(
     failed_endpoint: str,
     occupied_endpoints: set[str],
     args,
+    slot_reason: str = "failed",
 ) -> tuple[list[str], str]:
     """
-    只为一个失效槽位寻找1个替代源。
+    为一个失效/强制重抓/缺失槽位寻找1个合格新源。
     精确 endpoint(IP:port) 才禁止复用；同公网IP的其它端口允许测速采用。
     候选优先级仍优先真正的新公网IP，其次同IP不同端口。
     """
@@ -2647,9 +2705,10 @@ def repair_failed_playlist_slot(
     deprioritized_ips = {_endpoint_ip(x) for x in excluded_endpoints if _endpoint_ip(x)}
 
     formal_speed = resolve_min_stream_speed(province, args.min_stream_speed)
+    operation_text = "缺失槽位补齐" if slot_reason == "missing" else "单槽位修复"
     print(
-        f"[*] [{group_title}{suffix}.m3u] 启动单槽位修复；正式新源门槛 > {formal_speed * 1024:.0f} KB/s；"
-        f"只寻找1个替代源。"
+        f"[*] [{group_title}{suffix}.m3u] 启动{operation_text}；正式新源门槛 > {formal_speed * 1024:.0f} KB/s；"
+        f"只寻找1个合格新源。"
     )
     print(
         f"[*] [{group_title}{suffix}.m3u] 本轮禁止重复 endpoint："
@@ -2680,16 +2739,25 @@ def repair_failed_playlist_slot(
             print(f"[*] [{group_title}{suffix}.m3u] 候选 endpoint {endpoint} 已被占用/失效，跳过。")
             continue
         paths = _write_single_playlist_slot(repo_root, group_title, suffix, lines)
-        print(
-            f"[+] [{group_title}{suffix}.m3u] 单槽位修复成功："
-            f"{failed_endpoint or '未知旧地址'} -> {endpoint}"
-        )
+        if slot_reason == "missing":
+            print(f"[+] [{group_title}{suffix}.m3u] 缺失槽位补齐成功：新建 endpoint={endpoint}")
+        else:
+            print(
+                f"[+] [{group_title}{suffix}.m3u] 单槽位修复成功："
+                f"{failed_endpoint or '未知旧地址'} -> {endpoint}"
+            )
         return paths, endpoint
 
-    print(
-        f"[!] [{group_title}{suffix}.m3u] 本轮未找到合格且 endpoint 不重复的替代服务器；"
-        f"保留原 M3U/TXT，等待下一轮。状态={status}"
-    )
+    if slot_reason == "missing":
+        print(
+            f"[!] [{group_title}{suffix}.m3u] 本轮未找到合格且 endpoint 不重复的新源；"
+            f"缺失槽位保持不存在，不创建空文件，等待下一轮。状态={status}"
+        )
+    else:
+        print(
+            f"[!] [{group_title}{suffix}.m3u] 本轮未找到合格且 endpoint 不重复的替代服务器；"
+            f"保留原 M3U/TXT，等待下一轮。状态={status}"
+        )
     return [], ""
 
 
@@ -2727,8 +2795,12 @@ def run_health_check_and_repair(repo_root: str, args) -> list[str]:
     """
     健康检查/定向重抓入口。
 
-    未指定 --health-file-1/2/3：保持原行为，按 --health-carriers 检查全部现有 M3U，
-    两轮失败后只修复失效槽位。
+    未指定 --health-file-1/2/3：按 --health-carriers 检查全部现有 M3U，并以每组最多两个标准槽位
+    （<省运营商>.m3u、<省运营商>1.m3u）为目标：
+      - 已有槽位两轮失败后，只修复失效槽位；
+      - 只有1个标准槽位时，无论该槽位健康与否，都会继续尝试补齐另一个缺失标准槽位；
+      - 补齐失败不创建空文件；失效修复失败保留上一版文件和原更新时间；
+      - 健康检查自动补齐绝不会创建 <省运营商>2.m3u 或更高编号槽位。
 
     指定1～3个播放列表时：只处理指定槽位，未指定文件不测速、不重抓、不改内容/时间。
       - --health-file-mode check：先检查指定旧列表；两轮失败才重抓。
@@ -2773,17 +2845,17 @@ def run_health_check_and_repair(repo_root: str, args) -> list[str]:
         selected_health_carriers = set(parse_carrier_selection(args.health_carriers))
         files = [
             (name, ident) for name, ident in all_files
-            if ident[1] in selected_health_carriers
+            if ident[1] in selected_health_carriers and ident[3] in {"", "1"}
         ]
         if not files:
             print(f"[*] 未发现可健康检查的 M3U 文件；运营商={','.join(selected_health_carriers)}。")
             return []
         print(
             f"[*] 健康检查模式：运营商={','.join(selected_health_carriers)}；共 {len(files)} 个现有 M3U；"
-            "按省份逐组处理；每个随机抽2个CCTV；测速门槛与正式抓取完全一致。"
+            "按省份逐组处理；每个随机抽2个CCTV；测速门槛与正式抓取完全一致；"
+            "每组标准槽位最多2个，只有1个时自动尝试补齐另一个。"
         )
 
-    # 只把“本轮需要处理”的槽位按省份+运营商分组。
     grouped_files: dict[str, list[tuple[str, tuple]]] = {}
     group_order: list[str] = []
     for name, ident in files:
@@ -2793,7 +2865,6 @@ def run_health_check_and_repair(repo_root: str, args) -> list[str]:
             group_order.append(group_title)
         grouped_files[group_title].append((name, ident))
 
-    # 建立全部现有槽位索引。指定模式下，这些未指定同组文件只用于读取 endpoint 去重。
     all_group_files: dict[str, list[tuple[str, tuple]]] = {}
     for name, ident in all_files:
         all_group_files.setdefault(ident[2], []).append((name, ident))
@@ -2810,19 +2881,20 @@ def run_health_check_and_repair(repo_root: str, args) -> list[str]:
                 f"同组其它槽位仅用于 endpoint 去重 ====="
             )
         else:
-            print(f"\n[*] ===== 开始处理 {group_title}：现有 {len(group_files)} 个播放列表槽位 =====")
+            standard_existing = [(n, i) for n, i in group_files if i[3] in {"", "1"}]
+            print(
+                f"\n[*] ===== 开始处理 {group_title}：现有 {len(standard_existing)} 个标准播放列表槽位"
+                "（最多2个） ====="
+            )
 
         health_status: dict[str, str] = {}
         hosts: dict[str, str] = {}
-
-        # 先读取同组所有现有 endpoint。读取不产生网络请求，只用于避免新抓取结果与现有槽位重复。
         sibling_files = all_group_files.get(group_title, group_files)
         for sibling_name, _ in sibling_files:
             sibling_path = os.path.join(m3u_dir, sibling_name)
             hosts[sibling_name] = _source_host_from_m3u(sibling_path)
 
         if targeted_mode and file_mode == "refresh":
-            # 强制重抓：不测试旧源，但新候选仍必须经过正式测速门槛。
             for name, _ in group_files:
                 health_status[name] = "refresh"
                 print(
@@ -2830,7 +2902,6 @@ def run_health_check_and_repair(repo_root: str, args) -> list[str]:
                     "旧文件暂时保留，只有找到测速合格的新 endpoint 后才覆盖。"
                 )
         else:
-            # 普通模式，或指定模式 check：只检测本轮 group_files。
             for name, ident in group_files:
                 path = os.path.join(m3u_dir, name)
                 health_min_speed = resolve_min_stream_speed(province, args.min_stream_speed)
@@ -2846,11 +2917,7 @@ def run_health_check_and_repair(repo_root: str, args) -> list[str]:
                     print(f"[!] [{name}] 首轮健康检查失败；{delay:.1f}秒后重新抽2个CCTV复检。")
                     time.sleep(delay)
                     status, _ = _health_test_once(
-                        path,
-                        name,
-                        health_min_speed,
-                        args.health_stream_test_seconds,
-                        2,
+                        path, name, health_min_speed, args.health_stream_test_seconds, 2,
                         exclude_urls=first_urls,
                     )
                 health_status[name] = status
@@ -2864,39 +2931,88 @@ def run_health_check_and_repair(repo_root: str, args) -> list[str]:
                     f"[{name}] 健康检查最终结果：{result_text}。"
                 )
 
-        repair_files = [
-            (name, ident) for name, ident in group_files
+        # repair_items: (文件名, identity, 原因)。普通模式还会把缺失的标准槽位加入补齐队列。
+        repair_items: list[tuple[str, tuple, str]] = [
+            (name, ident, "refresh" if health_status.get(name) == "refresh" else "failed")
+            for name, ident in group_files
             if health_status.get(name) in {"failed", "refresh"}
         ]
 
-        if not repair_files:
+        missing_standard_names: list[str] = []
+        if not targeted_mode:
+            existing_standard_suffixes = {ident[3] for _, ident in sibling_files if ident[3] in {"", "1"}}
+            for suffix in ("", "1"):
+                if suffix not in existing_standard_suffixes:
+                    missing_name = f"{group_title}{suffix}.m3u"
+                    missing_ident = (province, carrier, group_title, suffix)
+                    missing_standard_names.append(missing_name)
+                    health_status[missing_name] = "missing"
+                    repair_items.append((missing_name, missing_ident, "missing"))
+
+            print(f"\n[*] ===== {group_title} 健康检查汇总 =====")
+            for suffix in ("", "1"):
+                name = f"{group_title}{suffix}.m3u"
+                status = health_status.get(name, "missing")
+                if status == "healthy":
+                    print(f"[+] {name}：正常，保持不变。")
+                elif status == "failed":
+                    print(f"[-] {name}：失效，需要寻找合格替代源。")
+                elif status == "untestable":
+                    print(f"[!] {name}：可测试 CCTV 不足，本轮按保留处理。")
+                elif status == "missing":
+                    print(f"[!] {name}：当前缺失，需要尝试补齐。")
+
+            failed_names = [name for name, _, reason in repair_items if reason == "failed"]
+            normal_names = [
+                f"{group_title}{suffix}.m3u" for suffix in ("", "1")
+                if health_status.get(f"{group_title}{suffix}.m3u") in {"healthy", "untestable"}
+            ]
+            if failed_names or missing_standard_names:
+                readable_parts = []
+                readable_parts.extend(f"{name} 失效" for name in failed_names)
+                readable_parts.extend(f"{name} 正常" for name in normal_names)
+                readable_parts.extend(f"{name} 缺失" for name in missing_standard_names)
+                print(f"[*] [{group_title}] 检查结论：检测到 " + "，".join(readable_parts) + "。")
+            else:
+                print(f"[+] [{group_title}] 检查结论：两个标准槽位均正常/保留，无需处理。")
+
+        if not repair_items:
             if targeted_mode:
                 print(
                     f"[+] [{group_title}] 本轮指定槽位均无需重抓；"
                     "指定文件及同组其它文件、更新时间全部保持不变。"
                 )
             else:
-                print(
-                    f"[+] [{group_title}] 本组健康检查完成：没有失效槽位；"
-                    "现有 M3U/TXT 及上一次更新时间全部保持不变。"
-                )
+                print(f"\n[*] ===== {group_title} 本轮最终结果 =====")
+                for suffix in ("", "1"):
+                    name = f"{group_title}{suffix}.m3u"
+                    status = health_status.get(name)
+                    if status == "healthy":
+                        print(f"[+] {name}：健康检查正常，不做变更。")
+                    elif status == "untestable":
+                        print(f"[!] {name}：可测试 CCTV 不足，本轮保留上一版，不做变更。")
+                print(f"[+] [{group_title}] 最终状态：2/2 个标准播放列表槽位均保留；本轮没有文件发生变更。")
             continue
 
         if targeted_mode and file_mode == "refresh":
             print(
-                f"[*] [{group_title}] 将直接重抓 {len(repair_files)} 个指定槽位；"
+                f"[*] [{group_title}] 将直接重抓 {len(repair_items)} 个指定槽位；"
                 "旧源不参与健康判定，新候选仍必须通过正式测速。"
             )
+        elif targeted_mode:
+            failed_names = [name for name, _, _ in repair_items]
+            print(f"[!] [{group_title}] 检测到指定槽位失效：{'、'.join(failed_names)}；现在逐个寻找替代源。")
         else:
-            print(
-                f"[!] [{group_title}] 检测到 {len(repair_files)} 个失效槽位；"
-                "现在立即完成本省份定向修复，修复结束后才进入下一个省份。"
-            )
+            failed_names = [name for name, _, reason in repair_items if reason == "failed"]
+            missing_names = [name for name, _, reason in repair_items if reason == "missing"]
+            if failed_names:
+                print(f"[!] [{group_title}] 需要修复的失效槽位：{'、'.join(failed_names)}。")
+            if missing_names:
+                print(
+                    f"[*] [{group_title}] 当前标准槽位不足2个，将尝试补齐：{'、'.join(missing_names)}；"
+                    "健康检查自动补齐最多只允许主槽位和槽位1，不会创建槽位2。"
+                )
 
-        # 占用池规则：
-        # - 普通全量健康检查：沿用原逻辑，只占用健康/不可测槽位和本轮刚修复的新 endpoint。
-        # - 指定列表模式：同组所有现有槽位 endpoint 都先占用（包含被指定重抓槽位的旧 endpoint），
-        #   这样既不会撞到未指定列表，也不会把另一个指定槽位的旧 endpoint 当作“新源”互换回来。
         occupied_endpoints: set[str] = set()
         if targeted_mode:
             for sibling_name, _ in sibling_files:
@@ -2914,12 +3030,31 @@ def run_health_check_and_repair(repo_root: str, args) -> list[str]:
 
         group_changed: list[str] = []
         repaired_slots = 0
-        unrepaired_slots = 0
+        created_slots = 0
+        failed_actions: set[str] = set()
+        created_names: set[str] = set()
+        repaired_names: set[str] = set()
 
-        # 当前仍采用“每个槽位独立找到1个替代源”的稳定逻辑。
-        for name, (slot_province, slot_carrier, slot_group_title, suffix) in repair_files:
-            action_label = "强制重抓" if health_status.get(name) == "refresh" else "失效修复"
+        for name, (slot_province, slot_carrier, slot_group_title, suffix), reason in repair_items:
+            if reason == "refresh":
+                action_label = "强制重抓"
+            elif reason == "missing":
+                action_label = "缺失槽位补齐"
+            else:
+                action_label = "失效修复"
             print(f"[*] [{name}] 开始{action_label}。")
+
+            # 补齐缺失槽位时，所有现有标准槽位 endpoint（包括已判失效的旧 endpoint）都禁止采用，
+            # 防止把旧地址复制成第二槽位。失效修复仍沿用既有占用池规则。
+            slot_occupied = set(occupied_endpoints)
+            if reason == "missing":
+                for sibling_name, sibling_ident in sibling_files:
+                    if sibling_ident[3] not in {"", "1"}:
+                        continue
+                    endpoint = hosts.get(sibling_name, "")
+                    if endpoint:
+                        slot_occupied.add(endpoint)
+
             paths, new_endpoint = repair_failed_playlist_slot(
                 repo_root,
                 slot_province,
@@ -2927,42 +3062,78 @@ def run_health_check_and_repair(repo_root: str, args) -> list[str]:
                 slot_group_title,
                 suffix,
                 hosts.get(name, ""),
-                occupied_endpoints,
+                slot_occupied,
                 args,
+                slot_reason=reason,
             )
             if paths:
                 changed.extend(paths)
                 group_changed.extend(paths)
-                repaired_slots += 1
+                if reason == "missing":
+                    created_slots += 1
+                    created_names.add(name)
+                    health_status[name] = "created"
+                else:
+                    repaired_slots += 1
+                    repaired_names.add(name)
+                    health_status[name] = "repaired"
                 if new_endpoint:
                     occupied_endpoints.add(new_endpoint)
                     hosts[name] = new_endpoint
-                    health_status[name] = "healthy"
             else:
-                unrepaired_slots += 1
+                failed_actions.add(name)
 
         if group_changed:
-            # 只有真正抓到新 endpoint 并覆盖文件时才更新时间。
             record_province_update_times(repo_root, province, group_changed)
-            if targeted_mode:
+
+        if targeted_mode:
+            if group_changed:
                 print(
                     f"[+] [{group_title}] 指定槽位处理完成：成功更新 {repaired_slots} 个"
-                    + (f"；{unrepaired_slots} 个未找到合格替代源，旧文件保持不变。" if unrepaired_slots else "。")
+                    + (f"；{len(failed_actions)} 个未找到合格替代源，旧文件保持不变。" if failed_actions else "。")
                 )
                 print("[*] 未指定播放列表没有测速、没有重抓、没有修改更新时间。")
             else:
                 print(
-                    f"[+] [{group_title}] 本组定向修复完成：成功更新 {repaired_slots} 个失效槽位"
-                    + (f"；仍有 {unrepaired_slots} 个槽位未找到合格替代源，旧文件保持不变。" if unrepaired_slots else "。")
+                    f"[!] [{group_title}] 本轮需要重抓的指定槽位均未找到合格替代源；"
+                    "保留原 M3U/TXT 和原更新时间，不写入新的完成时间。"
                 )
-                print(
-                    f"[*] [{group_title}] 上方记录的更新时间仅对应本轮实际抓取到新 IP/播放列表并生成的文件；"
-                    "原本测速有效的文件继续保持上一次记录。"
-                )
+            continue
+
+        print(f"\n[*] ===== {group_title} 本轮最终结果 =====")
+        for suffix in ("", "1"):
+            name = f"{group_title}{suffix}.m3u"
+            status = health_status.get(name, "missing")
+            if status == "healthy":
+                print(f"[+] {name}：健康检查正常，不做变更。")
+            elif status == "untestable":
+                print(f"[!] {name}：可测试 CCTV 不足，本轮保留上一版，不做变更。")
+            elif status == "repaired":
+                print(f"[+] {name}：原槽位失效，已找到合格替代源并修复成功。")
+            elif status == "created":
+                print(f"[+] {name}：原槽位缺失，已找到合格新源并补齐成功。")
+            elif status == "failed":
+                print(f"[!] {name}：槽位失效但未找到合格替代源，保留上一版 M3U/TXT 及原更新时间。")
+            elif status == "missing":
+                print(f"[!] {name}：未找到合格且 endpoint 不重复的新源，本轮不创建该槽位。")
+
+        final_existing = 0
+        for suffix in ("", "1"):
+            if os.path.isfile(os.path.join(m3u_dir, f"{group_title}{suffix}.m3u")):
+                final_existing += 1
+        if group_changed:
+            print(
+                f"[+] [{group_title}] 最终状态：保留/生成 {final_existing}/2 个标准播放列表槽位；"
+                f"本轮修复 {repaired_slots} 个、补齐 {created_slots} 个。"
+            )
+            print(
+                f"[*] [{group_title}] 只有本轮实际写入的新播放列表更新时间会更新；"
+                "正常槽位以及修复失败后保留的上一版文件继续保持原更新时间。"
+            )
         else:
             print(
-                f"[!] [{group_title}] 本轮需要重抓的槽位均未找到合格替代源；"
-                "保留原 M3U/TXT 和原更新时间，不写入新的完成时间。"
+                f"[*] [{group_title}] 最终状态：保留现有 {final_existing}/2 个标准播放列表槽位；"
+                "本轮没有文件发生变更。"
             )
 
     if changed:
@@ -3485,6 +3656,8 @@ def main():
     repo_root = os.path.dirname(script_dir)
     global _USABLE_ENDPOINT_HISTORY_PATH
     _USABLE_ENDPOINT_HISTORY_PATH = os.path.join(repo_root, USABLE_ENDPOINT_HISTORY_FILE)
+    # 每次运行先整理一次已有历史，确保旧版混排记录也按运营商大区重新归类。
+    reorganize_usable_endpoint_history()
     txt_output_dir = os.path.join(repo_root, "txt")
     m3u_output_dir = os.path.join(repo_root, "m3u")
 
