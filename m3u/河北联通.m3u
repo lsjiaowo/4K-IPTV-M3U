@@ -7,7 +7,7 @@ http://60.4.29.46:8077/rtp/239.253.93.83:6249
 http://60.4.29.46:8077/rtp/239.253.93.81:6247
 #EXTINF:-1 tvg-id="CCTV4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV4K.png" group-title="河北联通",CCTV4K
 http://60.4.29.46:8077/rtp/239.253.93.134:6631
-#EXTINF:-1 tvg-id="CCTV4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV4K.png" group-title="河北联通",CCTV4K
+#EXTINF:-1 tvg-id="CCTV4K 50P" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV4K%2050P.png" group-title="河北联通",CCTV4K 50P
 http://60.4.29.46:8077/rtp/239.253.94.43:6468
 #EXTINF:-1 tvg-id="CHC影迷电影" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CHC%E5%BD%B1%E8%BF%B7%E7%94%B5%E5%BD%B1.png" group-title="河北联通",CHC影迷电影
 http://60.4.29.46:8077/rtp/239.253.92.112:6116
