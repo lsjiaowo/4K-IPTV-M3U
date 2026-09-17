@@ -2214,17 +2214,31 @@ def record_province_update_times(
     repo_root: str,
     province: str,
     generated_relative_paths: list[str],
+    *,
+    log_target: str = "",
+    channel_refresh: bool = False,
 ) -> None:
-    """仅更新本次实际覆盖写入的列表时间，未补足的旧源保持原时间。"""
+    """仅更新本次实际覆盖写入的列表时间，未补足的旧源保持原时间。
+
+    channel_refresh=True 时使用频道更新专用日志，避免把 M3U/TXT 两个实际文件
+    误解成两个播放列表槽位。
+    """
     update_times = load_file_update_times(repo_root)
     updated_at = beijing_now().strftime("%Y-%m-%d %H:%M:%S")
     for relative_path in generated_relative_paths:
         update_times[relative_path.replace("\\", "/")] = updated_at
     save_file_update_times(repo_root, update_times)
-    print(
-        f"[+] [{province}] 已更新 {len(generated_relative_paths)} 个实际生成文件的时间："
-        f"{updated_at}；未补足的旧源时间保持不变。"
-    )
+    if channel_refresh:
+        label = log_target or province
+        print(
+            f"[+] [{label}] 已更新本轮实际生成的 M3U/TXT 文件时间：{updated_at}；"
+            "未更新/不存在的槽位时间保持不变。"
+        )
+    else:
+        print(
+            f"[+] [{province}] 已更新 {len(generated_relative_paths)} 个实际生成文件的时间："
+            f"{updated_at}；未补足的旧源时间保持不变。"
+        )
 
 
 def get_git_file_update_time(repo_root: str, relative_path: str) -> str:
@@ -2647,7 +2661,9 @@ def run_channel_list_refresh(repo_root: str, args) -> list[str]:
     if not changed:
         raise ValueError(f"{group_title} 没有可更新的现有标准槽位；未修改任何文件")
 
-    record_province_update_times(repo_root, province, changed)
+    record_province_update_times(
+        repo_root, province, changed, log_target=group_title, channel_refresh=True
+    )
     update_readme_file_list(repo_root)
     print(f"\n[+] ===== {group_title}频道列表更新完成 =====")
     for name in updated_names:
@@ -3740,6 +3756,37 @@ def parse_args():
 def main():
     args = parse_args()
 
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    repo_root = os.path.dirname(script_dir)
+    global _USABLE_ENDPOINT_HISTORY_PATH
+    _USABLE_ENDPOINT_HISTORY_PATH = os.path.join(repo_root, USABLE_ENDPOINT_HISTORY_FILE)
+    txt_output_dir = os.path.join(repo_root, "txt")
+    m3u_output_dir = os.path.join(repo_root, "m3u")
+
+    # 仅更新频道列表完全不进入 cqshushu 服务器发现流程，因此不打印分页/候选上限日志。
+    # 该模式只读取本地 channel_templates，并保留现有标准槽位的公网 IP:PORT。
+    if args.channel_refresh_target:
+        os.makedirs(txt_output_dir, exist_ok=True)
+        os.makedirs(m3u_output_dir, exist_ok=True)
+        try:
+            changed = run_channel_list_refresh(repo_root, args)
+        except ValueError as exc:
+            raise SystemExit(f"参数错误：{exc}") from exc
+        if changed and args.push:
+            publish_paths = sorted(set(changed + [README_FILE]))
+            if os.path.exists(os.path.join(repo_root, UPDATE_TIMES_FILE)):
+                publish_paths.append(UPDATE_TIMES_FILE)
+            # 本模式不新增 usable_endpoints 历史记录。
+            push_to_github(publish_paths, province=f"{args.channel_refresh_target}频道更新")
+            sync_m3u_to_secret_gist(province=args.channel_refresh_target)
+            print(f"[+] [{args.channel_refresh_target}] GitHub + Secret Gist 均已发布。")
+        elif changed:
+            print("[+] 频道列表更新完成；未启用 --push。")
+        return
+
+    # 非频道更新模式才整理 endpoint 历史并进入服务器发现/测速相关参数处理。
+    reorganize_usable_endpoint_history()
+
     # 省份组播服务器列表统一采用最大10页动态搜索。
     # 当前 GitHub Actions 仍可能传入旧的 --max-pages 值；这里统一覆盖为10。
     if args.max_pages != REGION_LIST_MAX_PAGES:
@@ -3759,34 +3806,6 @@ def main():
             f"目标仍为{TARGET_PLAYABLE_SOURCES_PER_CARRIER}个可用源。"
         )
         args.max_per_carrier = 20
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.dirname(script_dir)
-    global _USABLE_ENDPOINT_HISTORY_PATH
-    _USABLE_ENDPOINT_HISTORY_PATH = os.path.join(repo_root, USABLE_ENDPOINT_HISTORY_FILE)
-    # 每次运行先整理一次已有历史，确保旧版混排记录也按运营商大区重新归类。
-    reorganize_usable_endpoint_history()
-    txt_output_dir = os.path.join(repo_root, "txt")
-    m3u_output_dir = os.path.join(repo_root, "m3u")
-
-    if args.channel_refresh_target:
-        os.makedirs(txt_output_dir, exist_ok=True)
-        os.makedirs(m3u_output_dir, exist_ok=True)
-        try:
-            changed = run_channel_list_refresh(repo_root, args)
-        except ValueError as exc:
-            raise SystemExit(f"参数错误：{exc}") from exc
-        if changed and args.push:
-            publish_paths = sorted(set(changed + [README_FILE]))
-            if os.path.exists(os.path.join(repo_root, UPDATE_TIMES_FILE)):
-                publish_paths.append(UPDATE_TIMES_FILE)
-            # 本模式不修改 usable_endpoints.txt，因此不把历史文件作为本轮变更加入提交。
-            push_to_github(publish_paths, province=f"{args.channel_refresh_target}频道更新")
-            sync_m3u_to_secret_gist(province=args.channel_refresh_target)
-            print(f"[+] [{args.channel_refresh_target}] GitHub + Secret Gist 均已发布。")
-        elif changed:
-            print("[+] 频道列表更新完成；未启用 --push。")
-        return
-
     if args.manual_endpoint:
         os.makedirs(txt_output_dir, exist_ok=True)
         os.makedirs(m3u_output_dir, exist_ok=True)
