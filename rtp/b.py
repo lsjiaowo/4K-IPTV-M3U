@@ -2795,7 +2795,7 @@ def run_health_check_and_repair(repo_root: str, args) -> list[str]:
     """
     健康检查/定向重抓入口。
 
-    未指定 --health-file-1/2/3：按 --health-carriers 检查全部现有 M3U，并以每组最多两个标准槽位
+    未指定 --health-file-1/2/3：按 --health-provinces + --health-carriers 筛选现有 M3U，并以每组最多两个标准槽位
     （<省运营商>.m3u、<省运营商>1.m3u）为目标：
       - 已有槽位两轮失败后，只修复失效槽位；
       - 只有1个标准槽位时，无论该槽位健康与否，都会继续尝试补齐另一个缺失标准槽位；
@@ -2843,15 +2843,20 @@ def run_health_check_and_repair(repo_root: str, args) -> list[str]:
         print(f"[*] 本轮指定列表：{', '.join(name for name, _ in files)}")
     else:
         selected_health_carriers = set(parse_carrier_selection(args.health_carriers))
+        health_province_raw = getattr(args, "health_provinces", "全部") or "全部"
+        health_all_provinces = "全部" in split_selection(health_province_raw)
+        selected_health_provinces = set() if health_all_provinces else set(parse_province_selection(health_province_raw))
         files = [
             (name, ident) for name, ident in all_files
-            if ident[1] in selected_health_carriers and ident[3] in {"", "1"}
+            if ident[1] in selected_health_carriers
+            and ident[3] in {"", "1"}
+            and (health_all_provinces or ident[0] in selected_health_provinces)
         ]
         if not files:
-            print(f"[*] 未发现可健康检查的 M3U 文件；运营商={','.join(selected_health_carriers)}。")
+            print(f"[*] 未发现可健康检查的 M3U 文件；省份={health_province_raw}；运营商={','.join(selected_health_carriers)}。")
             return []
         print(
-            f"[*] 健康检查模式：运营商={','.join(selected_health_carriers)}；共 {len(files)} 个现有 M3U；"
+            f"[*] 健康检查模式：省份={health_province_raw}；运营商={','.join(selected_health_carriers)}；共 {len(files)} 个现有 M3U；"
             "按省份逐组处理；每个随机抽2个CCTV；测速门槛与正式抓取完全一致；"
             "每组标准槽位最多2个，只有1个时自动尝试补齐另一个。"
         )
@@ -3597,11 +3602,15 @@ def parse_args():
     )
     ap.add_argument(
         "--health-check", action="store_true",
-        help="健康检查/定向重抓模式：未指定文件时按 --health-carriers 检查全部M3U；也可用 --health-file-1/2/3 精确指定最多3个槽位。",
+        help="健康检查/定向重抓模式：未指定文件时按 --health-provinces + --health-carriers 筛选现有M3U；也可用 --health-file-1/2/3 精确指定最多3个槽位。",
+    )
+    ap.add_argument(
+        "--health-provinces", default="全部",
+        help="健康检查仅处理指定省份，例如：河南 或 山西；默认全部。仅筛选现有播放列表，不会因为选择某省而凭空创建一个完全不存在的省份+运营商组。",
     )
     ap.add_argument(
         "--health-carriers", default="全部",
-        help="健康检查仅处理指定运营商，例如：电信 或 联通；默认全部。",
+        help="健康检查仅处理指定运营商，例如：电信、联通或移动；默认全部。与 --health-provinces 组合筛选。",
     )
     ap.add_argument(
         "--health-file-1", default="",
