@@ -12,6 +12,7 @@ on:
           - "测速检查"
           - "省份抓取"
           - "手动指定 IP:PORT"
+          - "仅更新频道列表"
 
       health_scope:
         description: "━━━━━━ ① 测速检查 ━━━━━━ 测速检查范围"
@@ -270,6 +271,21 @@ on:
         default: ""
         type: string
 
+      channel_refresh_target:
+        description: "━━━━━━ ④ 仅更新频道列表 ━━━━━━ 频道列表目标（例如 河南电信）"
+        required: false
+        default: ""
+        type: string
+      channel_refresh_slot:
+        description: "更新槽位（仅更新频道列表有效；不创建缺失槽位，最多只处理主槽位和槽位1）"
+        required: true
+        default: "全部现有槽位"
+        type: choice
+        options:
+          - "全部现有槽位"
+          - "槽位"
+          - "槽位1"
+
   repository_dispatch:
     types: [hourly_iptv_telecom_update]
   schedule:
@@ -318,6 +334,7 @@ jobs:
               "测速检查") MODE="health" ;;
               "省份抓取") MODE="full" ;;
               "手动指定 IP:PORT") MODE="manual_endpoint" ;;
+              "仅更新频道列表") MODE="channel_refresh" ;;
               *) echo "::error::未知手动运行模式：$MANUAL_MODE"; exit 1 ;;
             esac
           elif [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event_name }}" = "repository_dispatch" ]; then
@@ -368,6 +385,8 @@ jobs:
           MANUAL_ENDPOINT: "${{ github.event.inputs.manual_endpoint }}"
           MANUAL_ENDPOINT_ACTION: "${{ github.event.inputs.manual_endpoint_action }}"
           MANUAL_ENDPOINT_SLOT: "${{ github.event.inputs.manual_endpoint_slot }}"
+          CHANNEL_REFRESH_TARGET: "${{ github.event.inputs.channel_refresh_target }}"
+          CHANNEL_REFRESH_SLOT: "${{ github.event.inputs.channel_refresh_slot }}"
         run: |
           set -euo pipefail
           MODE="${{ steps.mode.outputs.mode }}"
@@ -398,6 +417,22 @@ jobs:
               echo "[*] 测速检查范围=指定省份+运营商；省份=$HP；运营商=$HC。只处理现有对应组；组内仅允许主槽位和槽位1，缺1个时自动尝试补齐。"
               python -u rtp/b.py --health-check --health-provinces "$HP" --health-carriers "$HC" --health-file-mode check --max-pages 10 --max-per-carrier 20 --push
             fi
+            exit 0
+          fi
+
+          if [ "$MODE" = "channel_refresh" ]; then
+            if [ -z "$CHANNEL_REFRESH_TARGET" ]; then
+              echo "::error::仅更新频道列表模式必须填写‘频道列表目标’，例如 河南电信。"
+              exit 1
+            fi
+            case "$CHANNEL_REFRESH_SLOT" in
+              "槽位") REFRESH_SLOT="base" ;;
+              "槽位1") REFRESH_SLOT="1" ;;
+              *) REFRESH_SLOT="all" ;;
+            esac
+            echo "[*] 仅更新频道列表：目标=$CHANNEL_REFRESH_TARGET；槽位=$CHANNEL_REFRESH_SLOT。"
+            echo "[*] 本模式只读取本地 channel_templates；不访问 cqshushu、不抓取 IP:PORT、不测速、不创建缺失槽位。"
+            python -u rtp/b.py --channel-refresh-target "$CHANNEL_REFRESH_TARGET" --channel-refresh-slot "$REFRESH_SLOT" --push
             exit 0
           fi
 
