@@ -2568,6 +2568,96 @@ def _write_single_playlist_slot(repo_root: str, group_title: str, suffix: str, c
 
 
 
+# ===== 仅更新频道列表（保留现有公网 IP:PORT） =====
+def _normalize_channel_refresh_slot(value: str) -> str:
+    """规范化频道列表更新槽位：all=现有主槽位+槽位1；base=仅主槽位；1=仅槽位1。"""
+    text = (value or "all").strip().lower()
+    mapping = {
+        "all": "all", "全部": "all", "全部槽位": "all", "全部槽位（默认）": "all",
+        "base": "base", "0": "base", "槽位": "base", "主槽位": "base",
+        "1": "1", "槽位1": "1",
+    }
+    if text not in mapping:
+        raise ValueError("--channel-refresh-slot 只支持 all/base/1（全部槽位/槽位/槽位1）")
+    return mapping[text]
+
+
+def run_channel_list_refresh(repo_root: str, args) -> list[str]:
+    """只用本地 channel_templates 更新现有播放列表的频道内容，绝不抓取或改变公网 endpoint。
+
+    规则：
+    - 目标必须是有效的“省份+运营商”，例如 河南电信；
+    - 只读取本地 channel_templates/<目标>.m3u 或 .txt（本地优先 M3U，其次 TXT）；
+      不读取 remote_templates.txt，不访问 cqshushu；
+    - 从现有 M3U 读取各槽位当前公网 IP:PORT，并用新模板重新组合 HTTP /rtp/ 地址；
+    - 只允许处理两个标准槽位：<目标>.m3u 与 <目标>1.m3u；绝不创建 <目标>2.m3u；
+    - all 只更新当前已经存在的标准槽位，不负责补齐缺失槽位；base/1 指定槽位不存在则报错停止；
+    - 不测速、不写 usable_endpoints 历史；只有实际成功重建的 M3U/TXT 才更新时间。
+    """
+    target = (args.channel_refresh_target or "").strip()
+    identity = _playlist_identity(f"{target}.m3u")
+    if not identity:
+        raise ValueError("--channel-refresh-target 必须是有效的“省份+运营商”，例如 河南电信")
+    province, _carrier, group_title, _ = identity
+
+    template_channels, template_path = load_local_channel_template(group_title)
+    if not template_channels:
+        raise ValueError(
+            f"{group_title} 没有可用的本地 channel_templates/{group_title}.m3u 或 .txt；"
+            "仅更新频道列表模式不会使用远程模板，也不会访问 cqshushu"
+        )
+
+    slot_mode = _normalize_channel_refresh_slot(args.channel_refresh_slot)
+    requested_suffixes = ["", "1"] if slot_mode == "all" else ([""] if slot_mode == "base" else ["1"])
+    m3u_dir = Path(repo_root) / "m3u"
+
+    print(f"\n[*] ===== 仅更新频道列表：{group_title} =====")
+    print(f"[+] 已读取本地模板：{template_path}；有效RTP频道={len(template_channels)}条。")
+    print("[*] 本模式不访问 cqshushu、不读取远程模板、不抓取新 IP:PORT、不进行测速。")
+    print("[*] 标准槽位上限固定为2：主槽位与槽位1；本模式只更新已存在槽位，不创建缺失槽位。")
+
+    changed: list[str] = []
+    updated_names: list[str] = []
+    skipped_names: list[str] = []
+
+    for suffix in requested_suffixes:
+        file_stem = f"{group_title}{suffix}"
+        m3u_path = m3u_dir / f"{file_stem}.m3u"
+        if not m3u_path.is_file():
+            if slot_mode == "all":
+                print(f"[*] [{m3u_path.name}] 槽位不存在，本模式不创建，已跳过。")
+                skipped_names.append(m3u_path.name)
+                continue
+            raise ValueError(f"指定频道更新槽位不存在：{m3u_path.name}；本模式不会自动创建槽位")
+
+        endpoint = normalize_source_host(_source_host_from_m3u(str(m3u_path)))
+        if not endpoint:
+            raise ValueError(f"{m3u_path.name} 无法从现有播放列表解析公网 IP:PORT；为避免误写，已停止")
+
+        channel_lines = build_template_channel_lines(template_channels, endpoint)
+        if not channel_lines:
+            raise ValueError(f"无法使用现有 endpoint {endpoint} 构造 {m3u_path.name} 的频道列表")
+
+        print(f"[*] [{m3u_path.name}] 保留原 endpoint={endpoint}。")
+        paths = _write_single_playlist_slot(repo_root, group_title, suffix, channel_lines)
+        changed.extend(paths)
+        updated_names.append(m3u_path.name)
+        print(f"[+] [{m3u_path.name}] 已使用本地模板重新生成 {len(channel_lines)} 个频道；IP:PORT 未改变。")
+
+    if not changed:
+        raise ValueError(f"{group_title} 没有可更新的现有标准槽位；未修改任何文件")
+
+    record_province_update_times(repo_root, province, changed)
+    update_readme_file_list(repo_root)
+    print(f"\n[+] ===== {group_title}频道列表更新完成 =====")
+    for name in updated_names:
+        print(f"[+] {name}：频道已更新，原 IP:PORT 保持不变。")
+    for name in skipped_names:
+        print(f"[*] {name}：槽位不存在，本轮未创建。")
+    print("[*] 本轮没有搜索、测速或新增公网 endpoint；usable_endpoints.txt 不新增记录。")
+    return changed
+
+
 # ===== 手动指定公网 endpoint 导入 =====
 def _validate_manual_endpoint(value: str) -> str:
     """校验并规范化人工输入的 IPv4:PORT；只接受明确的 IPv4 和 1~65535 端口。"""
@@ -3585,6 +3675,14 @@ def parse_args():
         help="仅“--provinces 全部 + --update-slot all”有效：all=全部重新抓取（默认）；skip=若某省份+运营商已同时存在主槽位.m3u和槽位1.m3u且文件非空，则全国补全时跳过该组，不测速、不重抓、不更新时间。",
     )
     ap.add_argument(
+        "--channel-refresh-target", default="",
+        help="仅更新频道列表模式的省份+运营商目标，例如 河南电信；只使用本地 channel_templates，保留现有公网 IP:PORT。",
+    )
+    ap.add_argument(
+        "--channel-refresh-slot", default="all",
+        help="仅更新频道列表的槽位：all=更新现有主槽位和槽位1（默认）；base=仅主槽位；1=仅槽位1。不会创建缺失槽位或槽位2。",
+    )
+    ap.add_argument(
         "--manual-endpoint", default="",
         help="手动指定公网转发 endpoint，格式 IPv4:PORT；提供后进入手动 endpoint 导入模式，不搜索 cqshushu 候选服务器。",
     )
@@ -3669,6 +3767,25 @@ def main():
     reorganize_usable_endpoint_history()
     txt_output_dir = os.path.join(repo_root, "txt")
     m3u_output_dir = os.path.join(repo_root, "m3u")
+
+    if args.channel_refresh_target:
+        os.makedirs(txt_output_dir, exist_ok=True)
+        os.makedirs(m3u_output_dir, exist_ok=True)
+        try:
+            changed = run_channel_list_refresh(repo_root, args)
+        except ValueError as exc:
+            raise SystemExit(f"参数错误：{exc}") from exc
+        if changed and args.push:
+            publish_paths = sorted(set(changed + [README_FILE]))
+            if os.path.exists(os.path.join(repo_root, UPDATE_TIMES_FILE)):
+                publish_paths.append(UPDATE_TIMES_FILE)
+            # 本模式不修改 usable_endpoints.txt，因此不把历史文件作为本轮变更加入提交。
+            push_to_github(publish_paths, province=f"{args.channel_refresh_target}频道更新")
+            sync_m3u_to_secret_gist(province=args.channel_refresh_target)
+            print(f"[+] [{args.channel_refresh_target}] GitHub + Secret Gist 均已发布。")
+        elif changed:
+            print("[+] 频道列表更新完成；未启用 --push。")
+        return
 
     if args.manual_endpoint:
         os.makedirs(txt_output_dir, exist_ok=True)
