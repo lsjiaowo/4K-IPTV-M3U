@@ -288,8 +288,12 @@ on:
 
   repository_dispatch:
     types: [hourly_iptv_mobile_update]
-  schedule:
-    - cron: "16,26,36,46,56 * * * *"
+  # ============================================================
+  # 【自动定时总开关】当前：关闭
+  # 开启=取消 schedule/cron 两行的 #；关闭=给两行加 #；手动运行不受影响
+  # ============================================================
+  # schedule:
+  #   - cron: "16,26,36,46,56 * * * *"
 
 concurrency:
   group: iptv-source-update
@@ -303,9 +307,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
-      # 自动定时模式：health=测速检查；full=全国本运营商抓取；disabled=关闭自动运行。
+      # 自动定时运行内容：health=测速检查；full=全国本运营商抓取；开关由顶部 schedule 是否注释决定。
       # 手动 Run workflow 不受该设置限制。
-      SCHEDULE_MODE: "disabled"
+      SCHEDULE_MODE: "health"
     steps:
       - name: Checkout
         uses: actions/checkout@v5
