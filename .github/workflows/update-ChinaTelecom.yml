@@ -290,10 +290,11 @@ on:
     types: [hourly_iptv_telecom_update]
   # ============================================================
   # 【自动定时总开关】当前：开启
-  # 开启=取消 schedule/cron 两行的 #；关闭=给两行加 #；手动运行不受影响
+  # 北京时间每天 06:00、16:00 自动运行（GitHub cron 使用 UTC，对应 22:00、08:00 UTC）
+  # 手动 Run workflow 不受影响
   # ============================================================
-  #schedule:
-  # - cron: "1,6,11,16,21,26 * * * *"
+  schedule:
+    - cron: "0 8,22 * * *"
 
 concurrency:
   group: iptv-source-update
@@ -310,6 +311,8 @@ jobs:
       # 自动定时模式：health=测速检查；full=全国本运营商抓取；disabled=关闭自动运行。
       # 手动 Run workflow 不受该设置限制。
       SCHEDULE_MODE: "health"
+      # 自动 health 仅检查以下省份；使用英文逗号分隔，可直接增删；设为“全部”则检查现有全部电信组。
+      SCHEDULE_HEALTH_PROVINCES: "四川,浙江,安徽,湖北,山西,广东"
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -381,6 +384,7 @@ jobs:
           GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
           IPTV_GIST_ID: ${{ secrets.IPTV_GIST_ID }}
           HEALTH_SCOPE: "${{ github.event.inputs.health_scope }}"
+          SCHEDULE_HEALTH_PROVINCES: "${{ env.SCHEDULE_HEALTH_PROVINCES }}"
           HEALTH_PROVINCE: "${{ github.event.inputs.health_province }}"
           HEALTH_CARRIER: "${{ github.event.inputs.health_carrier }}"
           HEALTH_FILE_1: "${{ github.event.inputs.health_file_1 }}"
@@ -423,7 +427,7 @@ jobs:
                 HP="${HEALTH_PROVINCE:-全部}"
                 HC="${HEALTH_CARRIER:-电信}"
               else
-                HP="全部"
+                HP="${SCHEDULE_HEALTH_PROVINCES:-全部}"
                 HC="电信"
               fi
               echo "[*] 测速检查范围=指定省份+运营商；省份=$HP；运营商=$HC。只处理现有对应组；组内仅允许主槽位和槽位1，缺1个时自动尝试补齐。"
