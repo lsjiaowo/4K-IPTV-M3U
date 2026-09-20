@@ -46,15 +46,18 @@ GIST_OWNER = "lsjiaowo"
 IPTV_GIST_ID = os.environ.get("IPTV_GIST_ID", "").strip()
 
 # 可选的本地频道模板目录。模板文件名使用“省份+运营商”，例如：
-# channel_templates/天津联通.m3u 或 channel_templates/天津联通.txt
-# 来源选择：remote_templates.txt 远程动态模板优先；失败后尝试本地 .m3u、.txt；仍无有效模板才锁定使用 cqshushu。
+# channel_templates/天津联通-cqshushu.m3u、channel_templates/天津联通.m3u 或 channel_templates/天津联通.txt
+# 来源选择：remote_templates.txt 远程动态模板优先；失败后依次尝试本地
+# “省份运营商-cqshushu.m3u”→“省份运营商.m3u”→“省份运营商.txt”；
+# 仍无有效模板才锁定使用 cqshushu 网站动态频道。
 # 同一“省份+运营商”一次运行中来源锁定后不再混用。
 # 模板只提供“频道名称 + 组播地址”；支持 rtp://、HTTP /rtp/ 和 udpxy 风格 HTTP /udp/。
 # /udp/ 仅作为模板输入格式兼容，最终公网播放地址仍统一输出为 HTTP /rtp/。
 # 最终 tvg-id/tvg-logo/group-title、EPG 和排序仍完全沿用本脚本现有输出逻辑。
 CHANNEL_TEMPLATE_DIR = "channel_templates"
 # 远程动态频道模板映射。每行格式：省份运营商=远程M3U/TXT地址；# 开头为注释。
-# 远程模板优先于同名本地模板；下载/解析失败时自动回退本地模板，再无本地模板才使用 cqshushu。
+# 远程模板优先于本地模板；下载/解析失败时依次回退
+# “-cqshushu.m3u”→“.m3u”→“.txt”，再无有效本地模板才使用 cqshushu 网站动态频道。
 REMOTE_TEMPLATE_CONFIG = os.path.join(CHANNEL_TEMPLATE_DIR, "remote_templates.txt")
 _REMOTE_TEMPLATE_CONFIG_CACHE: dict[str, str] | None = None
 _REMOTE_TEMPLATE_FETCH_CACHE: dict[str, tuple[list[tuple[str, str]], str | None]] = {}
@@ -787,13 +790,24 @@ def load_local_channel_template(
     group_title: str,
     template_dir: str = CHANNEL_TEMPLATE_DIR,
 ) -> tuple[list[tuple[str, str]], str | None]:
-    """读取“省份+运营商”本地模板；优先 M3U，其次 TXT。
+    """读取“省份+运营商”本地模板。
 
-    某个文件存在但无有效 RTP 频道时继续尝试下一种格式；两种都不可用时返回空。
-    调用方会在“省份+运营商”层级锁定为 cqshushu 模式，本轮后续不再切换来源。
+    本地固定优先级：
+    1. 省份运营商-cqshushu.m3u
+    2. 省份运营商.m3u
+    3. 省份运营商.txt
+
+    某个文件存在但无有效 RTP 频道时继续尝试下一优先级；三种都不可用时返回空。
+    调用方会在“省份+运营商”层级锁定为 cqshushu 网站动态频道模式，
+    本轮后续不再切换或混用其它频道来源。
     """
-    for extension, parser in ((".m3u", parse_channel_template_m3u), (".txt", parse_channel_template_txt)):
-        path = os.path.join(template_dir, f"{group_title}{extension}")
+    candidates = (
+        (f"{group_title}-cqshushu.m3u", parse_channel_template_m3u),
+        (f"{group_title}.m3u", parse_channel_template_m3u),
+        (f"{group_title}.txt", parse_channel_template_txt),
+    )
+    for filename, parser in candidates:
+        path = os.path.join(template_dir, filename)
         if not os.path.isfile(path):
             continue
         try:
@@ -891,7 +905,15 @@ def load_remote_channel_template(group_title: str) -> tuple[list[tuple[str, str]
 
 
 def load_channel_template(group_title: str) -> tuple[list[tuple[str, str]], str | None, str | None]:
-    """统一模板入口：远程动态模板 > 本地静态模板 > 调用方回退 cqshushu。"""
+    """统一频道来源入口。
+
+    固定优先级：
+    remote_templates.txt 远程模板
+    > 本地“省份运营商-cqshushu.m3u”
+    > 本地“省份运营商.m3u”
+    > 本地“省份运营商.txt”
+    > 调用方回退 cqshushu 网站动态频道。
+    """
     channels, source = load_remote_channel_template(group_title)
     if channels:
         return channels, source, "remote"
