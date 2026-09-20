@@ -4012,64 +4012,74 @@ def main():
             )
             time.sleep(switch_delay)
 
-        print(f"\n" + "=" * 50)
-        print(f" 正在处理地区任务: {province}；运营商: {','.join(carriers)}")
-        print("=" * 50)
 
-        # 不再预先删除未选择运营商的历史文件。历史成功列表只有在对应运营商
-        # 本次成功生成新列表时才会被精确覆盖，避免抓取失败导致旧源丢失。
-
-        province_min_speed = resolve_min_stream_speed(
-            province, args.min_stream_speed
-        )
-        print(
-            f"[*] [{province}] 本次测速通过门槛："
-            f"> {province_min_speed * 1024:.0f} KB/s"
-        )
-
-        generated_relative_paths = process_province(
-            province,
-            txt_output_dir,
-            m3u_output_dir,
-            carriers=carriers,
-            max_pages=args.max_pages,
-            max_per_carrier=args.max_per_carrier,
-            max_age_hours=args.max_age_hours,
-            min_stream_speed_mb_s=province_min_speed,
-            stream_test_seconds=args.stream_test_seconds,
-            test_channels_per_source=args.test_channels_per_source,
-            update_slot=args.update_slot,
-        )
-
-        if generated_relative_paths:
-            # 只记录本次实际成功覆盖的文件时间；未生成的新源继续保留旧文件和旧时间。
-            record_province_update_times(
-                repo_root, province, generated_relative_paths
+        # GitHub Actions 日志按省份折叠：一个省份从开始处理到 GitHub/Gist 发布完成
+        # 全部放在同一个 ::group:: 中。使用 finally 保证异常时也输出 ::endgroup::，
+        # 避免后续日志被错误包含在未闭合的折叠区域中。
+        group_label = f"{province}{','.join(carriers)}"
+        print(f"::group::{group_label}")
+        try:
+            print(f"\n" + "=" * 50)
+            print(f" 正在处理地区任务: {province}；运营商: {','.join(carriers)}")
+            print("=" * 50)
+            
+            # 不再预先删除未选择运营商的历史文件。历史成功列表只有在对应运营商
+            # 本次成功生成新列表时才会被精确覆盖，避免抓取失败导致旧源丢失。
+            
+            province_min_speed = resolve_min_stream_speed(
+                province, args.min_stream_speed
             )
-            update_readme_file_list(repo_root)
-            if args.push:
-                print(
-                    f"\n[*] [{province}] 抓取完成，"
-                    "立即更新 README 并推送到 GitHub..."
-                )
-                publish_paths = ["txt", "m3u", README_FILE]
-                if os.path.exists(os.path.join(repo_root, UPDATE_TIMES_FILE)):
-                    publish_paths.append(UPDATE_TIMES_FILE)
-                if os.path.exists(os.path.join(repo_root, USABLE_ENDPOINT_HISTORY_FILE)):
-                    publish_paths.append(USABLE_ENDPOINT_HISTORY_FILE)
-                push_to_github(publish_paths, province=province)
-                # GitHub 仓库发布成功后立即同步 Secret Gist。
-                # 全国/多省份抓取时不等待后续省份，确保刚生成的 M3U RAW 链接马上建立。
-                sync_m3u_to_secret_gist(province=province)
-                print(
-                    f"[+] [{province}] GitHub + Secret Gist 均已发布，"
-                    "继续处理下一个省份。"
-                )
-        else:
             print(
-                f"[*] [{province}] 本次没有新的列表需要发布；"
-                "GitHub 中上一版成功列表和对应更新时间保持不变。"
+                f"[*] [{province}] 本次测速通过门槛："
+                f"> {province_min_speed * 1024:.0f} KB/s"
             )
+            
+            generated_relative_paths = process_province(
+                province,
+                txt_output_dir,
+                m3u_output_dir,
+                carriers=carriers,
+                max_pages=args.max_pages,
+                max_per_carrier=args.max_per_carrier,
+                max_age_hours=args.max_age_hours,
+                min_stream_speed_mb_s=province_min_speed,
+                stream_test_seconds=args.stream_test_seconds,
+                test_channels_per_source=args.test_channels_per_source,
+                update_slot=args.update_slot,
+            )
+            
+            if generated_relative_paths:
+                # 只记录本次实际成功覆盖的文件时间；未生成的新源继续保留旧文件和旧时间。
+                record_province_update_times(
+                    repo_root, province, generated_relative_paths
+                )
+                update_readme_file_list(repo_root)
+                if args.push:
+                    print(
+                        f"\n[*] [{province}] 抓取完成，"
+                        "立即更新 README 并推送到 GitHub..."
+                    )
+                    publish_paths = ["txt", "m3u", README_FILE]
+                    if os.path.exists(os.path.join(repo_root, UPDATE_TIMES_FILE)):
+                        publish_paths.append(UPDATE_TIMES_FILE)
+                    if os.path.exists(os.path.join(repo_root, USABLE_ENDPOINT_HISTORY_FILE)):
+                        publish_paths.append(USABLE_ENDPOINT_HISTORY_FILE)
+                    push_to_github(publish_paths, province=province)
+                    # GitHub 仓库发布成功后立即同步 Secret Gist。
+                    # 全国/多省份抓取时不等待后续省份，确保刚生成的 M3U RAW 链接马上建立。
+                    sync_m3u_to_secret_gist(province=province)
+                    print(
+                        f"[+] [{province}] GitHub + Secret Gist 均已发布，"
+                        "继续处理下一个省份。"
+                    )
+            else:
+                print(
+                    f"[*] [{province}] 本次没有新的列表需要发布；"
+                    "GitHub 中上一版成功列表和对应更新时间保持不变。"
+                )
+            
+        finally:
+            print("::endgroup::")
 
     generated_files = []
     generated_files.extend(
