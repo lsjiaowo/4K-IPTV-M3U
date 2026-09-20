@@ -1,0 +1,45 @@
+name: Temporary package cqshushu M3U
+on:
+  push:
+    paths:
+      - ".github/workflows/temp-package-cqshushu.yml"
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build package from README M3U list
+        shell: python
+        run: |
+          import re, shutil, pathlib, zipfile
+          root = pathlib.Path(".")
+          readme = (root / "README.md").read_text(encoding="utf-8")
+          section = readme.split("## M3U 文件列表", 1)[1].split("## TXT 文件列表", 1)[0]
+          names = list(dict.fromkeys(re.findall(r'<td[^>]*>([^<]+\.m3u)</td>', section)))
+          if not names:
+              names = list(dict.fromkeys(re.findall(r'^([^|\n]+\.m3u)\s*\|', section, re.M)))
+          out = root / "cqshushu-m3u"
+          out.mkdir(exist_ok=True)
+          missing = []
+          for name in names:
+              src = root / "m3u" / name.strip()
+              if not src.is_file():
+                  missing.append(str(src))
+                  continue
+              dst = out / (src.stem + "-cqshushu.m3u")
+              shutil.copy2(src, dst)
+          if missing:
+              raise SystemExit("Missing README files: " + ", ".join(missing))
+          files = sorted(out.glob("*.m3u"))
+          if len(files) != len(names):
+              raise SystemExit(f"Count mismatch: README={len(names)}, output={len(files)}")
+          print(f"README M3U count: {len(names)}")
+          print(f"Packaged M3U count: {len(files)}")
+          with zipfile.ZipFile("cqshushu-m3u.zip", "w", zipfile.ZIP_DEFLATED) as z:
+              for f in files:
+                  z.write(f, f.name)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cqshushu-m3u
+          path: cqshushu-m3u.zip
+          if-no-files-found: error
