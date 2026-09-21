@@ -2998,17 +2998,6 @@ def run_health_check_and_repair(repo_root: str, args) -> list[str]:
 
     changed: list[str] = []
 
-    def _format_group_elapsed(seconds: float) -> str:
-        """将单个省份/运营商 health 全流程耗时格式化为 时/分/秒，便于最终结果日志查看。"""
-        total = max(0, int(round(seconds)))
-        hours, rem = divmod(total, 3600)
-        minutes, secs = divmod(rem, 60)
-        if hours:
-            return f"{hours}小时{minutes}分{secs}秒"
-        if minutes:
-            return f"{minutes}分{secs}秒"
-        return f"{secs}秒"
-
     for group_title in group_order:
         group_files = grouped_files[group_title]
         province = group_files[0][1][0]
@@ -3132,7 +3121,7 @@ def run_health_check_and_repair(repo_root: str, args) -> list[str]:
                         print(f"[+] {name}：健康检查正常，不做变更。")
                     elif status == "untestable":
                         print(f"[!] {name}：可测试 CCTV 不足，本轮保留上一版，不做变更。")
-                print(f"\n【{group_title}】最终：2/2 个槽位｜本轮无文件变更｜本次总耗时：{_format_group_elapsed(time.monotonic() - group_started_at)}")
+                print(f"\n【{group_title}】最终：2/2 个槽位｜本轮无文件变更｜本次总耗时：{_format_elapsed(time.monotonic() - group_started_at)}")
             print("::endgroup::")
             continue
 
@@ -3284,7 +3273,7 @@ def run_health_check_and_repair(repo_root: str, args) -> list[str]:
             f"本轮修复 {repaired_slots} 个、补齐 {created_slots} 个"
             if group_changed else "本轮无文件变更"
         )
-        print(f"\n【{group_title}】最终：{final_existing}/2 个槽位｜{change_text}｜本次总耗时：{_format_group_elapsed(time.monotonic() - group_started_at)}")
+        print(f"\n【{group_title}】最终：{final_existing}/2 个槽位｜{change_text}｜本次总耗时：{_format_elapsed(time.monotonic() - group_started_at)}")
         print("::endgroup::")
 
     if changed:
@@ -3793,8 +3782,21 @@ def parse_args():
     return ap.parse_args()
 
 
+
+def _format_elapsed(seconds: float) -> str:
+    """将一次模式/省份任务的实际经过时间格式化为 时/分/秒，统一用于日志耗时统计。"""
+    total = max(0, int(round(seconds)))
+    hours, rem = divmod(total, 3600)
+    minutes, secs = divmod(rem, 60)
+    if hours:
+        return f"{hours}小时{minutes}分{secs}秒"
+    if minutes:
+        return f"{minutes}分{secs}秒"
+    return f"{secs}秒"
+
 def main():
     args = parse_args()
+    run_started_at = time.monotonic()
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
     repo_root = os.path.dirname(script_dir)
@@ -3822,6 +3824,7 @@ def main():
             print(f"[+] [{args.channel_refresh_target}] GitHub + Secret Gist 均已发布。")
         elif changed:
             print("[+] 频道列表更新完成；未启用 --push。")
+        print(f"[*] 本次总耗时：{_format_elapsed(time.monotonic() - run_started_at)}")
         return
 
     # 非频道更新模式才整理 endpoint 历史并进入服务器发现/测速相关参数处理。
@@ -3862,6 +3865,7 @@ def main():
             push_to_github(publish_paths, province=args.manual_endpoint_target or "手动endpoint")
         elif changed:
             print("[+] 手动 endpoint 导入完成；未启用 --push。")
+        print(f"[*] 本次总耗时：{_format_elapsed(time.monotonic() - run_started_at)}")
         return
 
     if args.health_check:
@@ -3880,6 +3884,7 @@ def main():
                 print(f"[+] 健康检查完成：成功修复 {len(changed)//2} 个失效播放列表；未启用 --push。")
         else:
             print("[*] 健康检查完成：没有需要发布的新文件（全部健康，或失效槽位暂未找到合格替代源）。")
+        print(f"[*] health 本次任务总耗时：{_format_elapsed(time.monotonic() - run_started_at)}")
         return
     try:
         selected_carriers = parse_carrier_selection(args.carriers)
@@ -4029,6 +4034,7 @@ def main():
         # 全部放在同一个 ::group:: 中。使用 finally 保证异常时也输出 ::endgroup::，
         # 避免后续日志被错误包含在未闭合的折叠区域中。
         group_label = f"{province}{','.join(carriers)}"
+        province_started_at = time.monotonic()
         print(f"::group::{group_label}")
         try:
             print(f"\n" + "=" * 50)
@@ -4091,6 +4097,7 @@ def main():
                 )
             
         finally:
+            print(f"[*] [{province}] 本次总耗时：{_format_elapsed(time.monotonic() - province_started_at)}")
             print("::endgroup::")
 
     generated_files = []
@@ -4116,6 +4123,8 @@ def main():
         generated_files.append(README_FILE)
         print("\n[] 流水线本地文件生成完毕（未启用 --push，跳过 git 推送）。")
         print(f"[] 本次生成文件数量: {len(generated_files)}")
+
+    print(f"[*] 本次任务总耗时：{_format_elapsed(time.monotonic() - run_started_at)}")
 
 
 if __name__ == "__main__":
