@@ -10,12 +10,13 @@ on:
         type: choice
         options:
           - "测速检查"
+          - "定时默认测速"
           - "省份抓取"
           - "手动指定 IP:PORT"
           - "仅更新频道列表"
 
       health_scope:
-        description: "━━━━━━ ① 测速检查 ━━━━━━ 测速检查范围"
+        description: "━━━━━━ ① 测速检查 ━━━━━━ 测速检查范围（定时默认测速时忽略）"
         required: true
         default: "指定省份+运营商"
         type: choice
@@ -23,7 +24,7 @@ on:
           - "指定省份+运营商"
           - "指定播放列表"
       health_province:
-        description: "测速省份（仅测速检查→指定省份+运营商有效；全部=检查现有全部对应运营商）"
+        description: "测速省份（仅“测速检查”有效；定时默认测速自动使用预设省份）"
         required: true
         default: "全部"
         type: choice
@@ -63,7 +64,7 @@ on:
           - "俄罗斯"
           - "韩国"
       health_carrier:
-        description: "测速运营商（仅测速检查→指定省份+运营商有效）"
+        description: "测速运营商（仅“测速检查”有效；定时默认测速自动使用本 Workflow 运营商）"
         required: true
         default: "移动"
         type: choice
@@ -311,6 +312,8 @@ jobs:
       # 自动定时运行内容：health=测速检查；full=全国本运营商抓取；开关由顶部 schedule 是否注释决定。
       # 手动 Run workflow 不受该设置限制。
       SCHEDULE_MODE: "health"
+      # 定时默认测速使用的省份；“全部”=检查现有全部移动组。
+      SCHEDULE_HEALTH_PROVINCES: "全部"
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -345,6 +348,7 @@ jobs:
             RUN=true
             case "$MANUAL_MODE" in
               "测速检查") MODE="health" ;;
+              "定时默认测速") MODE="health" ;;
               "省份抓取") MODE="full" ;;
               "手动指定 IP:PORT") MODE="manual_endpoint" ;;
               "仅更新频道列表") MODE="channel_refresh" ;;
@@ -382,6 +386,7 @@ jobs:
           GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
           IPTV_GIST_ID: ${{ secrets.IPTV_GIST_ID }}
           HEALTH_SCOPE: "${{ github.event.inputs.health_scope }}"
+          SCHEDULE_HEALTH_PROVINCES: "${{ env.SCHEDULE_HEALTH_PROVINCES }}"
           HEALTH_PROVINCE: "${{ github.event.inputs.health_province }}"
           HEALTH_CARRIER: "${{ github.event.inputs.health_carrier }}"
           HEALTH_FILE_1: "${{ github.event.inputs.health_file_1 }}"
@@ -409,7 +414,7 @@ jobs:
             HEALTH_MODE="check"
             if [ "$HEALTH_FILE_MODE" = "不测速旧源，直接重新抓取" ]; then HEALTH_MODE="refresh"; fi
 
-            if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "$HEALTH_SCOPE" = "指定播放列表" ]; then
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.run_mode }}" != "定时默认测速" ] && [ "$HEALTH_SCOPE" = "指定播放列表" ]; then
               [ -n "$HEALTH_FILE_1" ] && HEALTH_ARGS+=(--health-file-1 "$HEALTH_FILE_1")
               [ -n "$HEALTH_FILE_2" ] && HEALTH_ARGS+=(--health-file-2 "$HEALTH_FILE_2")
               [ -n "$HEALTH_FILE_3" ] && HEALTH_ARGS+=(--health-file-3 "$HEALTH_FILE_3")
@@ -420,11 +425,11 @@ jobs:
               echo "[*] 测速检查范围=指定播放列表；文件=$HEALTH_FILE_1,$HEALTH_FILE_2,$HEALTH_FILE_3；处理方式=$HEALTH_FILE_MODE。"
               python -u rtp/b.py --health-check --health-carriers "全部" "${HEALTH_ARGS[@]}" --health-file-mode "$HEALTH_MODE" --max-pages 10 --max-per-carrier 20 --push
             else
-              if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.run_mode }}" != "定时默认测速" ]; then
                 HP="${HEALTH_PROVINCE:-全部}"
                 HC="${HEALTH_CARRIER:-移动}"
               else
-                HP="全部"
+                HP="${SCHEDULE_HEALTH_PROVINCES:-全部}"
                 HC="移动"
               fi
               echo "[*] 测速检查范围=指定省份+运营商；省份=$HP；运营商=$HC。只处理现有对应组；组内仅允许主槽位和槽位1，缺1个时自动尝试补齐。"
