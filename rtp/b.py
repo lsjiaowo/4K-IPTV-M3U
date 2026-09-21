@@ -2998,11 +2998,23 @@ def run_health_check_and_repair(repo_root: str, args) -> list[str]:
 
     changed: list[str] = []
 
+    def _format_group_elapsed(seconds: float) -> str:
+        """将单个省份/运营商 health 全流程耗时格式化为 时/分/秒，便于最终结果日志查看。"""
+        total = max(0, int(round(seconds)))
+        hours, rem = divmod(total, 3600)
+        minutes, secs = divmod(rem, 60)
+        if hours:
+            return f"{hours}小时{minutes}分{secs}秒"
+        if minutes:
+            return f"{minutes}分{secs}秒"
+        return f"{secs}秒"
+
     for group_title in group_order:
         group_files = grouped_files[group_title]
         province = group_files[0][1][0]
         carrier = group_files[0][1][1]
-        # 每个“省份+运营商”只保留一个最高视觉层级标题；同时使用 GitHub Actions 可折叠分组。
+        group_started_at = time.monotonic()
+        # 每个“省份+运营商”从健康检查开始计时，到“③ 最终结果”完成为止；同时使用 GitHub Actions 可折叠分组。
         print(f"::group::【{group_title}】健康检查")
         if targeted_mode:
             print("\n" + "=" * 80)
@@ -3120,7 +3132,7 @@ def run_health_check_and_repair(repo_root: str, args) -> list[str]:
                         print(f"[+] {name}：健康检查正常，不做变更。")
                     elif status == "untestable":
                         print(f"[!] {name}：可测试 CCTV 不足，本轮保留上一版，不做变更。")
-                print(f"\n【{group_title}】最终：2/2 个槽位｜本轮无文件变更")
+                print(f"\n【{group_title}】最终：2/2 个槽位｜本轮无文件变更｜本次总耗时：{_format_group_elapsed(time.monotonic() - group_started_at)}")
             print("::endgroup::")
             continue
 
@@ -3272,7 +3284,7 @@ def run_health_check_and_repair(repo_root: str, args) -> list[str]:
             f"本轮修复 {repaired_slots} 个、补齐 {created_slots} 个"
             if group_changed else "本轮无文件变更"
         )
-        print(f"\n【{group_title}】最终：{final_existing}/2 个槽位｜{change_text}")
+        print(f"\n【{group_title}】最终：{final_existing}/2 个槽位｜{change_text}｜本次总耗时：{_format_group_elapsed(time.monotonic() - group_started_at)}")
         print("::endgroup::")
 
     if changed:
