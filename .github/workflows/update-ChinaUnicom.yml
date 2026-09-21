@@ -289,12 +289,12 @@ on:
   repository_dispatch:
     types: [hourly_iptv_unicom_update]
   # ============================================================
-  # 【自动定时总开关】当前：关闭
-  # 北京时间每天 06:00、16:00 的自动运行当前已关闭
-  # 重新开启=取消下面 schedule/cron 两行的 #；手动 Run workflow 不受影响
+  # 【自动定时总开关】当前：开启
+  # 北京时间每天 06:17、16:17 自动运行已开启
+  # 避开 GitHub Actions 整点调度高峰；手动 Run workflow 不受影响
   # ============================================================
   schedule:
-    - cron: "0 8,22 * * *"
+    - cron: "17 8,22 * * *"
 
 concurrency:
   group: iptv-source-update
