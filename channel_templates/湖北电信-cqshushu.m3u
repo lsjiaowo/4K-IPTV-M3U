@@ -3,11 +3,11 @@
 http://119.102.157.240:8188/rtp/239.69.2.20:11274
 #EXTINF:-1 tvg-id="凤凰资讯台HD" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%87%A4%E5%87%B0%E8%B5%84%E8%AE%AF%E5%8F%B0HD.png" group-title="湖北电信",凤凰资讯台HD
 http://119.102.157.240:8188/rtp/239.69.2.19:11268
-#EXTINF:-1 tvg-id="CCTV4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV4K.png" group-title="湖北电信",CCTV4K
+#EXTINF:-1 tvg-id="CCTV4K 25P" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV4K.png" group-title="湖北电信",CCTV4K 25P
 http://119.102.157.240:8188/rtp/239.69.1.111:10304
-#EXTINF:-1 tvg-id="CCTV16 4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV16%204K.png" group-title="湖北电信",CCTV16 4K
+#EXTINF:-1 tvg-id="CCTV4K 50P" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV16%204K.png" group-title="湖北电信",CCTV4K 50P
 http://119.102.157.240:8188/rtp/239.69.1.12:9712
-#EXTINF:-1 tvg-id="CCTV16 4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV16%204K.png" group-title="湖北电信",CCTV16 4K
+#EXTINF:-1 tvg-id="CCTV4K 50P" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV16%204K.png" group-title="湖北电信",CCTV4K 50P
 http://119.102.157.240:8188/rtp/239.69.1.249:11136
 #EXTINF:-1 tvg-id="CHC影迷电影HD" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CHC%E5%BD%B1%E8%BF%B7%E7%94%B5%E5%BD%B1HD.png" group-title="湖北电信",CHC影迷电影HD
 http://119.102.157.240:8188/rtp/239.69.1.241:11088
