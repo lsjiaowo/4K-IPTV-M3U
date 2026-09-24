@@ -2055,6 +2055,7 @@ PRIORITY_CHANNEL_RULES = [
     ("CHC动作电影",),
     ("CHC家庭影院",),
     ("北京卫视4K",),
+    ("BRTV体育休闲4K",),
     ("纪实科教4K",),
     ("广东卫视4K",),
     ("深圳卫视4K",),
@@ -2088,9 +2089,12 @@ def _normalize_channel_name_for_sort(channel_name: str) -> str:
 
 
 def _is_excluded_4k_channel(channel_name: str) -> bool:
-    """含4K但同时标记为SD/标清的频道，不参与任何4K优先排序。"""
+    """含4K但明确标记为SD/标清的频道不参与4K优先；SDR/HDR均视为正常4K。"""
     normalized = _normalize_channel_name_for_sort(channel_name)
-    return "4k" in normalized and ("sd" in normalized or "标清" in normalized)
+    # 名称标准化会去掉空格/连字符，因此不能用简单的 "sd" in normalized，
+    # 否则 SDR 会被误判为 SD。这里显式排除 SDR 后再识别 SD。
+    has_sd = "sd" in normalized and "sdr" not in normalized
+    return "4k" in normalized and (has_sd or "标清" in normalized)
 
 
 def sort_priority_channels(channel_lines: list[str]) -> list[str]:
@@ -2102,7 +2106,7 @@ def sort_priority_channels(channel_lines: list[str]) -> list[str]:
     2. 未命中固定规则、但名称含4K的频道统一归入“其他4K”；
     3. 之后提升名称同时包含 CCTV 和“高清”的非4K、非SD/标清频道；
     4. 再提升名称包含 CGTN 的频道；
-    5. CCTV4KSD、CCTV-4K SD、CCTV4K标清等含SD/标清的4K名称不参与4K优先；
+    5. CCTV4KSD、CCTV-4K SD、CCTV4K标清等明确SD/标清的4K名称不参与4K优先；SDR/HDR正常参与；
     6. 名称标准化仅用于排序判断，最终频道名称和播放地址保持模板原样；
     7. 同一优先级内及普通频道依赖 Python 稳定排序保持原始相对顺序。
     """
@@ -2131,7 +2135,7 @@ def sort_priority_channels(channel_lines: list[str]) -> list[str]:
             "cctv" in normalized_name
             and "高清" in normalized_name
             and "4k" not in normalized_name
-            and "sd" not in normalized_name
+            and not ("sd" in normalized_name and "sdr" not in normalized_name)
             and "标清" not in normalized_name
         ):
             return cctv_hd_priority
