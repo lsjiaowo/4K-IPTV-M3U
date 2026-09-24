@@ -1,6 +1,16 @@
 #EXTM3U x-tvg-url="https://epg.catvod.com/epg.xml"
 #EXTINF:-1 tvg-id="CCTV4K超高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV4K%E8%B6%85%E9%AB%98%E6%B8%85.png" group-title="北京联通",CCTV4K超高清
 http://114.243.98.71:8888/rtp/239.3.1.245:2000
+#EXTINF:-1 tvg-id="CCTV-16 4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-16%204K.png" group-title="北京联通",CCTV-16 4K
+http://114.243.98.71:8888/rtp/239.3.1.183:8001
+#EXTINF:-1 tvg-id="北京卫视4K超高清SDR" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/BRTV%E5%8C%97%E4%BA%AC%E5%8D%AB%E8%A7%86%E8%B6%85%E9%AB%98%E6%B8%85SDR.png" group-title="北京联通",BRTV北京卫视超高清SDR
+http://114.243.98.71:8888/rtp/239.3.1.22:8001
+#EXTINF:-1 tvg-id="北京卫视4K超高清HDR" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/BRTV%E5%8C%97%E4%BA%AC%E5%8D%AB%E8%A7%86%E8%B6%85%E9%AB%98%E6%B8%85HDR.png" group-title="北京联通",BRTV北京卫视超高清HDR
+http://114.243.98.71:8888/rtp/239.3.1.118:8001
+#EXTINF:-1 tvg-id="BRTV体育休闲4K SDR" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/BRTV%E4%BD%93%E8%82%B2%E4%BC%91%E9%97%B24K%20SDR.png" group-title="北京联通",BRTV体育休闲4K SDR
+http://114.243.98.71:8888/rtp/239.3.1.121:8000
+#EXTINF:-1 tvg-id="BRTV体育休闲4K HDR" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/BRTV%E4%BD%93%E8%82%B2%E4%BC%91%E9%97%B24K%20HDR.png" group-title="北京联通",BRTV体育休闲4K HDR
+http://114.243.98.71:8888/rtp/239.3.1.120:8000
 #EXTINF:-1 tvg-id="广东卫视4K超高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%B9%BF%E4%B8%9C%E5%8D%AB%E8%A7%864K%E8%B6%85%E9%AB%98%E6%B8%85.png" group-title="北京联通",广东卫视4K超高清
 http://114.243.98.71:8888/rtp/239.3.1.27:2000
 #EXTINF:-1 tvg-id="深圳卫视4K超高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E6%B7%B1%E5%9C%B3%E5%8D%AB%E8%A7%864K%E8%B6%85%E9%AB%98%E6%B8%85.png" group-title="北京联通",深圳卫视4K超高清
@@ -17,10 +27,6 @@ http://114.243.98.71:8888/rtp/239.3.1.144:3005
 http://114.243.98.71:8888/rtp/239.3.1.112:3002
 #EXTINF:-1 tvg-id="四川卫视4K超高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E5%9B%9B%E5%B7%9D%E5%8D%AB%E8%A7%864K%E8%B6%85%E9%AB%98%E6%B8%85.png" group-title="北京联通",四川卫视4K超高清
 http://114.243.98.71:8888/rtp/239.3.1.131:3001
-#EXTINF:-1 tvg-id="CCTV-16 4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/CCTV-16%204K.png" group-title="北京联通",CCTV-16 4K
-http://114.243.98.71:8888/rtp/239.3.1.183:8001
-#EXTINF:-1 tvg-id="BRTV体育休闲4K HDR" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/BRTV%E4%BD%93%E8%82%B2%E4%BC%91%E9%97%B24K%20HDR.png" group-title="北京联通",BRTV体育休闲4K HDR
-http://114.243.98.71:8888/rtp/239.3.1.120:8000
 #EXTINF:-1 tvg-id="4K超清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/4K%E8%B6%85%E6%B8%85.png" group-title="北京联通",4K超清
 http://114.243.98.71:8888/rtp/239.3.1.249:8001
 #EXTINF:-1 tvg-id="爱上4K" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E7%88%B1%E4%B8%8A4K.png" group-title="北京联通",爱上4K
@@ -149,12 +155,6 @@ http://114.243.98.71:8888/rtp/239.3.1.134:8020
 http://114.243.98.71:8888/rtp/239.3.1.240:8172
 #EXTINF:-1 tvg-id="IPTV5＋高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/IPTV5%EF%BC%8B%E9%AB%98%E6%B8%85.png" group-title="北京联通",IPTV5＋高清
 http://114.243.98.71:8888/rtp/239.3.1.237:4120
-#EXTINF:-1 tvg-id="BRTV体育休闲4K SDR" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/BRTV%E4%BD%93%E8%82%B2%E4%BC%91%E9%97%B24K%20SDR.png" group-title="北京联通",BRTV体育休闲4K SDR
-http://114.243.98.71:8888/rtp/239.3.1.121:8000
-#EXTINF:-1 tvg-id="BRTV北京卫视超高清SDR" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/BRTV%E5%8C%97%E4%BA%AC%E5%8D%AB%E8%A7%86%E8%B6%85%E9%AB%98%E6%B8%85SDR.png" group-title="北京联通",BRTV北京卫视超高清SDR
-http://114.243.98.71:8888/rtp/239.3.1.22:8001
-#EXTINF:-1 tvg-id="BRTV北京卫视超高清HDR" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/BRTV%E5%8C%97%E4%BA%AC%E5%8D%AB%E8%A7%86%E8%B6%85%E9%AB%98%E6%B8%85HDR.png" group-title="北京联通",BRTV北京卫视超高清HDR
-http://114.243.98.71:8888/rtp/239.3.1.118:8001
 #EXTINF:-1 tvg-id="体育赛事高清" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E4%BD%93%E8%82%B2%E8%B5%9B%E4%BA%8B%E9%AB%98%E6%B8%85.png" group-title="北京联通",体育赛事高清
 http://114.243.98.71:8888/rtp/239.3.1.157:8176
 #EXTINF:-1 tvg-id="纪实频道HD" tvg-logo="https://gcore.jsdelivr.net/gh/taksssss/tv/icon/%E7%BA%AA%E5%AE%9E%E9%A2%91%E9%81%93HD.png" group-title="北京联通",纪实频道HD
