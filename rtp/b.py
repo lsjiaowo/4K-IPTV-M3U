@@ -2921,12 +2921,11 @@ def run_health_check_and_repair(repo_root: str, args) -> list[str]:
     """
     健康检查/定向重抓入口。
 
-    未指定 --health-file-1/2/3：按 --health-provinces + --health-carriers 筛选现有 M3U，并以每组最多两个标准槽位
-    （<省运营商>.m3u、<省运营商>1.m3u）为目标：
-      - 已有槽位两轮失败后，只修复失效槽位；
-      - 只有1个标准槽位时，无论该槽位健康与否，都会继续尝试补齐另一个缺失标准槽位；
-      - 补齐失败不创建空文件；失效修复失败保留上一版文件和原更新时间；
-      - 健康检查自动补齐绝不会创建 <省运营商>2.m3u 或更高编号槽位。
+    未指定 --health-file-1/2/3：按 --health-provinces + --health-carriers 筛选并维护当前已经存在的 M3U：
+      - 只检查现有标准槽位（<省运营商>.m3u、<省运营商>1.m3u）；
+      - 已有槽位两轮失败后，只修复该失效槽位；
+      - 健康/可测试频道不足的现有槽位保持原文件和原更新时间；
+      - 完全不补齐缺失槽位，不会因为健康检查创建新的播放列表。
 
     指定1～3个播放列表时：只处理指定槽位，未指定文件不测速、不重抓、不改内容/时间。
       - --health-file-mode check：先检查指定旧列表；两轮失败才重抓。
@@ -2984,7 +2983,7 @@ def run_health_check_and_repair(repo_root: str, args) -> list[str]:
         print(
             f"[*] 健康检查模式：省份={health_province_raw}；运营商={','.join(selected_health_carriers)}；共 {len(files)} 个现有 M3U；"
             "按省份逐组处理；每个随机抽2个CCTV；测速门槛与正式抓取完全一致；"
-            "每组标准槽位最多2个，只有1个时自动尝试补齐另一个。"
+            "只维护当前已存在槽位，缺失槽位不补齐、不创建。"
         )
 
     grouped_files: dict[str, list[tuple[str, tuple]]] = {}
@@ -3065,50 +3064,36 @@ def run_health_check_and_repair(repo_root: str, args) -> list[str]:
                     f"[{name}] 健康检查最终结果：{result_text}。"
                 )
 
-        # repair_items: (文件名, identity, 原因)。普通模式还会把缺失的标准槽位加入补齐队列。
+        # repair_items: (文件名, identity, 原因)。健康检查只维护当前已经存在的槽位，
+        # 不把缺失的主槽位/槽位1加入队列，因此不会通过健康检查创建新播放列表。
         repair_items: list[tuple[str, tuple, str]] = [
             (name, ident, "refresh" if health_status.get(name) == "refresh" else "failed")
             for name, ident in group_files
             if health_status.get(name) in {"failed", "refresh"}
         ]
 
-        missing_standard_names: list[str] = []
         if not targeted_mode:
-            existing_standard_suffixes = {ident[3] for _, ident in sibling_files if ident[3] in {"", "1"}}
-            for suffix in ("", "1"):
-                if suffix not in existing_standard_suffixes:
-                    missing_name = f"{group_title}{suffix}.m3u"
-                    missing_ident = (province, carrier, group_title, suffix)
-                    missing_standard_names.append(missing_name)
-                    health_status[missing_name] = "missing"
-                    repair_items.append((missing_name, missing_ident, "missing"))
-
             print("\n── 检查结果 ──")
-            for suffix in ("", "1"):
-                name = f"{group_title}{suffix}.m3u"
-                status = health_status.get(name, "missing")
+            for name, _ in group_files:
+                status = health_status.get(name)
                 if status == "healthy":
                     print(f"[+] {name}：正常，保持不变。")
                 elif status == "failed":
                     print(f"[-] {name}：失效，需要寻找合格替代源。")
                 elif status == "untestable":
                     print(f"[!] {name}：可测试 CCTV 不足，本轮按保留处理。")
-                elif status == "missing":
-                    print(f"[!] {name}：当前缺失，需要尝试补齐。")
 
             failed_names = [name for name, _, reason in repair_items if reason == "failed"]
             normal_names = [
-                f"{group_title}{suffix}.m3u" for suffix in ("", "1")
-                if health_status.get(f"{group_title}{suffix}.m3u") in {"healthy", "untestable"}
+                name for name, _ in group_files
+                if health_status.get(name) in {"healthy", "untestable"}
             ]
-            if failed_names or missing_standard_names:
-                readable_parts = []
-                readable_parts.extend(f"{name} 失效" for name in failed_names)
-                readable_parts.extend(f"{name} 正常" for name in normal_names)
-                readable_parts.extend(f"{name} 缺失" for name in missing_standard_names)
+            readable_parts = []
+            readable_parts.extend(f"{name} 失效" for name in failed_names)
+            readable_parts.extend(f"{name} 正常/保留" for name in normal_names)
+            if readable_parts:
                 print(f"[*] 结论：" + "，".join(readable_parts) + "。")
-            else:
-                print("[+] 结论：两个标准槽位均正常/保留，无需处理。")
+            print("[*] 缺失槽位不属于健康维护对象，本轮不补齐、不创建。")
 
         if not repair_items:
             if targeted_mode:
@@ -3125,11 +3110,11 @@ def run_health_check_and_repair(repo_root: str, args) -> list[str]:
                         print(f"[+] {name}：健康检查正常，不做变更。")
                     elif status == "untestable":
                         print(f"[!] {name}：可测试 CCTV 不足，本轮保留上一版，不做变更。")
-                print(f"\n【{group_title}】最终：2/2 个槽位｜本轮无文件变更｜本次总耗时：{_format_elapsed(time.monotonic() - group_started_at)}")
+                print(f"\n【{group_title}】最终：现有 {len(group_files)} 个槽位均已处理｜本轮无文件变更｜本次总耗时：{_format_elapsed(time.monotonic() - group_started_at)}")
             print("::endgroup::")
             continue
 
-        print("\n── ② 补齐/修复槽位 ──")
+        print("\n── ② 修复失效槽位 ──")
         if targeted_mode and file_mode == "refresh":
             print(
                 f"[*] [{group_title}] 将直接重抓 {len(repair_items)} 个指定槽位；"
@@ -3140,14 +3125,8 @@ def run_health_check_and_repair(repo_root: str, args) -> list[str]:
             print(f"[!] [{group_title}] 检测到指定槽位失效：{'、'.join(failed_names)}；现在逐个寻找替代源。")
         else:
             failed_names = [name for name, _, reason in repair_items if reason == "failed"]
-            missing_names = [name for name, _, reason in repair_items if reason == "missing"]
             if failed_names:
                 print(f"[!] [{group_title}] 需要修复的失效槽位：{'、'.join(failed_names)}。")
-            if missing_names:
-                print(
-                    f"[*] [{group_title}] 当前标准槽位不足2个，将尝试补齐：{'、'.join(missing_names)}；"
-                    "健康检查自动补齐最多只允许主槽位和槽位1，不会创建槽位2。"
-                )
 
         occupied_endpoints: set[str] = set()
         if targeted_mode:
@@ -3180,16 +3159,8 @@ def run_health_check_and_repair(repo_root: str, args) -> list[str]:
                 action_label = "失效修复"
             print(f"[*] [{name}] 开始{action_label}。")
 
-            # 补齐缺失槽位时，所有现有标准槽位 endpoint（包括已判失效的旧 endpoint）都禁止采用，
-            # 防止把旧地址复制成第二槽位。失效修复仍沿用既有占用池规则。
+            # 失效修复沿用现有 endpoint 占用池：健康/保留槽位的完整 IP:PORT 不允许重复采用。
             slot_occupied = set(occupied_endpoints)
-            if reason == "missing":
-                for sibling_name, sibling_ident in sibling_files:
-                    if sibling_ident[3] not in {"", "1"}:
-                        continue
-                    endpoint = hosts.get(sibling_name, "")
-                    if endpoint:
-                        slot_occupied.add(endpoint)
 
             paths, new_endpoint = repair_failed_playlist_slot(
                 repo_root,
@@ -3274,7 +3245,7 @@ def run_health_check_and_repair(repo_root: str, args) -> list[str]:
             )
 
         change_text = (
-            f"本轮修复 {repaired_slots} 个、补齐 {created_slots} 个"
+            f"本轮修复 {repaired_slots} 个"
             if group_changed else "本轮无文件变更"
         )
         print(f"\n【{group_title}】最终：{final_existing}/2 个槽位｜{change_text}｜本次总耗时：{_format_elapsed(time.monotonic() - group_started_at)}")
@@ -3749,11 +3720,11 @@ def parse_args():
     )
     ap.add_argument(
         "--health-check", action="store_true",
-        help="健康检查/定向重抓模式：未指定文件时按 --health-provinces + --health-carriers 筛选现有M3U；也可用 --health-file-1/2/3 精确指定最多3个槽位。",
+        help="健康检查/定向重抓模式：未指定文件时按 --health-provinces + --health-carriers 只维护现有M3U，失效才修复，缺失槽位不补齐；也可用 --health-file-1/2/3 精确指定最多3个槽位。",
     )
     ap.add_argument(
         "--health-provinces", default="全部",
-        help="健康检查仅处理指定省份，例如：河南 或 山西；默认全部。仅筛选现有播放列表，不会因为选择某省而凭空创建一个完全不存在的省份+运营商组。",
+        help="健康检查仅处理指定省份，例如：河南 或 山西；默认全部。只维护现有播放列表；缺失槽位和完全不存在的省份+运营商组都不会创建。",
     )
     ap.add_argument(
         "--health-carriers", default="全部",
