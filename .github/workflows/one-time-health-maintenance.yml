@@ -1,3 +1,4 @@
+# trigger: execute once now
 name: One-time existing IPTV health maintenance
 
 on:
