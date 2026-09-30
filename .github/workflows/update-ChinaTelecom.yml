@@ -432,7 +432,7 @@ jobs:
                 HP="${SCHEDULE_HEALTH_PROVINCES:-全部}"
                 HC="电信"
               fi
-              echo "[*] 测速检查范围=指定省份+运营商；省份=$HP；运营商=$HC。只处理现有对应组；组内仅允许主槽位和槽位1，缺1个时自动尝试补齐。"
+              echo "[*] 测速检查范围=指定省份+运营商；省份=$HP；运营商=$HC。只维护现有对应槽位；健康则保留，失效才修复；缺失槽位不补齐、不创建。"
               python -u rtp/b.py --health-check --health-provinces "$HP" --health-carriers "$HC" --health-file-mode check --max-pages 10 --max-per-carrier 20 --push
             fi
             exit 0
