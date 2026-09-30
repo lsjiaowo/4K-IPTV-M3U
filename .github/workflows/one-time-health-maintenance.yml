@@ -1,0 +1,158 @@
+name: One-time existing IPTV health maintenance
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/one-time-health-maintenance.yml"
+
+concurrency:
+  group: iptv-source-update
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  telecom:
+    name: 1 - Health all existing Telecom playlists
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: Checkout latest main
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: main
+      - name: Sync latest main
+        shell: bash
+        run: |
+          git fetch origin main
+          git checkout -B main origin/main
+      - name: Configure Git identity
+        shell: bash
+        run: |
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install requests beautifulsoup4
+      - name: Maintain all existing Telecom slots
+        shell: bash
+        env:
+          GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
+          IPTV_GIST_ID: ${{ secrets.IPTV_GIST_ID }}
+        run: |
+          echo "[*] 一次性执行：全部现有电信播放列表健康维护。"
+          echo "[*] HEALTHY/UNTESTABLE 保持原文件和原更新时间；FAILED 才修复；缺失槽位不补齐。"
+          python -u rtp/b.py --health-check --health-provinces "全部" --health-carriers "电信" --health-file-mode check --max-pages 10 --max-per-carrier 20 --push
+      - name: Sync all M3U to Secret Gist after Telecom
+        shell: bash
+        env:
+          GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
+          GIST_ID: ${{ secrets.IPTV_GIST_ID }}
+        run: |
+          python - <<'PY'
+          import glob, os, requests
+          token=os.environ.get("GIST_TOKEN","").strip()
+          gist_id=os.environ.get("GIST_ID","").strip()
+          if not token or not gist_id:
+              raise SystemExit("GIST_TOKEN / IPTV_GIST_ID 未配置")
+          files={os.path.basename(p):{"content":open(p,encoding="utf-8").read()} for p in sorted(glob.glob("m3u/*.m3u"))}
+          r=requests.patch(f"https://api.github.com/gists/{gist_id}",headers={"Authorization":f"Bearer {token}","Accept":"application/vnd.github+json"},json={"files":files},timeout=120)
+          r.raise_for_status()
+          print(f"[+] 电信完成后 Secret Gist 同步：{len(files)} 个 M3U。")
+          PY
+
+  unicom:
+    name: 2 - Health all existing Unicom playlists
+    needs: telecom
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: Checkout latest main after Telecom
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: main
+      - name: Sync latest main after Telecom
+        shell: bash
+        run: |
+          git fetch origin main
+          git checkout -B main origin/main
+      - name: Configure Git identity
+        shell: bash
+        run: |
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install requests beautifulsoup4
+      - name: Maintain all existing Unicom slots
+        shell: bash
+        env:
+          GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
+          IPTV_GIST_ID: ${{ secrets.IPTV_GIST_ID }}
+        run: |
+          echo "[*] 电信任务成功完成，开始全部现有联通播放列表健康维护。"
+          echo "[*] HEALTHY/UNTESTABLE 保持原文件和原更新时间；FAILED 才修复；缺失槽位不补齐。"
+          python -u rtp/b.py --health-check --health-provinces "全部" --health-carriers "联通" --health-file-mode check --max-pages 10 --max-per-carrier 20 --min-stream-speed 0.5859375 --push
+      - name: Sync all M3U to Secret Gist after Unicom
+        shell: bash
+        env:
+          GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
+          GIST_ID: ${{ secrets.IPTV_GIST_ID }}
+        run: |
+          python - <<'PY'
+          import glob, os, requests
+          token=os.environ.get("GIST_TOKEN","").strip()
+          gist_id=os.environ.get("GIST_ID","").strip()
+          if not token or not gist_id:
+              raise SystemExit("GIST_TOKEN / IPTV_GIST_ID 未配置")
+          files={os.path.basename(p):{"content":open(p,encoding="utf-8").read()} for p in sorted(glob.glob("m3u/*.m3u"))}
+          r=requests.patch(f"https://api.github.com/gists/{gist_id}",headers={"Authorization":f"Bearer {token}","Accept":"application/vnd.github+json"},json={"files":files},timeout=120)
+          r.raise_for_status()
+          print(f"[+] 联通完成后 Secret Gist 同步：{len(files)} 个 M3U。")
+          PY
+
+  cleanup:
+    name: 3 - Remove one-time workflow
+    needs: [telecom, unicom]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout latest main
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: main
+      - name: Remove temporary workflow
+        shell: bash
+        run: |
+          git fetch origin main
+          git checkout -B main origin/main
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ ! -f .github/workflows/one-time-health-maintenance.yml ]; then
+            echo "[*] 临时 Workflow 已不存在。"
+            exit 0
+          fi
+          git rm .github/workflows/one-time-health-maintenance.yml
+          git commit -m "chore: remove one-time IPTV health maintenance workflow"
+          for attempt in 1 2 3; do
+            if git push origin HEAD:main; then
+              echo "[+] 一次性 Workflow 已删除。"
+              exit 0
+            fi
+            git fetch origin main
+            git rebase origin/main
+            sleep $((attempt * 3))
+          done
+          exit 1
