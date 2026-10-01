@@ -3838,6 +3838,13 @@ def main():
             if os.path.exists(os.path.join(repo_root, USABLE_ENDPOINT_HISTORY_FILE)):
                 publish_paths.append(USABLE_ENDPOINT_HISTORY_FILE)
             push_to_github(publish_paths, province=args.manual_endpoint_target or "手动endpoint")
+            # GitHub 仓库发布成功后立即同步 Secret Gist，避免任务随后取消/失败时
+            # 只能依赖 Workflow 末尾的全量 Gist 兜底同步。
+            sync_m3u_to_secret_gist(province=args.manual_endpoint_target or "手动endpoint")
+            print(
+                f"[+] [{args.manual_endpoint_target or '手动endpoint'}] "
+                "GitHub + Secret Gist 均已发布。"
+            )
         elif changed:
             print("[+] 手动 endpoint 导入完成；未启用 --push。")
         print(f"[*] 本次总耗时：{_format_elapsed(time.monotonic() - run_started_at)}")
@@ -3855,6 +3862,10 @@ def main():
                 if os.path.exists(os.path.join(repo_root, USABLE_ENDPOINT_HISTORY_FILE)):
                     publish_paths.append(USABLE_ENDPOINT_HISTORY_FILE)
                 push_to_github(publish_paths, province="健康检查修复")
+                # 健康检查找到替代源并成功写入 GitHub 后立即同步 Secret Gist。
+                # 不再只依赖 Workflow 末尾的全量同步，避免任务被取消/中断后 Gist 滞后。
+                sync_m3u_to_secret_gist(province="健康检查修复")
+                print("[+] [健康检查修复] GitHub + Secret Gist 均已发布。")
             else:
                 print(f"[+] 健康检查完成：成功修复 {len(changed)//2} 个失效播放列表；未启用 --push。")
         else:
