@@ -24,7 +24,7 @@ on:
           - "指定省份+运营商"
           - "指定播放列表"
       health_province:
-        description: "测速省份（仅“测速检查”有效；定时默认测速自动使用预设省份）"
+        description: "测速省份（仅“测速检查”有效；定时默认测速自动使用全部省份）"
         required: true
         default: "全部"
         type: choice
@@ -291,14 +291,15 @@ on:
     types: [hourly_iptv_unicom_update]
   # ============================================================
   # 【自动定时总开关】已于 2026-10-01 恢复
-  # 北京时间每天 04:17、14:17 自动运行
+  # 每小时第 37 分钟自动运行；定时默认测速覆盖全部省份
   # 手动 Run workflow 与 repository_dispatch 不受影响
   # ============================================================
   schedule:
-    - cron: "17 6,20 * * *"
+    - cron: "37 * * * *"
 
 concurrency:
   group: iptv-source-update
+  queue: single
   cancel-in-progress: false
 
 permissions:
