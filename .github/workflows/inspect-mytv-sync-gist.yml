@@ -44,6 +44,15 @@ jobs:
               print(
                   f"file={name} size={len(content)} "
                   f"old_playlist_refs={content.count(old_id)} "
-                  f"new_playlist_refs={content.count(new_id)}"
+                  f"new_playlist_refs={content.count(new_id)} "
+                  f"gist_raw_refs={content.count('gist.githubusercontent.com')} "
+                  f"http_refs={content.count('http://') + content.count('https://')}"
               )
+              try:
+                  parsed = json.loads(content)
+                  if isinstance(parsed, dict):
+                      keys = sorted(str(k) for k in parsed.keys())
+                      print(f"top_keys={name}:{','.join(keys[:80])}")
+              except Exception:
+                  pass
           PY
