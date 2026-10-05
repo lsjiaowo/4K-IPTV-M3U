@@ -1,0 +1,79 @@
+name: Inspect myTV IPTV Source Sync
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/inspect-mytv-iptvsource.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Inspect cloud source-list structure
+        shell: bash
+        env:
+          GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
+        run: |
+          python - <<'PY'
+          import json, os, urllib.request
+
+          gist_id = "9c739f61eb0bafa7b59e935a99523183"
+          old_id = "151462a1b2deeb3816e2f4ce3b3b44b1"
+          new_id = "de49ae260221e2d7088193d8f67a3769"
+
+          headers = {
+              "Authorization": f"Bearer {os.environ['GIST_TOKEN']}",
+              "Accept": "application/vnd.github+json",
+              "X-GitHub-Api-Version": "2022-11-28",
+              "User-Agent": "mytv-source-structure-inspector",
+          }
+          req = urllib.request.Request(f"https://api.github.com/gists/{gist_id}", headers=headers)
+          with urllib.request.urlopen(req, timeout=60) as r:
+              data = json.load(r)
+
+          f = (data.get("files") or {}).get("all_configs.json")
+          if not f:
+              raise SystemExit("all_configs.json missing")
+          content = f.get("content") or ""
+
+          obj = content
+          for level in range(4):
+              if not isinstance(obj, str):
+                  break
+              try:
+                  obj = json.loads(obj)
+                  print(f"parse_level_{level+1}={type(obj).__name__}")
+              except Exception as e:
+                  print(f"parse_failed_at={level+1}:{type(e).__name__}")
+                  break
+
+          if not isinstance(obj, dict):
+              print(f"final_type={type(obj).__name__}")
+              raise SystemExit(0)
+
+          print("top_keys=" + ",".join(sorted(obj.keys())))
+          configs = obj.get("configs")
+          print(f"configs_type={type(configs).__name__}")
+          if isinstance(configs, dict):
+              print(f"has_iptvSourceList={'iptvSourceList' in configs}")
+              src = configs.get("iptvSourceList")
+              print(f"iptvSourceList_type={type(src).__name__}")
+              values = []
+              if isinstance(src, dict):
+                  values = src.get("value") or []
+              elif isinstance(src, list):
+                  values = src
+              print(f"iptvSourceList_count={len(values) if isinstance(values,list) else -1}")
+              joined = json.dumps(src, ensure_ascii=False)
+              print(f"source_old_id_refs={joined.count(old_id)}")
+              print(f"source_new_id_refs={joined.count(new_id)}")
+              print(f"source_http_refs={joined.count('http://') + joined.count('https://')}")
+              cur = configs.get("iptvSourceCurrent")
+              curj = json.dumps(cur, ensure_ascii=False)
+              print(f"current_old_id_refs={curj.count(old_id)}")
+              print(f"current_new_id_refs={curj.count(new_id)}")
+          PY
