@@ -1,0 +1,97 @@
+name: Fix myTV Cloud Config
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/fix-mytv-cloud-config.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update myTV cloud-sync playlist URLs
+        shell: bash
+        env:
+          GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import urllib.request
+
+          gist_id = "9c739f61eb0bafa7b59e935a99523183"
+          old_id = "151462a1b2deeb3816e2f4ce3b3b44b1"
+          new_id = "de49ae260221e2d7088193d8f67a3769"
+
+          headers = {
+              "Authorization": f"Bearer {os.environ['GIST_TOKEN']}",
+              "Accept": "application/vnd.github+json",
+              "Content-Type": "application/json",
+              "X-GitHub-Api-Version": "2022-11-28",
+              "User-Agent": "mytv-cloud-config-migrator",
+          }
+
+          def api(url, method="GET", payload=None):
+              body = None if payload is None else json.dumps(payload, ensure_ascii=False).encode("utf-8")
+              req = urllib.request.Request(url, data=body, method=method, headers=headers)
+              with urllib.request.urlopen(req, timeout=120) as resp:
+                  raw = resp.read()
+                  return json.loads(raw.decode("utf-8")) if raw else {}
+
+          data = api(f"https://api.github.com/gists/{gist_id}")
+          file = (data.get("files") or {}).get("all_configs.json")
+          if not file:
+              raise SystemExit("all_configs.json not found")
+
+          if file.get("truncated"):
+              raw_url = file.get("raw_url")
+              if not raw_url:
+                  raise SystemExit("truncated all_configs.json has no raw_url")
+              req = urllib.request.Request(raw_url, headers={"Authorization": f"Bearer {os.environ['GIST_TOKEN']}"})
+              with urllib.request.urlopen(req, timeout=120) as resp:
+                  original = resp.read().decode("utf-8")
+          else:
+              original = file.get("content") or ""
+
+          old_count = original.count(old_id)
+          old_prefix_count = original.count("live_20261005_")
+          print(f"[i] full_size={len(original)} truncated={bool(file.get('truncated'))}")
+          print(f"[i] old_id_refs={old_count} old_prefix_refs={old_prefix_count}")
+
+          if old_count == 0 and old_prefix_count == 0:
+              print("[+] Cloud config already uses the new playlist format.")
+              raise SystemExit(0)
+
+          updated = original.replace(old_id, new_id)
+          updated = updated.replace("/raw/live_20261005_", "/raw/")
+
+          api(
+              f"https://api.github.com/gists/{gist_id}",
+              "PATCH",
+              {"files": {"all_configs.json": {"content": updated}}},
+          )
+
+          verify = api(f"https://api.github.com/gists/{gist_id}")
+          vf = (verify.get("files") or {}).get("all_configs.json")
+          if not vf:
+              raise SystemExit("verification file missing")
+          if vf.get("truncated"):
+              req = urllib.request.Request(vf["raw_url"], headers={"Authorization": f"Bearer {os.environ['GIST_TOKEN']}"})
+              with urllib.request.urlopen(req, timeout=120) as resp:
+                  final = resp.read().decode("utf-8")
+          else:
+              final = vf.get("content") or ""
+
+          remaining_old = final.count(old_id)
+          remaining_prefix = final.count("live_20261005_")
+          new_count = final.count(new_id)
+          print(f"[+] remaining_old_id_refs={remaining_old}")
+          print(f"[+] remaining_old_prefix_refs={remaining_prefix}")
+          print(f"[+] new_id_refs={new_count}")
+          if remaining_old or remaining_prefix:
+              raise SystemExit("old playlist references still remain")
+          PY
