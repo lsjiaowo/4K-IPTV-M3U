@@ -1,0 +1,54 @@
+name: Cleanup Unused Private Gist
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/cleanup-unused-gist.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout private migration metadata snapshot
+        uses: actions/checkout@v5
+        with:
+          repository: lsjiaowo/4K-IPTV-Core
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          ref: da5dee587932aae22248ddfcd97abed38e975709
+          path: .private-snapshot
+          fetch-depth: 1
+
+      - name: Delete unused secret Gist
+        shell: bash
+        env:
+          GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import urllib.request
+          from pathlib import Path
+
+          meta = json.loads(
+              Path(".private-snapshot/private_workspace/.github/new-gist.json").read_text(encoding="utf-8")
+          )
+          gist_id = str(meta["gist_id"]).strip()
+          req = urllib.request.Request(
+              f"https://api.github.com/gists/{gist_id}",
+              method="DELETE",
+              headers={
+                  "Authorization": f"Bearer {os.environ['GIST_TOKEN']}",
+                  "Accept": "application/vnd.github+json",
+                  "X-GitHub-Api-Version": "2022-11-28",
+                  "User-Agent": "4K-IPTV-Unused-Gist-Cleanup",
+              },
+          )
+          with urllib.request.urlopen(req, timeout=60) as response:
+              if response.status != 204:
+                  raise SystemExit(f"Delete failed: HTTP {response.status}")
+          print("[+] Unused secret Gist deleted.")
+          PY
