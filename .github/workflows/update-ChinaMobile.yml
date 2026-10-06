@@ -298,7 +298,8 @@ on:
   #   - cron: "16,26,36,46,56 * * * *"
 
 concurrency:
-  group: iptv-source-update
+  group: iptv-public-runner
+  queue: single
   cancel-in-progress: false
 
 permissions:
@@ -307,36 +308,34 @@ permissions:
 jobs:
   update:
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 360
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-          ref: main
-
       - name: Checkout private core
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: lsjiaowo/4K-IPTV-Core
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          ref: main
           path: .private-core
-          fetch-depth: 1
+          fetch-depth: 0
 
-      - name: Sync latest main after concurrency wait
+      - name: Checkout private live-log branch
+        uses: actions/checkout@v5
+        with:
+          repository: lsjiaowo/4K-IPTV-Core
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          ref: live-logs
+          path: .private-live
+          fetch-depth: 0
+
+      - name: Sync latest private main after concurrency wait
         shell: bash
         run: |
-          git fetch origin main
-          git checkout -B main origin/main
-          echo "[*] 已同步到任务实际开始时的最新 origin/main。"
-
-      - name: Configure Git identity
-        shell: bash
-        run: |
-          # push_to_github() 会在 b.py 内执行 git commit；Actions runner 必须先有提交者身份。
-          git config --local user.name "github-actions[bot]"
-          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          echo "[*] Git 提交身份已配置为 github-actions[bot]。"
+          set -euo pipefail
+          cd .private-core
+          git fetch origin main >/dev/null 2>&1
+          git checkout -B main origin/main >/dev/null 2>&1
+          echo "[*] Latest private core loaded."
 
       - name: Resolve requested mode
         id: mode
@@ -344,6 +343,7 @@ jobs:
         env:
           MANUAL_MODE: "${{ github.event.inputs.run_mode }}"
         run: |
+          set -euo pipefail
           RUN=false
           MODE=""
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
@@ -353,7 +353,7 @@ jobs:
               "省份抓取") MODE="full" ;;
               "手动指定 IP:PORT") MODE="manual_endpoint" ;;
               "仅更新频道列表") MODE="channel_refresh" ;;
-              *) echo "::error::未知手动运行模式"; exit 1 ;;
+              *) echo "::error::Unknown manual run mode"; exit 1 ;;
             esac
           elif [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event_name }}" = "repository_dispatch" ]; then
             RUN=true
@@ -361,7 +361,7 @@ jobs:
           fi
           echo "run=$RUN" >> "$GITHUB_OUTPUT"
           echo "mode=$MODE" >> "$GITHUB_OUTPUT"
-          echo "[*] Private core mode resolved."
+          echo "[*] Run mode resolved."
 
       - name: Setup Python
         if: steps.mode.outputs.run == 'true'
@@ -371,98 +371,159 @@ jobs:
 
       - name: Install dependencies
         if: steps.mode.outputs.run == 'true'
-        run: pip install -r .private-core/requirements.txt beautifulsoup4
+        shell: bash
+        run: |
+          python -m pip install -q -r .private-core/requirements.txt beautifulsoup4
+          echo "[*] Runtime dependencies ready."
 
-      - name: Run private updater
+      - name: Prepare private live log
+        if: steps.mode.outputs.run == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd .private-live
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin live-logs >/dev/null 2>&1
+          git checkout -B live-logs origin/live-logs >/dev/null 2>&1
+          mkdir -p private_logs/live
+          echo "[*] Private live-log channel ready."
+
+      - name: Run private updater on public runner
         if: steps.mode.outputs.run == 'true'
         shell: bash
         env:
           GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
-          IPTV_GIST_ID: ${{ secrets.IPTV_GIST_ID }}
-          IPTV_GIST_PREFIX: ${{ secrets.IPTV_GIST_PREFIX }}
           IPTV_WORKSPACE_ROOT: ${{ github.workspace }}/.private-core/private_workspace
           IPTV_STATE_ROOT: ${{ github.workspace }}/.private-core
           IPTV_DISABLE_README_UPDATE: "1"
+          LOG_CARRIER: "mobile"
         run: |
-          set -euo pipefail
+          set -u
           FULL_LOG="$RUNNER_TEMP/iptv-full-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.log"
           echo "IPTV_FULL_LOG=$FULL_LOG" >> "$GITHUB_ENV"
-          exec 3>&1 4>&2
-          finish() {
-            code=$?
-            trap - EXIT
-            if [ "$code" -eq 0 ]; then
-              echo "[+] Private updater completed successfully. Full details are private." >&3
-            else
-              echo "::error::Private updater failed. Full details are private." >&3
-            fi
-            exit "$code"
-          }
-          trap finish EXIT
-          exec >"$FULL_LOG" 2>&1
-          python -u .private-core/runner.py --carrier "mobile" --mode "${{ steps.mode.outputs.mode }}" --event-name "${{ github.event_name }}"
+          touch "$FULL_LOG"
 
-      - name: Persist private playlist state
-        if: always() && steps.mode.outputs.run == 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd .private-core
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add private_workspace history/usable_endpoints.txt
-          if git diff --cached --quiet; then
-            echo "[*] No private playlist state changes."
-            exit 0
+          cat > "$RUNNER_TEMP/private_live_sync.py" <<'PY'
+          import json
+          import os
+          import shutil
+          import subprocess
+          import sys
+          import time
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          log_path = Path(sys.argv[1])
+          live_dir = Path(sys.argv[2])
+          carrier = sys.argv[3]
+          once = "--once" in sys.argv[4:]
+
+          target_dir = live_dir / "private_logs" / "live"
+          target_dir.mkdir(parents=True, exist_ok=True)
+          target_log = target_dir / f"{carrier}.log"
+          target_status = target_dir / f"{carrier}.json"
+
+          def run_git(args):
+              return subprocess.run(
+                  ["git", *args],
+                  cwd=live_dir,
+                  stdout=subprocess.DEVNULL,
+                  stderr=subprocess.DEVNULL,
+                  check=False,
+              )
+
+          def sync_once():
+              if not log_path.exists():
+                  return True
+              tmp = target_log.with_suffix(".log.tmp")
+              shutil.copyfile(log_path, tmp)
+              os.replace(tmp, target_log)
+              target_status.write_text(
+                  json.dumps(
+                      {
+                          "run_id": os.environ.get("GITHUB_RUN_ID", ""),
+                          "attempt": os.environ.get("GITHUB_RUN_ATTEMPT", "1"),
+                          "carrier": carrier,
+                          "updated_at": datetime.now(timezone.utc).isoformat(),
+                          "status": "running",
+                      },
+                      ensure_ascii=False,
+                      indent=2,
+                  ) + "\n",
+                  encoding="utf-8",
+              )
+              run_git(["add", str(target_log.relative_to(live_dir)), str(target_status.relative_to(live_dir))])
+              if run_git(["diff", "--cached", "--quiet"]).returncode == 0:
+                  return True
+              if run_git(["commit", "--amend", "--no-edit"]).returncode != 0:
+                  return False
+              return run_git(["push", "--force", "origin", "HEAD:live-logs"]).returncode == 0
+
+          if once:
+              raise SystemExit(0 if sync_once() else 1)
+
+          while True:
+              sync_once()
+              time.sleep(30)
+          PY
+
+          python "$RUNNER_TEMP/private_live_sync.py"             "$FULL_LOG" "${GITHUB_WORKSPACE}/.private-live" "$LOG_CARRIER"             >/dev/null 2>&1 &
+          LIVE_SYNC_PID=$!
+
+          set +e
+          python -u .private-core/runner.py             --carrier "mobile"             --mode "${{ steps.mode.outputs.mode }}"             --event-name "${{ github.event_name }}"             >"$FULL_LOG" 2>&1
+          RUN_CODE=$?
+          set -e
+
+          kill "$LIVE_SYNC_PID" >/dev/null 2>&1 || true
+          wait "$LIVE_SYNC_PID" >/dev/null 2>&1 || true
+
+          if ! python "$RUNNER_TEMP/private_live_sync.py"             "$FULL_LOG" "${GITHUB_WORKSPACE}/.private-live" "$LOG_CARRIER" --once             >/dev/null 2>&1; then
+            echo "::error::Private live-log synchronization failed."
+            exit 1
           fi
-          git commit -m "Update private IPTV state from run ${GITHUB_RUN_ID}"
-          git pull --rebase origin main
-          git push origin HEAD:main
-          echo "[+] Private playlist state persisted."
 
-      - name: Archive full log privately
+          if [ "$RUN_CODE" -eq 0 ]; then
+            echo "[+] Mobile updater completed on the public runner. Detailed log stayed private."
+          else
+            echo "::error::Mobile updater failed. Detailed log is available only in the private live-log branch."
+            exit "$RUN_CODE"
+          fi
+
+      - name: Persist private state and final log
         if: always() && steps.mode.outputs.run == 'true'
         shell: bash
         env:
-          PRIVATE_REPO_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
           FULL_LOG: ${{ env.IPTV_FULL_LOG }}
           LOG_CARRIER: "mobile"
         run: |
-          python - <<'PYLOG'
-          import base64
-          import os
-          from pathlib import Path
-          import requests
+          set -euo pipefail
+          LOG_PATH="$FULL_LOG"
+          cd .private-core
 
-          token = os.environ.get("PRIVATE_REPO_TOKEN", "").strip()
-          log_path = Path(os.environ.get("FULL_LOG", ""))
-          carrier = os.environ.get("LOG_CARRIER", "unknown")
-          if not token:
-              raise SystemExit("PRIVATE_REPO_TOKEN 未配置")
-          if not log_path.is_file():
-              raise SystemExit("完整日志文件不存在")
+          mkdir -p "private_logs/archive/$LOG_CARRIER"
+          if [ -f "$LOG_PATH" ]; then
+            cp "$LOG_PATH" "private_logs/archive/$LOG_CARRIER/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.log"
+          fi
 
-          owner = os.environ["GITHUB_REPOSITORY_OWNER"]
-          run_id = os.environ["GITHUB_RUN_ID"]
-          attempt = os.environ.get("GITHUB_RUN_ATTEMPT", "1")
-          target = f"logs/{carrier}/{run_id}-{attempt}.log"
-          api = f"https://api.github.com/repos/{owner}/4K-IPTV-Logs/contents/{target}"
-          headers = {
-              "Authorization": f"Bearer {token}",
-              "Accept": "application/vnd.github+json",
-              "X-GitHub-Api-Version": "2022-11-28",
-          }
-          payload = {
-              "message": f"Archive {carrier} run {run_id} attempt {attempt}",
-              "content": base64.b64encode(log_path.read_bytes()).decode("ascii"),
-          }
-          existing = requests.get(api, headers=headers, timeout=30)
-          if existing.status_code == 200:
-              payload["sha"] = existing.json()["sha"]
-          elif existing.status_code != 404:
-              existing.raise_for_status()
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main >/dev/null 2>&1
 
-          response = requests.put(api, headers=headers, json=payload, timeout=120)
-          response.raise_for_status()
-          print("[+] Full log archived in private repository.")
-          PYLOG
+          git add README.md private_workspace history/usable_endpoints.txt private_logs/archive
+          if git diff --cached --quiet; then
+            echo "[*] No private state changes."
+            exit 0
+          fi
+
+          git commit -m "Update private IPTV state from public run ${GITHUB_RUN_ID}" >/dev/null
+
+          if ! git rebase origin/main >/dev/null 2>&1; then
+            git rebase --abort >/dev/null 2>&1 || true
+            echo "::error::Private state changed concurrently; final state commit needs retry."
+            exit 1
+          fi
+
+          git push origin HEAD:main >/dev/null 2>&1
+          echo "[+] Playlist state and final log persisted privately."
