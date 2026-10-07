@@ -401,8 +401,10 @@ jobs:
         run: |
           set -u
           FULL_LOG="$RUNNER_TEMP/iptv-full-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.log"
+          LIVE_VIEW_STOP="$RUNNER_TEMP/private-live-view.stop"
           echo "IPTV_FULL_LOG=$FULL_LOG" >> "$GITHUB_ENV"
           touch "$FULL_LOG"
+          rm -f "$LIVE_VIEW_STOP"
 
           cat > "$RUNNER_TEMP/private_live_view_sync.py" <<'PY'
           import html
@@ -416,7 +418,7 @@ jobs:
           log_path = Path(sys.argv[1])
           view_dir = Path(sys.argv[2])
           carrier = sys.argv[3]
-          once = "--once" in sys.argv[4:]
+          stop_path = Path(sys.argv[4])
 
           view_out_dir = view_dir / "private_logs" / "live"
           view_out_dir.mkdir(parents=True, exist_ok=True)
@@ -515,19 +517,30 @@ jobs:
               run_git(["add", str(target_md.relative_to(view_dir))])
               if run_git(["diff", "--cached", "--quiet"]).returncode == 0:
                   return True
+
               if run_git(["commit", "--amend", "--no-edit"]).returncode != 0:
+                  run_git(["reset"])
                   return False
-              return run_git(["push", "--force", "origin", "HEAD:live-view"]).returncode == 0
 
-          if once:
-              raise SystemExit(0 if sync_once() else 1)
+              for _ in range(3):
+                  if run_git(["push", "--force", "origin", "HEAD:live-view"]).returncode == 0:
+                      return True
+                  time.sleep(2)
+              return False
 
-          while True:
+          # 单一同步进程负责整个生命周期；收到 stop 文件后完成最后一次同步再退出。
+          # 这样不会再出现“杀掉后台进程后，残留 git 子进程与最终同步抢锁”的竞态。
+          while not stop_path.exists():
               sync_once()
-              time.sleep(30)
+              for _ in range(30):
+                  if stop_path.exists():
+                      break
+                  time.sleep(1)
+
+          raise SystemExit(0 if sync_once() else 1)
           PY
 
-          python "$RUNNER_TEMP/private_live_view_sync.py"             "$FULL_LOG" "${GITHUB_WORKSPACE}/.private-view" "$LOG_CARRIER"             >/dev/null 2>&1 &
+          python "$RUNNER_TEMP/private_live_view_sync.py"             "$FULL_LOG" "${GITHUB_WORKSPACE}/.private-view" "$LOG_CARRIER" "$LIVE_VIEW_STOP"             >/dev/null 2>&1 &
           LIVE_VIEW_SYNC_PID=$!
 
           set +e
@@ -535,12 +548,15 @@ jobs:
           RUN_CODE=$?
           set -e
 
-          kill "$LIVE_VIEW_SYNC_PID" >/dev/null 2>&1 || true
-          wait "$LIVE_VIEW_SYNC_PID" >/dev/null 2>&1 || true
+          # 优雅停止实时同步：等待正在进行的 git 操作结束，再由同一进程完成最终同步。
+          touch "$LIVE_VIEW_STOP"
+          set +e
+          wait "$LIVE_VIEW_SYNC_PID"
+          LIVE_VIEW_CODE=$?
+          set -e
 
-          if ! python "$RUNNER_TEMP/private_live_view_sync.py"             "$FULL_LOG" "${GITHUB_WORKSPACE}/.private-view" "$LOG_CARRIER" --once             >/dev/null 2>&1; then
-            echo "::error::Private foldable live-log synchronization failed."
-            exit 1
+          if [ "$LIVE_VIEW_CODE" -ne 0 ]; then
+            echo "::warning::Private foldable live-log final synchronization failed after retries; updater result is unaffected."
           fi
 
           if [ "$RUN_CODE" -eq 0 ]; then
@@ -568,7 +584,6 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git fetch origin main >/dev/null 2>&1
 
           git add README.md private_workspace history/usable_endpoints.txt private_logs/archive
           if git diff --cached --quiet; then
@@ -578,11 +593,33 @@ jobs:
 
           git commit -m "Update private IPTV state from public run ${GITHUB_RUN_ID}" >/dev/null
 
-          if ! git rebase origin/main >/dev/null 2>&1; then
-            git rebase --abort >/dev/null 2>&1 || true
-            echo "::error::Private state changed concurrently; final state commit needs retry."
-            exit 1
-          fi
+          # 正式任务使用同一个 Public concurrency 锁，正常情况下 main 不会在运行中变化。
+          # 只有远端真的前进时才 rebase；否则直接 push，避免运行时残留文件无意义阻塞 rebase。
+          for attempt in 1 2 3; do
+            git fetch origin main >/dev/null 2>&1
+            REMOTE_SHA="$(git rev-parse origin/main)"
+            PARENT_SHA="$(git rev-parse HEAD^)"
 
-          git push origin HEAD:main >/dev/null 2>&1
-          echo "[+] Playlist state and final log persisted privately."
+            if [ "$REMOTE_SHA" != "$PARENT_SHA" ]; then
+              echo "[*] Private main advanced during this run; reconciling generated state (attempt $attempt/3)."
+              # 所有需要保留的生成状态已经进入当前提交；清除 Python 缓存等运行时残留后再 rebase。
+              git reset --hard HEAD >/dev/null
+              git clean -fd >/dev/null
+              if ! git rebase -X theirs origin/main >/dev/null 2>&1; then
+                git rebase --abort >/dev/null 2>&1 || true
+                echo "::error::Unable to reconcile generated private state with current main."
+                exit 1
+              fi
+            fi
+
+            if git push origin HEAD:main >/dev/null 2>&1; then
+              echo "[+] Playlist state and final log persisted privately."
+              exit 0
+            fi
+
+            echo "::warning::Private main changed before push; retrying persistence ($attempt/3)."
+            sleep 2
+          done
+
+          echo "::error::Private state persistence failed after 3 attempts."
+          exit 1
