@@ -410,7 +410,7 @@ jobs:
           import subprocess
           import sys
           import time
-          from datetime import datetime, timezone
+          from datetime import datetime, timedelta, timezone
           from pathlib import Path
 
           log_path = Path(sys.argv[1])
@@ -462,12 +462,13 @@ jobs:
               if current_title is not None:
                   groups.append((current_title, current_lines, False))
 
-              updated_at = datetime.now(timezone.utc).isoformat()
+              beijing_tz = timezone(timedelta(hours=8))
+              updated_at = datetime.now(beijing_tz).strftime("%Y-%m-%d %H:%M:%S GMT+8")
               lines = [
                   f"# {carrier_name}实时运行日志",
                   "",
                   f"> Run ID：`{os.environ.get('GITHUB_RUN_ID', '')}`  ",
-                  f"> 更新时间：`{updated_at}`  ",
+                  f"> 更新时间（北京时间）：`{updated_at}`  ",
                   "> 已完成省份默认折叠；当前正在运行的省份默认展开。",
                   "",
               ]
