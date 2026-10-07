@@ -447,7 +447,6 @@ jobs:
           target_log = raw_dir / f"{carrier}.log"
           target_status = raw_dir / f"{carrier}.json"
           target_md = view_out_dir / f"{carrier}.md"
-          view_status = view_out_dir / f"{carrier}.json"
 
           carrier_name = {
               "telecom": "电信",
@@ -569,14 +568,10 @@ jobs:
                   render_markdown(text, status),
                   encoding="utf-8",
               )
-              view_status.write_text(
-                  json.dumps(status, ensure_ascii=False, indent=2) + "\n",
-                  encoding="utf-8",
-              )
               view_ok = update_branch(
                   view_dir,
                   "live-view",
-                  [target_md, view_status],
+                  [target_md],
               )
               return raw_ok and view_ok
 
