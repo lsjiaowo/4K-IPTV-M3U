@@ -328,6 +328,15 @@ jobs:
           path: .private-live
           fetch-depth: 0
 
+      - name: Checkout private foldable-log view
+        uses: actions/checkout@v5
+        with:
+          repository: lsjiaowo/4K-IPTV-Core
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          ref: live-view
+          path: .private-view
+          fetch-depth: 0
+
       - name: Sync latest private main after concurrency wait
         shell: bash
         run: |
@@ -381,13 +390,22 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
           cd .private-live
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git fetch origin live-logs >/dev/null 2>&1
           git checkout -B live-logs origin/live-logs >/dev/null 2>&1
           mkdir -p private_logs/live
-          echo "[*] Private live-log channel ready."
+
+          cd "${GITHUB_WORKSPACE}/.private-view"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin live-view >/dev/null 2>&1
+          git checkout -B live-view origin/live-view >/dev/null 2>&1
+          mkdir -p private_logs/live
+
+          echo "[*] Private raw-log and foldable-log channels ready."
 
       - name: Run private updater on public runner
         if: steps.mode.outputs.run == 'true'
@@ -405,6 +423,7 @@ jobs:
           touch "$FULL_LOG"
 
           cat > "$RUNNER_TEMP/private_live_sync.py" <<'PY'
+          import html
           import json
           import os
           import shutil
@@ -416,49 +435,150 @@ jobs:
 
           log_path = Path(sys.argv[1])
           live_dir = Path(sys.argv[2])
-          carrier = sys.argv[3]
-          once = "--once" in sys.argv[4:]
+          view_dir = Path(sys.argv[3])
+          carrier = sys.argv[4]
+          once = "--once" in sys.argv[5:]
 
-          target_dir = live_dir / "private_logs" / "live"
-          target_dir.mkdir(parents=True, exist_ok=True)
-          target_log = target_dir / f"{carrier}.log"
-          target_status = target_dir / f"{carrier}.json"
+          raw_dir = live_dir / "private_logs" / "live"
+          view_out_dir = view_dir / "private_logs" / "live"
+          raw_dir.mkdir(parents=True, exist_ok=True)
+          view_out_dir.mkdir(parents=True, exist_ok=True)
 
-          def run_git(args):
+          target_log = raw_dir / f"{carrier}.log"
+          target_status = raw_dir / f"{carrier}.json"
+          target_md = view_out_dir / f"{carrier}.md"
+          view_status = view_out_dir / f"{carrier}.json"
+
+          carrier_name = {
+              "telecom": "电信",
+              "unicom": "联通",
+              "mobile": "移动",
+          }.get(carrier, carrier)
+
+          def run_git(repo_dir, args):
               return subprocess.run(
                   ["git", *args],
-                  cwd=live_dir,
+                  cwd=repo_dir,
                   stdout=subprocess.DEVNULL,
                   stderr=subprocess.DEVNULL,
                   check=False,
               )
 
+          def render_markdown(text, status):
+              preamble = []
+              groups = []
+              current_title = None
+              current_lines = []
+
+              for line in text.splitlines():
+                  if line.startswith("::group::"):
+                      if current_title is not None:
+                          groups.append((current_title, current_lines, False))
+                      current_title = line[len("::group::"):].strip()
+                      current_lines = []
+                  elif line.strip() == "::endgroup::":
+                      if current_title is not None:
+                          groups.append((current_title, current_lines, True))
+                          current_title = None
+                          current_lines = []
+                  elif current_title is None:
+                      preamble.append(line)
+                  else:
+                      current_lines.append(line)
+
+              if current_title is not None:
+                  groups.append((current_title, current_lines, False))
+
+              lines = [
+                  f"# {carrier_name}实时运行日志",
+                  "",
+                  f"> Run ID：`{status['run_id']}`  ",
+                  f"> 更新时间：`{status['updated_at']}`  ",
+                  f"> 原始日志：[打开 {carrier}.log](../../live-logs/private_logs/live/{carrier}.log)",
+                  "",
+              ]
+
+              if preamble:
+                  lines += [
+                      "## 任务概览",
+                      "",
+                      "<pre>",
+                      html.escape("\n".join(preamble)),
+                      "</pre>",
+                      "",
+                  ]
+
+              if not groups:
+                  lines += ["_等待省份日志输出。_", ""]
+              else:
+                  for title, body, closed in groups:
+                      running = not closed
+                      lines.append("<details open>" if running else "<details>")
+                      suffix = "（运行中）" if running else ""
+                      lines.append(
+                          f"<summary><strong>{html.escape(title)}{suffix}</strong></summary>"
+                      )
+                      lines += [
+                          "",
+                          "<pre>",
+                          html.escape("\n".join(body)),
+                          "</pre>",
+                          "",
+                          "</details>",
+                          "",
+                      ]
+
+              return "\n".join(lines).rstrip() + "\n"
+
+          def update_branch(repo_dir, branch, paths):
+              run_git(repo_dir, ["add", *[str(p.relative_to(repo_dir)) for p in paths]])
+              if run_git(repo_dir, ["diff", "--cached", "--quiet"]).returncode == 0:
+                  return True
+              if run_git(repo_dir, ["commit", "--amend", "--no-edit"]).returncode != 0:
+                  return False
+              return run_git(repo_dir, ["push", "--force", "origin", f"HEAD:{branch}"]).returncode == 0
+
           def sync_once():
               if not log_path.exists():
                   return True
+
+              now = datetime.now(timezone.utc).isoformat()
+              status = {
+                  "run_id": os.environ.get("GITHUB_RUN_ID", ""),
+                  "attempt": os.environ.get("GITHUB_RUN_ATTEMPT", "1"),
+                  "carrier": carrier,
+                  "updated_at": now,
+                  "status": "running",
+              }
+
               tmp = target_log.with_suffix(".log.tmp")
               shutil.copyfile(log_path, tmp)
               os.replace(tmp, target_log)
               target_status.write_text(
-                  json.dumps(
-                      {
-                          "run_id": os.environ.get("GITHUB_RUN_ID", ""),
-                          "attempt": os.environ.get("GITHUB_RUN_ATTEMPT", "1"),
-                          "carrier": carrier,
-                          "updated_at": datetime.now(timezone.utc).isoformat(),
-                          "status": "running",
-                      },
-                      ensure_ascii=False,
-                      indent=2,
-                  ) + "\n",
+                  json.dumps(status, ensure_ascii=False, indent=2) + "\n",
                   encoding="utf-8",
               )
-              run_git(["add", str(target_log.relative_to(live_dir)), str(target_status.relative_to(live_dir))])
-              if run_git(["diff", "--cached", "--quiet"]).returncode == 0:
-                  return True
-              if run_git(["commit", "--amend", "--no-edit"]).returncode != 0:
-                  return False
-              return run_git(["push", "--force", "origin", "HEAD:live-logs"]).returncode == 0
+              raw_ok = update_branch(
+                  live_dir,
+                  "live-logs",
+                  [target_log, target_status],
+              )
+
+              text = log_path.read_text(encoding="utf-8", errors="replace")
+              target_md.write_text(
+                  render_markdown(text, status),
+                  encoding="utf-8",
+              )
+              view_status.write_text(
+                  json.dumps(status, ensure_ascii=False, indent=2) + "\n",
+                  encoding="utf-8",
+              )
+              view_ok = update_branch(
+                  view_dir,
+                  "live-view",
+                  [target_md, view_status],
+              )
+              return raw_ok and view_ok
 
           if once:
               raise SystemExit(0 if sync_once() else 1)
@@ -468,7 +588,7 @@ jobs:
               time.sleep(30)
           PY
 
-          python "$RUNNER_TEMP/private_live_sync.py"             "$FULL_LOG" "${GITHUB_WORKSPACE}/.private-live" "$LOG_CARRIER"             >/dev/null 2>&1 &
+          python "$RUNNER_TEMP/private_live_sync.py"             "$FULL_LOG" "${GITHUB_WORKSPACE}/.private-live"             "${GITHUB_WORKSPACE}/.private-view" "$LOG_CARRIER"             >/dev/null 2>&1 &
           LIVE_SYNC_PID=$!
 
           set +e
@@ -479,7 +599,7 @@ jobs:
           kill "$LIVE_SYNC_PID" >/dev/null 2>&1 || true
           wait "$LIVE_SYNC_PID" >/dev/null 2>&1 || true
 
-          if ! python "$RUNNER_TEMP/private_live_sync.py"             "$FULL_LOG" "${GITHUB_WORKSPACE}/.private-live" "$LOG_CARRIER" --once             >/dev/null 2>&1; then
+          if ! python "$RUNNER_TEMP/private_live_sync.py"             "$FULL_LOG" "${GITHUB_WORKSPACE}/.private-live"             "${GITHUB_WORKSPACE}/.private-view" "$LOG_CARRIER" --once             >/dev/null 2>&1; then
             echo "::error::Private live-log synchronization failed."
             exit 1
           fi
@@ -487,7 +607,7 @@ jobs:
           if [ "$RUN_CODE" -eq 0 ]; then
             echo "[+] Unicom updater completed on the public runner. Detailed log stayed private."
           else
-            echo "::error::Unicom updater failed. Detailed log is available only in the private live-log branch."
+            echo "::error::Unicom updater failed. Detailed log is available only in the private log branches."
             exit "$RUN_CODE"
           fi
 
