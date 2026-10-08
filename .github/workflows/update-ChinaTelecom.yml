@@ -428,6 +428,7 @@ jobs:
           attempt = os.environ.get("GITHUB_RUN_ATTEMPT", "1")
           target_md = view_out_dir / f"{carrier}.md"
           target_history_md = history_out_dir / f"{run_id}-{attempt}.md"
+          history_index_md = history_out_dir / "README.md"
 
           carrier_name = {
               "telecom": "电信",
@@ -522,10 +523,33 @@ jobs:
               target_md.write_text(rendered, encoding="utf-8")
               target_history_md.write_text(rendered, encoding="utf-8")
 
+              history_files = sorted(
+                  [
+                      p.name
+                      for p in history_out_dir.glob("*.md")
+                      if p.name != "README.md"
+                  ],
+                  reverse=True,
+              )
+              index_lines = [
+                  f"# {carrier_name}历史运行日志",
+                  "",
+                  f"共保存 {len(history_files)} 条运行记录；按 Run ID 从新到旧排列。",
+                  "",
+              ]
+              index_lines.extend(
+                  f"- [{name}]({name})" for name in history_files
+              )
+              history_index_md.write_text(
+                  "\n".join(index_lines).rstrip() + "\n",
+                  encoding="utf-8",
+              )
+
               run_git([
                   "add",
                   str(target_md.relative_to(view_dir)),
                   str(target_history_md.relative_to(view_dir)),
+                  str(history_index_md.relative_to(view_dir)),
               ])
               if run_git(["diff", "--cached", "--quiet"]).returncode == 0:
                   return True
