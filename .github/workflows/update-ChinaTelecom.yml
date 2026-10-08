@@ -478,7 +478,7 @@ jobs:
                   f"> Run ID：`{run_id}`  ",
                   f"> 更新时间（北京时间）：`{updated_at}`  ",
                   "> 已完成省份默认折叠；当前正在运行的省份默认展开。  ",
-                  f"> 永久历史：[`{run_id}-{attempt}.md`](../history/{carrier}/{run_id}-{attempt}.md) ｜ [查看该运营商全部历史](../history/{carrier}/)",
+                  f"> 永久历史：[`{run_id}-{attempt}.md`](https://github.com/lsjiaowo/4K-IPTV-Core/blob/live-view/private_logs/history/{carrier}/{run_id}-{attempt}.md) ｜ [查看该运营商全部历史](https://github.com/lsjiaowo/4K-IPTV-Core/tree/live-view/private_logs/history/{carrier})",
                   "",
               ]
 
