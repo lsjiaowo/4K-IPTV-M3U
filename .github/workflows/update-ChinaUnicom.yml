@@ -421,8 +421,13 @@ jobs:
           stop_path = Path(sys.argv[4])
 
           view_out_dir = view_dir / "private_logs" / "live"
+          history_out_dir = view_dir / "private_logs" / "history" / carrier
           view_out_dir.mkdir(parents=True, exist_ok=True)
+          history_out_dir.mkdir(parents=True, exist_ok=True)
+          run_id = os.environ.get("GITHUB_RUN_ID", "")
+          attempt = os.environ.get("GITHUB_RUN_ATTEMPT", "1")
           target_md = view_out_dir / f"{carrier}.md"
+          target_history_md = history_out_dir / f"{run_id}-{attempt}.md"
 
           carrier_name = {
               "telecom": "电信",
@@ -469,9 +474,10 @@ jobs:
               lines = [
                   f"# {carrier_name}实时运行日志",
                   "",
-                  f"> Run ID：`{os.environ.get('GITHUB_RUN_ID', '')}`  ",
+                  f"> Run ID：`{run_id}`  ",
                   f"> 更新时间（北京时间）：`{updated_at}`  ",
-                  "> 已完成省份默认折叠；当前正在运行的省份默认展开。",
+                  "> 已完成省份默认折叠；当前正在运行的省份默认展开。  ",
+                  f"> 永久历史：[`{run_id}-{attempt}.md`](../history/{carrier}/{run_id}-{attempt}.md) ｜ [查看该运营商全部历史](../history/{carrier}/)",
                   "",
               ]
 
@@ -512,9 +518,15 @@ jobs:
                   return True
 
               text = log_path.read_text(encoding="utf-8", errors="replace")
-              target_md.write_text(render_markdown(text), encoding="utf-8")
+              rendered = render_markdown(text)
+              target_md.write_text(rendered, encoding="utf-8")
+              target_history_md.write_text(rendered, encoding="utf-8")
 
-              run_git(["add", str(target_md.relative_to(view_dir))])
+              run_git([
+                  "add",
+                  str(target_md.relative_to(view_dir)),
+                  str(target_history_md.relative_to(view_dir)),
+              ])
               if run_git(["diff", "--cached", "--quiet"]).returncode == 0:
                   return True
 
