@@ -517,49 +517,65 @@ jobs:
           def sync_once():
               if not log_path.exists():
                   return True
-
+          
+              # 每次从远端最新快照重建本轮三份文件，不改写其他 Run ID 的历史。
               text = log_path.read_text(encoding="utf-8", errors="replace")
               rendered = render_markdown(text)
-              target_md.write_text(rendered, encoding="utf-8")
-              target_history_md.write_text(rendered, encoding="utf-8")
-
-              history_files = sorted(
-                  [
-                      p.name
-                      for p in history_out_dir.glob("*.md")
-                      if p.name != "README.md"
-                  ],
-                  reverse=True,
-              )
-              index_lines = [
-                  f"# {carrier_name}历史运行日志",
-                  "",
-                  f"共保存 {len(history_files)} 条运行记录；按 Run ID 从新到旧排列。",
-                  "",
-              ]
-              index_lines.extend(
-                  f"- [{name}]({name})" for name in history_files
-              )
-              history_index_md.write_text(
-                  "\n".join(index_lines).rstrip() + "\n",
-                  encoding="utf-8",
-              )
-
-              run_git([
-                  "add",
-                  str(target_md.relative_to(view_dir)),
-                  str(target_history_md.relative_to(view_dir)),
-                  str(history_index_md.relative_to(view_dir)),
-              ])
-              if run_git(["diff", "--cached", "--quiet"]).returncode == 0:
-                  return True
-
-              if run_git(["commit", "--amend", "--no-edit"]).returncode != 0:
-                  run_git(["reset"])
-                  return False
-
-              for _ in range(3):
-                  if run_git(["push", "--force", "origin", "HEAD:live-view"]).returncode == 0:
+          
+              # 只允许快进推送；若另一个运行同时更新了分支，重新读取远端再合并。
+              # 此 checkout 仅用于日志视图，hard reset 不触及私有核心或播放列表。
+              for push_attempt in range(5):
+                  if run_git(["fetch", "origin", "live-view"]).returncode != 0:
+                      time.sleep(2)
+                      continue
+                  if run_git(["reset", "--hard", "origin/live-view"]).returncode != 0:
+                      return False
+          
+                  # 避免旧运行晚到的日志覆盖新运行的实时首页。
+                  show_latest = True
+                  if target_md.exists():
+                      previous = target_md.read_text(encoding="utf-8", errors="replace")
+                      marker = "> Run ID：" + chr(96)
+                      if marker in previous:
+                          previous_id = previous.split(marker, 1)[1].split(chr(96), 1)[0]
+                          if previous_id.isdigit() and run_id.isdigit():
+                              show_latest = int(previous_id) <= int(run_id)
+                  if show_latest:
+                      target_md.write_text(rendered, encoding="utf-8")
+                  target_history_md.write_text(rendered, encoding="utf-8")
+          
+                  # README 每次都从远端已有文件 + 当前 Run ID 重建，保留所有旧条目。
+                  history_files = sorted(
+                      [p.name for p in history_out_dir.glob("*.md") if p.name != "README.md"],
+                      reverse=True,
+                  )
+                  index_lines = [
+                      f"# {carrier_name}历史运行日志",
+                      "",
+                      f"共保存 {len(history_files)} 条运行记录；按 Run ID 从新到旧排列。",
+                      "",
+                  ]
+                  index_lines.extend(f"- [{name}]({name})" for name in history_files)
+                  history_index_md.write_text(
+                      "\n".join(index_lines).rstrip() + "\n",
+                      encoding="utf-8",
+                  )
+          
+                  paths = [
+                      str(target_history_md.relative_to(view_dir)),
+                      str(history_index_md.relative_to(view_dir)),
+                  ]
+                  if show_latest:
+                      paths.append(str(target_md.relative_to(view_dir)))
+                  if run_git(["add", *paths]).returncode != 0:
+                      return False
+                  if run_git(["diff", "--cached", "--quiet"]).returncode == 0:
+                      return True
+                  if run_git([
+                      "commit", "-m", f"Preserve {carrier} IPTV log {run_id}-{attempt}",
+                  ]).returncode != 0:
+                      return False
+                  if run_git(["push", "origin", "HEAD:live-view"]).returncode == 0:
                       return True
                   time.sleep(2)
               return False
