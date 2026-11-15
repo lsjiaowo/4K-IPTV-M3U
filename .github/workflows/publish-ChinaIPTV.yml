@@ -1,6 +1,6 @@
 name: Publish China IPTV Gist Subscription
 
-# This workflow's first push publishes the aggregate without a full scan.
+# Updating this file or using Run workflow republishes only the aggregate M3U.
 on:
   workflow_dispatch:
   push:
@@ -9,7 +9,7 @@ on:
       - .github/workflows/publish-ChinaIPTV.yml
 
 concurrency:
-  group: iptv-public-runner
+  group: iptv-china-m3u-publisher
   cancel-in-progress: false
 
 permissions:
