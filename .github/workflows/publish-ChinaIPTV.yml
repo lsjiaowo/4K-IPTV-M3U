@@ -26,7 +26,7 @@ jobs:
           repository: lsjiaowo/4K-IPTV-Core
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
           path: .private-core
-          persist-credentials: false
+          persist-credentials: true
 
       - name: Setup Python
         uses: actions/setup-python@v6
@@ -158,3 +158,34 @@ jobs:
                 f"source playlists: {count}; channels: {channels}; "
                 f"bytes: {len(actual)}; SHA256 verified; stable_url_fresh={stable_ready}")
           PY
+      - name: Save updated unified M3U back to private core
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd .private-core
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "private_workspace/m3u/中国IPTV.m3u"
+          if git diff --cached --quiet; then
+            echo "[+] Private China IPTV M3U already matches published content."
+            exit 0
+          fi
+          git commit -m "Keep China IPTV groups distinct for each M3U slot" >/dev/null
+
+          for attempt in 1 2 3; do
+            git fetch origin main >/dev/null
+            if ! git rebase -X theirs origin/main >/dev/null 2>&1; then
+              git rebase --abort >/dev/null 2>&1 || true
+              echo "::error::Unable to merge China IPTV aggregate into private main."
+              exit 1
+            fi
+            if git push origin HEAD:main >/dev/null 2>&1; then
+              echo "[+] Updated China IPTV aggregate persisted to private main."
+              exit 0
+            fi
+            echo "::warning::Private main changed; retrying the aggregate push ($attempt/3)."
+            sleep 2
+          done
+          echo "::error::Failed to persist grouped aggregate to private main."
+          exit 1
+
