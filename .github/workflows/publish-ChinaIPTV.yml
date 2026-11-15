@@ -1,0 +1,111 @@
+name: Publish China IPTV Gist Subscription
+
+# This workflow's first push publishes the aggregate without a full scan.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/publish-ChinaIPTV.yml
+
+concurrency:
+  group: iptv-public-runner
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout private IPTV core
+        uses: actions/checkout@v5
+        with:
+          repository: lsjiaowo/4K-IPTV-Core
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          path: .private-core
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Build and publish China IPTV only
+        shell: bash
+        env:
+          GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          import sys
+          import time
+          import urllib.error
+          import urllib.request
+          from pathlib import Path
+          from urllib.parse import quote
+
+          root = Path(".private-core").resolve()
+          sys.path.insert(0, str(root))
+          from build_china_iptv import build_china_iptv_playlist
+
+          publication = json.loads(
+              (root / "private_workspace/.github/iptv-publication.json").read_text(encoding="utf-8")
+          )
+          gist_id = str(publication["gist_id"]).strip()
+          prefix = str(publication.get("prefix", "")).strip()
+          if prefix:
+              raise SystemExit("当前 Gist 配置存在前缀；请先确认固定订阅路径，不自动变更发布命名空间")
+          token = os.environ.get("GIST_TOKEN", "")
+          if not token:
+              raise SystemExit("GIST_TOKEN is not configured")
+
+          out, count, channels = build_china_iptv_playlist(root / "private_workspace/m3u")
+          contents = out.read_text(encoding="utf-8")
+          expected = contents.encode("utf-8")
+          if not contents.startswith("#EXTM3U") or channels < 1:
+              raise SystemExit("Invalid/empty M3U; refusing to publish")
+
+          name = "中国IPTV.m3u"
+          api = f"https://api.github.com/gists/{gist_id}"
+          headers = {
+              "Authorization": f"Bearer {token}",
+              "Accept": "application/vnd.github+json",
+              "Content-Type": "application/json",
+              "User-Agent": "4K-IPTV-M3U-China-Publisher",
+          }
+          data = json.dumps({"files": {name: {"content": contents}}}, ensure_ascii=False).encode("utf-8")
+          request = urllib.request.Request(api, headers=headers, data=data, method="PATCH")
+          with urllib.request.urlopen(request, timeout=180) as response:
+              updated = json.load(response)
+          if name not in updated.get("files", {}):
+              raise SystemExit("Gist PATCH returned successfully but the file was not present")
+
+          raw_url = "https://gist.githubusercontent.com/lsjiaowo/" + gist_id + "/raw/" + quote(name)
+          verified = False
+          for attempt in range(6):
+              try:
+                  raw_request = urllib.request.Request(
+                      raw_url,
+                      headers={"Cache-Control": "no-cache", "User-Agent": "IPTV-M3U-Verification"},
+                  )
+                  with urllib.request.urlopen(raw_request, timeout=120) as response:
+                      actual = response.read()
+                  if hashlib.sha256(actual).digest() != hashlib.sha256(expected).digest():
+                      raise RuntimeError("Gist RAW file checksum does not match the generated playlist")
+                  verified = True
+                  break
+              except (urllib.error.HTTPError, urllib.error.URLError) as exc:
+                  print(f"[*] RAW verification attempt {attempt + 1}/6 failed: {type(exc).__name__}")
+                  time.sleep(4)
+          if not verified:
+              raise SystemExit("Gist API updated, but RAW URL could not be verified yet")
+
+          print(f"[+] China IPTV RAW is live: {raw_url}")
+          print(f"[+] Source M3Us: {count}; channels: {channels}; bytes: {len(actual)}; SHA256 verified")
+          PY
