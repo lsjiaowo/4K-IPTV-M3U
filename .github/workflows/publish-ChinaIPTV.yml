@@ -108,25 +108,53 @@ jobs:
               raise SystemExit("Gist PATCH returned successfully but the file was not present")
 
           raw_url = "https://gist.githubusercontent.com/lsjiaowo/" + gist_id + "/raw/" + quote(name)
+          # GitHub caches the versionless RAW URL after edits; verify the actual
+          # new Gist revision first, then probe the stable subscription URL.
+          revision_url = updated["files"][name].get("raw_url", raw_url)
+          digest = hashlib.sha256(expected).digest()
           verified = False
-          for attempt in range(6):
-              try:
-                  raw_request = urllib.request.Request(
-                      raw_url,
-                      headers={"Cache-Control": "no-cache", "User-Agent": "IPTV-M3U-Verification"},
-                  )
-                  with urllib.request.urlopen(raw_request, timeout=120) as response:
-                      actual = response.read()
-                  if hashlib.sha256(actual).digest() != hashlib.sha256(expected).digest():
-                      raise RuntimeError("Gist RAW file checksum does not match the generated playlist")
-                  verified = True
+          for attempt in range(8):
+              candidates = (
+                  revision_url,
+                  raw_url + "?v=" + hashlib.sha256(expected).hexdigest()[:16] + f"-{attempt}",
+              )
+              for candidate_url in dict.fromkeys(candidates):
+                  try:
+                      raw_request = urllib.request.Request(
+                          candidate_url,
+                          headers={"Cache-Control": "no-cache", "User-Agent": "IPTV-M3U-Verification"},
+                      )
+                      with urllib.request.urlopen(raw_request, timeout=120) as response:
+                          actual = response.read()
+                      if hashlib.sha256(actual).digest() != digest:
+                          print(f"[*] Gist CDN returned a stale version on attempt {attempt + 1}; retrying")
+                          continue
+                      verified = True
+                      break
+                  except (urllib.error.HTTPError, urllib.error.URLError) as exc:
+                      print(f"[*] RAW attempt {attempt + 1}/8 failed: {type(exc).__name__}")
+              if verified:
                   break
-              except (urllib.error.HTTPError, urllib.error.URLError) as exc:
-                  print(f"[*] RAW verification attempt {attempt + 1}/6 failed: {type(exc).__name__}")
-                  time.sleep(4)
+              time.sleep(4)
           if not verified:
-              raise SystemExit("Gist API updated, but RAW URL could not be verified yet")
+              raise SystemExit("Gist API updated, but the new M3U revision could not be verified")
 
-          print(f"[+] China IPTV RAW is live: {raw_url}")
-          print(f"[+] Source M3Us: {count}; channels: {channels}; bytes: {len(actual)}; SHA256 verified")
+          try:
+              stable_request = urllib.request.Request(
+                  raw_url,
+                  headers={"Cache-Control": "no-cache", "User-Agent": "IPTV-M3U-Verification"},
+              )
+              with urllib.request.urlopen(stable_request, timeout=120) as response:
+                  stable = response.read()
+              stable_ready = hashlib.sha256(stable).digest() == digest
+          except (urllib.error.HTTPError, urllib.error.URLError):
+              stable_ready = False
+          if not stable_ready:
+              print("::warning::Fixed Gist RAW URL is temporarily cached; latest revision verified. "
+                    "The versionless URL may take time to refresh.")
+
+          print(f"[+] China IPTV RAW verified: {raw_url}")
+          print(f"[+] Independent M3U groups: {len(expected_groups)}; "
+                f"source playlists: {count}; channels: {channels}; "
+                f"bytes: {len(actual)}; SHA256 verified; stable_url_fresh={stable_ready}")
           PY
