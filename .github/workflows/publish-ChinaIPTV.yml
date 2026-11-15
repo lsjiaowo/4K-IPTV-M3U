@@ -43,6 +43,7 @@ jobs:
           import hashlib
           import json
           import os
+          import re
           import sys
           import time
           import urllib.error
@@ -52,7 +53,7 @@ jobs:
 
           root = Path(".private-core").resolve()
           sys.path.insert(0, str(root))
-          from build_china_iptv import build_china_iptv_playlist
+          from build_china_iptv import SOURCE_RE, build_china_iptv_playlist
 
           publication = json.loads(
               (root / "private_workspace/.github/iptv-publication.json").read_text(encoding="utf-8")
@@ -70,6 +71,26 @@ jobs:
           expected = contents.encode("utf-8")
           if not contents.startswith("#EXTM3U") or channels < 1:
               raise SystemExit("Invalid/empty M3U; refusing to publish")
+          # Every provincial playlist (including numbered slots) must have its own group.
+          expected_groups = {
+              p.stem for p in (root / "private_workspace/m3u").glob("*.m3u")
+              if SOURCE_RE.fullmatch(p.name)
+          }
+          actual_groups = re.findall(
+              r'^#EXTINF:[^\n]*?\bgroup-title="([^"]+)"',
+              contents, flags=re.MULTILINE,
+          )
+          if (len(expected_groups) != count
+                  or len(actual_groups) != channels
+                  or set(actual_groups) != expected_groups):
+              missing_groups = sorted(expected_groups - set(actual_groups))
+              extra_groups = sorted(set(actual_groups) - expected_groups)
+              raise SystemExit(
+                  f"M3U groups mismatch: expected={count}, observed={len(set(actual_groups))}, "
+                  f"missing={missing_groups}, unexpected={extra_groups}"
+              )
+          print(f"[+] Verified {len(expected_groups)} independent source groups "
+                f"(including numbered slots); {channels} channel entries")
 
           name = "中国IPTV.m3u"
           api = f"https://api.github.com/gists/{gist_id}"
